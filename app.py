@@ -1156,7 +1156,7 @@ try:
                 <div class="ready-check">✓</div>
                 <div>
                     <div class="stage-title">Dashboard ready</div>
-                    <div class="stage-subtitle">The file loaded successfully. Results are shown below.</div>
+                    <div class="stage-subtitle">The file loaded successfully.</div>
                 </div>
             </div>
         </div>
