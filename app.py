@@ -1097,7 +1097,7 @@ st.markdown(
     """
     <div class="upload-hero">
         <div class="upload-hero-title">Upload report</div>
-        <div class="upload-hero-subtitle">Drag and drop the Item Activity Report Excel file below. The loading animation will appear in this main dashboard area.</div>
+        <div class="upload-hero-subtitle">Select the matching report format on the left, then drag the Item Activity Report Excel file into the upload box below.</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -1113,9 +1113,6 @@ uploaded = st.file_uploader(
 status_box = st.empty()
 progress_box = st.empty()
 
-if uploaded is None:
-    st.info("Select the matching report format on the left, then drag the Item Activity Report Excel file into the upload box above.")
-    st.stop()
 
 try:
     with status_box.container():
