@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v2"
+FIXED_REPORT_START_DATE = "09/01/2025"
 
 
 # ============================================================
@@ -941,7 +942,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
 
         worksheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_col)
         range_cell = worksheet.cell(row=2, column=1)
-        range_cell.value = f"Report Range: 09/01/2025 - {fmt_date(report_end)}"
+        range_cell.value = f"Report Range: {FIXED_REPORT_START_DATE} - {fmt_date(report_end)}"
         range_cell.font = Font(size=10, color="4B5563")
         range_cell.alignment = Alignment(horizontal="left", vertical="center")
 
@@ -1199,7 +1200,7 @@ report_end = model["report_end"]
 windows = model["windows"]
 
 st.markdown(
-    f"<div class='small-note'>Report Range: <b>09/01/2025</b> to <b>{fmt_date(report_end)}</b> | Recent windows use dates present in the report data.</div>",
+    f"<div class='small-note'>Report Range: <b>{FIXED_REPORT_START_DATE}</b> to <b>{fmt_date(report_end)}</b> | Recent windows use dates present in the report data.</div>",
     unsafe_allow_html=True,
 )
 
