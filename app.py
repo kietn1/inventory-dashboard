@@ -869,6 +869,7 @@ def prepare_customer_export(df: pd.DataFrame) -> pd.DataFrame:
         "Risk Level",
         "Recommended Action",
         "Ending Balance",
+        "Last Activity Date",
         "Official Total Outbound",
         "Outbound Last 30 Days",
         "Outbound Last 14 Days",
@@ -876,7 +877,6 @@ def prepare_customer_export(df: pd.DataFrame) -> pd.DataFrame:
         "Avg Daily Usage 30D",
         "Days Remaining",
         "Forecast Stockout Date",
-        "Last Activity Date",
     ]
     out = df[customer_cols].copy()
 
@@ -947,7 +947,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
 
         worksheet.merge_cells(start_row=3, start_column=1, end_row=3, end_column=last_col)
         note_cell = worksheet.cell(row=3, column=1)
-        note_cell.value = "All SKUs are included. Risk level is color-coded for review priority."
+        note_cell.value = ""
         note_cell.font = Font(size=10, italic=True, color="6B7280")
         note_cell.alignment = Alignment(horizontal="left", vertical="center")
 
@@ -1014,6 +1014,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
             "Risk Level": 16,
             "Recommended Action": 42,
             "Ending Balance": 16,
+            "Last Activity Date": 18,
             "Official Total Outbound": 22,
             "Outbound Last 30 Days": 22,
             "Outbound Last 14 Days": 22,
@@ -1021,7 +1022,6 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
             "Avg Daily Usage 30D": 22,
             "Days Remaining": 18,
             "Forecast Stockout Date": 22,
-            "Last Activity Date": 18,
         }
         for idx, col_name in enumerate(export_df.columns, start=1):
             letter = get_column_letter(idx)
@@ -1237,6 +1237,7 @@ priority_cols = [
     "Risk Level",
     "Recommended Action",
     "Ending Balance",
+    "Last Activity Date",
     "Official Total Outbound",
     "Outbound Last 30 Days",
     "Outbound Last 14 Days",
@@ -1244,7 +1245,6 @@ priority_cols = [
     "Avg Daily Usage 30D",
     "Days Remaining",
     "Forecast Stockout Date",
-    "Last Activity Date",
 ]
 priority_display = prepare_display(filtered[priority_cols])
 show_limited_dataframe(priority_display, height=440, limit=250)
