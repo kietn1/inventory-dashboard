@@ -909,7 +909,7 @@ def report_download_filename(format_name: str, report_end) -> str:
     except Exception:
         date_part = datetime.today().strftime("%m%d%Y")
     clean_format = re.sub(r"[^A-Za-z0-9]+", "_", str(format_name)).strip("_") or "Inventory"
-    return f"{clean_format}_Inventory_Report_{date_part}.xlsx"
+    return f"{clean_format}_Inventory_Shortage_Report_{date_part}.xlsx"
 
 
 @st.cache_data(show_spinner=False)
@@ -1256,7 +1256,7 @@ st.markdown(
 )
 export_file_name = report_download_filename(format_name, report_end)
 st.download_button(
-    "⬇️ Download Inventory Status Report",
+    "⬇️ Download Customer Inventory Status Report",
     data=to_excel_bytes(model, format_name),
     file_name=export_file_name,
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
