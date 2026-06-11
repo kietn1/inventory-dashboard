@@ -1251,6 +1251,10 @@ priority_display = prepare_display(filtered[priority_cols])
 show_limited_dataframe(priority_display, height=440, limit=250)
 
 st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='section-subtitle'>Exports one clean Shortage Priority tab with all SKUs, color-coded Risk Level, and Recommended Action.</div>",
+    unsafe_allow_html=True,
+)
 export_file_name = report_download_filename(format_name, report_end)
 st.download_button(
     "⬇️ Download Inventory Status Report",
