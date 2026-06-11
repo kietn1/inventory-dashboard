@@ -1117,53 +1117,61 @@ if uploaded is None:
     st.info("Select the matching report format on the left, then drag the Item Activity Report Excel file into the upload box above.")
     st.stop()
 
+file_bytes = uploaded.getvalue()
+uploaded_key = f"{format_name}|{uploaded.name}|{uploaded.size}|{hash(file_bytes)}"
+first_file_load = st.session_state.get("loaded_file_key") != uploaded_key
+
 try:
-    with status_box.container():
-        st.markdown(
+    if first_file_load:
+        with status_box.container():
+            st.markdown(
+                """
+                <div class="loading-stage-card">
+                    <div class="loading-row">
+                        <div class="loader-ring"></div>
+                        <div>
+                            <div class="stage-title">Processing file<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
+                            <div class="stage-subtitle">Reading the upload, checking the selected format, and building the dashboard.</div>
+                        </div>
+                    </div>
+                    <div class="animated-progress"></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        progress_bar = progress_box.progress(8, text="Starting upload check...")
+        time.sleep(0.45)
+        progress_bar.progress(28, text="Reading Excel file...")
+        time.sleep(0.55)
+        progress_bar.progress(52, text="Checking selected report format...")
+        time.sleep(0.55)
+
+    model = process_excel_file(file_bytes, format_name)
+
+    if first_file_load:
+        progress_bar.progress(76, text="Building shortage dashboard...")
+        time.sleep(0.55)
+        progress_bar.progress(100, text="Dashboard ready")
+        time.sleep(0.55)
+        status_box.markdown(
             """
-            <div class="loading-stage-card">
-                <div class="loading-row">
-                    <div class="loader-ring"></div>
+            <div class="ready-stage-card">
+                <div class="ready-row">
+                    <div class="ready-check">✓</div>
                     <div>
-                        <div class="stage-title">Processing file<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
-                        <div class="stage-subtitle">Reading the upload, checking the selected format, and building the dashboard.</div>
+                        <div class="stage-title">Dashboard ready</div>
+                        <div class="stage-subtitle">The file loaded successfully.</div>
                     </div>
                 </div>
-                <div class="animated-progress"></div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-    progress_bar = progress_box.progress(8, text="Starting upload check...")
-    time.sleep(0.45)
-
-    file_bytes = uploaded.getvalue()
-    progress_bar.progress(28, text="Reading Excel file...")
-    time.sleep(0.55)
-
-    progress_bar.progress(52, text="Checking selected report format...")
-    time.sleep(0.55)
-    model = process_excel_file(file_bytes, format_name)
-
-    progress_bar.progress(76, text="Building shortage dashboard...")
-    time.sleep(0.55)
-    progress_bar.progress(100, text="Dashboard ready")
-    time.sleep(0.55)
-    status_box.markdown(
-        """
-        <div class="ready-stage-card">
-            <div class="ready-row">
-                <div class="ready-check">✓</div>
-                <div>
-                    <div class="stage-title">Dashboard ready</div>
-                    <div class="stage-subtitle">The file loaded successfully.</div>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.toast("Dashboard loaded successfully.", icon="✅")
+        st.toast("Dashboard loaded successfully.", icon="✅")
+        st.session_state["loaded_file_key"] = uploaded_key
+    else:
+        status_box.empty()
+        progress_box.empty()
 except WrongFileFormatError as exc:
     progress_box.empty()
     status_box.warning(str(exc))
