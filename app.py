@@ -1097,7 +1097,7 @@ st.markdown(
     """
     <div class="upload-hero">
         <div class="upload-hero-title">Upload report</div>
-        <div class="upload-hero-subtitle">Drag and drop the Item Activity Report Excel file below. The loading animation will appear in this main dashboard area.</div>
+        <div class="upload-hero-subtitle">Drag and drop the Item Activity Report Excel file below.</div>
     </div>
     """,
     unsafe_allow_html=True,
