@@ -1256,7 +1256,7 @@ st.markdown(
 )
 export_file_name = report_download_filename(format_name, report_end)
 st.download_button(
-    "⬇️ Download Customer Inventory Status Report",
+    "⬇️ Download Inventory Status Report",
     data=to_excel_bytes(model, format_name),
     file_name=export_file_name,
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
