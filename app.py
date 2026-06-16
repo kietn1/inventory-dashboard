@@ -649,8 +649,18 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                 }
             )
 
-        # Dated outbound transactions. Not Shipped still counts when it has parsed date and Qty Out > 0.
-        if not pd.isna(activity_dt) and qty_out > 0:
+        # Full dated transaction history.
+        # Capture both inbound and outbound rows so each SKU shows the full balance movement.
+        if not pd.isna(activity_dt) and (qty_in > 0 or qty_out > 0):
+            if qty_in > 0 and qty_out > 0:
+                transaction_type = "Inbound / Outbound"
+            elif qty_in > 0:
+                transaction_type = "Inbound"
+            elif qty_out > 0:
+                transaction_type = "Outbound"
+            else:
+                transaction_type = ""
+
             transactions.append(
                 {
                     "Excel Row": excel_row_num + 1,
@@ -658,10 +668,11 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                     "Description": sku_records[current_sku]["Description"],
                     "Activity Date Raw": activity_text,
                     "Activity Date": activity_dt,
+                    "Transaction Type": transaction_type,
                     "Trans. #": trans_no,
                     "Ref #": ref_text,
-                    "Qty Out": qty_out,
                     "Qty In": qty_in,
+                    "Qty Out": qty_out,
                     "Balance After Transaction": balance,
                     "Ctn Balance After Transaction": ctn_balance,
                     "Is Not Shipped": is_not_shipped,
@@ -674,6 +685,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
 
     sku_df = pd.DataFrame(sku_records.values())
     tx_df = pd.DataFrame(transactions)
+    outbound_tx_df = tx_df[tx_df["Qty Out"] > 0].copy() if not tx_df.empty else tx_df.copy()
     official_total_df = pd.DataFrame(official_total_rows)
     official_ending_df = pd.DataFrame(official_ending_rows)
     beginning_balance_df = pd.DataFrame(beginning_balance_rows)
@@ -691,11 +703,12 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
     report_end = pd.to_datetime(report_end).normalize()
     report_start = pd.to_datetime(report_start).normalize()
 
-    # Use dates present in the report data, not calendar/holiday counting.
+    # Use outbound dates present in the report data, not calendar/holiday counting.
+    # Full transaction history is captured in tx_df, but shortage velocity uses Qty Out only.
     window_dates = {
-        "Outbound Last 30 Days": last_data_activity_dates(tx_df, report_end, 30),
-        "Outbound Last 14 Days": last_data_activity_dates(tx_df, report_end, 14),
-        "Outbound Last 7 Days": last_data_activity_dates(tx_df, report_end, 7),
+        "Outbound Last 30 Days": last_data_activity_dates(outbound_tx_df, report_end, 30),
+        "Outbound Last 14 Days": last_data_activity_dates(outbound_tx_df, report_end, 14),
+        "Outbound Last 7 Days": last_data_activity_dates(outbound_tx_df, report_end, 7),
     }
     windows = {
         label: (dates[0], dates[-1]) if dates else (pd.NaT, pd.NaT)
@@ -703,11 +716,11 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
     }
 
     for label, dates in window_dates.items():
-        if tx_df.empty or not dates:
+        if outbound_tx_df.empty or not dates:
             sku_df[label] = 0.0
         else:
-            mask = tx_df["Activity Date"].isin(dates)
-            agg = tx_df.loc[mask].groupby("SKU", as_index=True)["Qty Out"].sum()
+            mask = outbound_tx_df["Activity Date"].isin(dates)
+            agg = outbound_tx_df.loc[mask].groupby("SKU", as_index=True)["Qty Out"].sum()
             sku_df[label] = sku_df["SKU"].map(agg).fillna(0.0)
 
     valid_30d_count = max(len(window_dates["Outbound Last 30 Days"]), 1)
@@ -747,10 +760,10 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
         ascending=[True, True, False, False],
     ).reset_index(drop=True)
 
-    if tx_df.empty:
+    if outbound_tx_df.empty:
         trend_df = pd.DataFrame(columns=["Activity Date", "Qty Out"])
     else:
-        trend_df = tx_df.groupby("Activity Date", as_index=False)["Qty Out"].sum().sort_values("Activity Date")
+        trend_df = outbound_tx_df.groupby("Activity Date", as_index=False)["Qty Out"].sum().sort_values("Activity Date")
 
     return {
         "format_name": format_name,
@@ -1310,8 +1323,21 @@ with sku_tab:
         tx_sku = model["tx_df"]
         if not tx_sku.empty:
             tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].sort_values("Activity Date", ascending=False)
-            st.subheader("Dated outbound transactions")
-            show_limited_dataframe(tx_sku, height=340, limit=250)
+            st.subheader("Full transaction history")
+            full_tx_cols = [
+                "Excel Row",
+                "Activity Date",
+                "Transaction Type",
+                "Trans. #",
+                "Ref #",
+                "Qty In",
+                "Qty Out",
+                "Balance After Transaction",
+                "Ctn Balance After Transaction",
+                "Is Not Shipped",
+                "Is Cancelled",
+            ]
+            show_limited_dataframe(tx_sku[full_tx_cols], height=420, limit=500)
 
 with trend_tab:
     st.subheader("Outbound Trend")
