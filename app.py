@@ -10,7 +10,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v7"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v13-selected-sku-hero"
+APP_CACHE_VERSION = "full-transactions-v15-sidebar-spacing"
 
 
 # ============================================================
@@ -141,9 +141,11 @@ st.markdown(
             background: #FFFFFF;
             border: 1px solid rgba(17,24,39,.08);
             border-radius: 16px;
-            padding: 14px 14px 8px 14px;
+            padding: 12px 13px 10px 13px;
+            margin-top: 0.18rem;
             box-shadow: 0 4px 18px rgba(16,24,40,.05);
             transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+            line-height: 1.42;
         }
         .sidebar-note:hover {
             transform: translateY(-2px);
@@ -151,17 +153,46 @@ st.markdown(
             border-color: rgba(17,24,39,.12);
         }
         .sidebar-section-title {
-            font-size: .82rem;
+            font-size: .78rem;
             font-weight: 850;
             color: #111827;
             text-transform: uppercase;
             letter-spacing: .06em;
-            margin: .25rem 0 .55rem 0;
+            margin: .10rem 0 .42rem 0;
+            line-height: 1.2;
         }
-        .sidebar-section-gap { height: .45rem; }
+        .sidebar-section-gap { height: .18rem; }
         div[data-testid="stDataFrame"] {border-radius: 14px; overflow: hidden; margin-top: 0.15rem;}
         div[data-testid="stSidebar"] {background:#F5F5F7; transition: background 0.25s ease;}
-        div[data-testid="stSidebar"] h1 {font-size: 1.35rem;}
+        div[data-testid="stSidebar"] > div:first-child {
+            padding-top: 1.0rem;
+            padding-left: 1.05rem;
+            padding-right: 1.05rem;
+        }
+        div[data-testid="stSidebar"] h1 {
+            font-size: 1.28rem;
+            line-height: 1.16;
+            margin: 0 0 .55rem 0;
+        }
+        div[data-testid="stSidebar"] hr {
+            margin: .72rem 0 .66rem 0;
+        }
+        div[data-testid="stSidebar"] label {
+            font-size: .82rem !important;
+            font-weight: 720 !important;
+            color: #374151 !important;
+            margin-bottom: .20rem !important;
+        }
+        div[data-testid="stSidebar"] .stSelectbox,
+        div[data-testid="stSidebar"] .stMultiSelect,
+        div[data-testid="stSidebar"] .stNumberInput {
+            margin-bottom: .52rem;
+        }
+        div[data-testid="stSidebar"] .stSelectbox > div,
+        div[data-testid="stSidebar"] .stMultiSelect > div,
+        div[data-testid="stSidebar"] .stNumberInput > div {
+            margin-top: .10rem;
+        }
         div[data-testid="stFileUploader"] section {
             border: 1.5px dashed rgba(17,24,39,.18);
             border-radius: 16px;
@@ -1195,11 +1226,11 @@ st.sidebar.divider()
 st.sidebar.markdown(
     """
     <div class="sidebar-note">
-    <b>Risk Level Notes</b><br><br>
+    <b>Risk Level Notes</b><br>
     🔴 <b>Critical:</b> 0–7 days remaining<br>
     🟠 <b>Warning:</b> 8–14 days remaining<br>
     🟡 <b>Watch:</b> 15–30 days remaining<br>
-    🟢 <b>Healthy:</b> More than 30 days remaining<br><br>
+    🟢 <b>Healthy:</b> More than 30 days remaining
     </div>
     """,
     unsafe_allow_html=True,
@@ -1319,14 +1350,14 @@ if show_risks:
 filtered = filtered[filtered["Outbound Last 30 Days"] >= min_usage]
 
 # One combined SKU control in the sidebar.
-# Use SKU only. Open the dropdown and type to search by SKU.
+# Use SKU only. The first row in the current filtered shortage list is selected by default.
 selected_sku = None
 with sku_sidebar_slot.container():
     st.markdown('<div class="sidebar-section-gap"></div>', unsafe_allow_html=True)
     if filtered.empty:
         st.info("No SKU matches the current filters.")
     else:
-        sku_options = ["All SKUs"] + filtered["SKU"].astype(str).drop_duplicates().tolist()
+        sku_options = filtered["SKU"].astype(str).drop_duplicates().tolist()
         selected_sku_choice = st.selectbox(
             "Search / Select SKU",
             options=sku_options,
@@ -1334,9 +1365,8 @@ with sku_sidebar_slot.container():
             key="sidebar_selected_sku",
         )
 
-        if selected_sku_choice != "All SKUs":
-            selected_sku = selected_sku_choice
-            filtered = filtered[filtered["SKU"].astype(str) == str(selected_sku_choice)]
+        selected_sku = selected_sku_choice
+        filtered = filtered[filtered["SKU"].astype(str) == str(selected_sku_choice)]
 
 report_start = model["report_start"]
 report_end = model["report_end"]
@@ -1413,10 +1443,8 @@ st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 sku_tab, trend_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "Trend", "Audit", "Guide"])
 
 with sku_tab:
-    if filtered.empty:
+    if filtered.empty or selected_sku is None:
         st.warning("No SKU matches the current filters.")
-    elif selected_sku is None:
-        st.info("Select one SKU from the sidebar to view SKU Detail.")
     else:
         selected = sku_df[sku_df["SKU"].astype(str) == str(selected_sku)].iloc[0]
         selected_sku_safe = html.escape(str(selected_sku))
