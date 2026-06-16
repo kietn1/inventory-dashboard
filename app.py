@@ -1284,10 +1284,6 @@ priority_display = prepare_display(filtered[priority_cols])
 show_limited_dataframe(priority_display, height=440, limit=250)
 
 st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
-st.markdown(
-    "<div class='section-subtitle'>Exports one clean Shortage Priority tab with all SKUs, color-coded Risk Level, and Recommended Action.</div>",
-    unsafe_allow_html=True,
-)
 export_file_name = report_download_filename(format_name, report_end)
 st.download_button(
     "⬇️ Download Inventory Status Report",
@@ -1296,7 +1292,7 @@ st.download_button(
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     use_container_width=True,
 )
-st.caption(f"Export version: {CUSTOMER_EXPORT_VERSION} | File name: {export_file_name}")
+st.caption(f"File name: {export_file_name}")
 
 sku_tab, trend_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "Trend", "Audit", "Guide"])
 
@@ -1344,7 +1340,6 @@ with sku_tab:
         if not tx_sku.empty:
             tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].copy()
             st.subheader("Full transaction history")
-            st.caption("One clean Activity Date column is shown. Not Shipped is separated into the Is Not Shipped column.")
             full_tx_cols = [
                 "Excel Row",
                 "Activity Date",
