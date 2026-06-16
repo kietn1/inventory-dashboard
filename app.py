@@ -7,9 +7,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-CUSTOMER_EXPORT_VERSION = "Customer export v4"
+CUSTOMER_EXPORT_VERSION = "Customer export v5"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v6-one-activity-date"
+APP_CACHE_VERSION = "full-transactions-v7-insight-filters"
 
 
 # ============================================================
@@ -1213,6 +1213,71 @@ except Exception as exc:
     st.stop()
 
 sku_df = model["sku_df"].copy()
+
+# ============================================================
+# Data-driven SKU filters
+# ============================================================
+st.sidebar.divider()
+with st.sidebar.expander("SKU Insight Filters", expanded=True):
+    st.caption("Use these filters to narrow the shortage list to the SKUs that need review.")
+
+    ending_balance_range = None
+    ending_balance_values = pd.to_numeric(sku_df.get("Ending Balance"), errors="coerce").dropna()
+    enable_ending_balance_filter = st.checkbox("Filter Ending Balance", value=False)
+    if enable_ending_balance_filter and not ending_balance_values.empty:
+        ending_min = int(np.floor(ending_balance_values.min()))
+        ending_max = int(np.ceil(ending_balance_values.max()))
+        if ending_min < ending_max:
+            ending_balance_range = st.slider(
+                "Ending Balance Range",
+                min_value=ending_min,
+                max_value=ending_max,
+                value=(ending_min, ending_max),
+                step=1,
+            )
+        else:
+            st.caption("Ending Balance has only one value in this file.")
+
+    days_remaining_range = None
+    days_values = pd.to_numeric(sku_df.get("Days Remaining"), errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+    enable_days_filter = st.checkbox("Filter Days Remaining", value=False)
+    if enable_days_filter and not days_values.empty:
+        days_min = max(0, int(np.floor(days_values.min())))
+        days_max = max(days_min + 1, int(np.ceil(min(days_values.max(), 365))))
+        days_remaining_range = st.slider(
+            "Days Remaining Range",
+            min_value=days_min,
+            max_value=days_max,
+            value=(days_min, days_max),
+            step=1,
+            help="Capped at 365 days so very high Healthy values do not make the slider hard to use.",
+        )
+
+    last_activity_range = None
+    last_activity_dates = pd.to_datetime(sku_df.get("Last Activity Date"), errors="coerce").dropna()
+    enable_last_activity_filter = st.checkbox("Filter Last Activity Date", value=False)
+    if enable_last_activity_filter and not last_activity_dates.empty:
+        min_last_date = last_activity_dates.min().date()
+        max_last_date = last_activity_dates.max().date()
+        last_activity_range = st.date_input(
+            "Last Activity Date Range",
+            value=(min_last_date, max_last_date),
+            min_value=min_last_date,
+            max_value=max_last_date,
+        )
+
+    sort_by = st.selectbox(
+        "Sort Priority List By",
+        options=[
+            "Risk priority",
+            "Highest outbound 30D",
+            "Lowest ending balance",
+            "Lowest days remaining",
+            "Latest activity date",
+        ],
+        index=0,
+    )
+
 filtered = sku_df.copy()
 if show_risks:
     filtered = filtered[filtered["Risk Level"].isin(show_risks)]
@@ -1223,6 +1288,28 @@ if search_text.strip():
         filtered["SKU"].astype(str).str.lower().str.contains(q, na=False)
         | filtered["Description"].astype(str).str.lower().str.contains(q, na=False)
     ]
+if ending_balance_range is not None:
+    filtered = filtered[
+        pd.to_numeric(filtered["Ending Balance"], errors="coerce").between(
+            ending_balance_range[0], ending_balance_range[1], inclusive="both"
+        )
+    ]
+if days_remaining_range is not None:
+    days_filter_values = pd.to_numeric(filtered["Days Remaining"], errors="coerce").replace([np.inf, -np.inf], np.nan)
+    filtered = filtered[days_filter_values.between(days_remaining_range[0], days_remaining_range[1], inclusive="both")]
+if last_activity_range is not None and isinstance(last_activity_range, tuple) and len(last_activity_range) == 2:
+    start_last, end_last = pd.to_datetime(last_activity_range[0]), pd.to_datetime(last_activity_range[1])
+    last_activity_filter_values = pd.to_datetime(filtered["Last Activity Date"], errors="coerce")
+    filtered = filtered[last_activity_filter_values.between(start_last, end_last, inclusive="both")]
+
+if sort_by == "Highest outbound 30D":
+    filtered = filtered.sort_values("Outbound Last 30 Days", ascending=False)
+elif sort_by == "Lowest ending balance":
+    filtered = filtered.sort_values("Ending Balance", ascending=True)
+elif sort_by == "Lowest days remaining":
+    filtered = filtered.replace([np.inf, -np.inf], np.nan).sort_values("Days Remaining", ascending=True, na_position="last")
+elif sort_by == "Latest activity date":
+    filtered = filtered.sort_values("Last Activity Date", ascending=False, na_position="last")
 
 report_start = model["report_start"]
 report_end = model["report_end"]
@@ -1276,7 +1363,17 @@ priority_cols = [
     "Days Remaining",
     "Forecast Stockout Date",
 ]
-priority_display = prepare_display(filtered[priority_cols])
+with st.sidebar.expander("Shortage Table Columns", expanded=False):
+    selected_priority_cols = st.multiselect(
+        "Columns to show",
+        options=priority_cols,
+        default=priority_cols,
+        help="Choose the columns that appear in the main Shortage Priority List.",
+    )
+if not selected_priority_cols:
+    selected_priority_cols = priority_cols
+
+priority_display = prepare_display(filtered[selected_priority_cols])
 show_limited_dataframe(priority_display, height=440, limit=250)
 
 st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
@@ -1338,7 +1435,7 @@ with sku_tab:
 
         tx_sku = model["tx_df"].copy()
         if not tx_sku.empty:
-            tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].sort_values(["Activity Date", "Excel Row"], ascending=[True, True])
+            tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].copy()
             st.subheader("Full transaction history")
             st.caption("One clean Activity Date column is shown. Not Shipped is separated into the Is Not Shipped column.")
             full_tx_cols = [
@@ -1363,10 +1460,132 @@ with sku_tab:
                         tx_sku[col] = pd.NaT
                     else:
                         tx_sku[col] = ""
+
             if tx_sku.empty:
                 st.info("No transaction history found for this SKU.")
             else:
-                show_limited_dataframe(tx_sku[full_tx_cols], height=420, limit=500)
+                sku_filter_key = re.sub(r"[^A-Za-z0-9_]+", "_", str(selected_sku))[:55]
+                tx_filtered = tx_sku.copy()
+
+                with st.expander("Transaction Filters", expanded=True):
+                    f1, f2, f3 = st.columns(3)
+                    tx_type_options = sorted([x for x in tx_sku["Transaction Type"].dropna().astype(str).unique().tolist() if x])
+                    selected_tx_types = f1.multiselect(
+                        "Transaction Type",
+                        options=tx_type_options,
+                        default=tx_type_options,
+                        key=f"tx_type_{sku_filter_key}",
+                    )
+                    tx_search = f2.text_input(
+                        "Search Ref # / Trans. #",
+                        placeholder="Example: AXIA, PO, DO...",
+                        key=f"tx_search_{sku_filter_key}",
+                    )
+                    tx_sort_order = f3.selectbox(
+                        "Sort Transactions",
+                        options=["Oldest first", "Newest first"],
+                        index=0,
+                        key=f"tx_sort_{sku_filter_key}",
+                    )
+
+                    f4, f5, f6 = st.columns(3)
+                    not_shipped_filter = f4.multiselect(
+                        "Not Shipped",
+                        options=["Yes", "No"],
+                        default=["Yes", "No"],
+                        key=f"tx_not_shipped_{sku_filter_key}",
+                    )
+                    cancelled_filter = f5.multiselect(
+                        "Cancelled",
+                        options=["Yes", "No"],
+                        default=["Yes", "No"],
+                        key=f"tx_cancelled_{sku_filter_key}",
+                    )
+                    qty_filter = f6.selectbox(
+                        "Qty Filter",
+                        options=["All", "Inbound only", "Outbound only", "No Qty / Adjustment"],
+                        index=0,
+                        key=f"tx_qty_filter_{sku_filter_key}",
+                    )
+
+                    tx_dates = pd.to_datetime(tx_sku["Activity Date"], errors="coerce").dropna()
+                    if not tx_dates.empty:
+                        min_tx_date = tx_dates.min().date()
+                        max_tx_date = tx_dates.max().date()
+                        tx_date_range = st.date_input(
+                            "Activity Date Range",
+                            value=(min_tx_date, max_tx_date),
+                            min_value=min_tx_date,
+                            max_value=max_tx_date,
+                            key=f"tx_date_{sku_filter_key}",
+                        )
+                    else:
+                        tx_date_range = None
+
+                    balance_values = pd.to_numeric(tx_sku["Balance After Transaction"], errors="coerce").dropna()
+                    enable_balance_filter = st.checkbox(
+                        "Filter Balance After Transaction",
+                        value=False,
+                        key=f"tx_balance_enabled_{sku_filter_key}",
+                    )
+                    balance_range = None
+                    if enable_balance_filter and not balance_values.empty:
+                        bal_min = int(np.floor(balance_values.min()))
+                        bal_max = int(np.ceil(balance_values.max()))
+                        if bal_min < bal_max:
+                            balance_range = st.slider(
+                                "Balance After Transaction Range",
+                                min_value=bal_min,
+                                max_value=bal_max,
+                                value=(bal_min, bal_max),
+                                step=1,
+                                key=f"tx_balance_range_{sku_filter_key}",
+                            )
+
+                if selected_tx_types:
+                    tx_filtered = tx_filtered[tx_filtered["Transaction Type"].astype(str).isin(selected_tx_types)]
+                if tx_search.strip():
+                    tx_q = tx_search.strip().lower()
+                    tx_filtered = tx_filtered[
+                        tx_filtered["Ref #"].astype(str).str.lower().str.contains(tx_q, na=False)
+                        | tx_filtered["Trans. #"].astype(str).str.lower().str.contains(tx_q, na=False)
+                    ]
+                if set(not_shipped_filter) != {"Yes", "No"}:
+                    tx_filtered = tx_filtered[tx_filtered["Is Not Shipped"].astype(bool).isin([x == "Yes" for x in not_shipped_filter])]
+                if set(cancelled_filter) != {"Yes", "No"}:
+                    tx_filtered = tx_filtered[tx_filtered["Is Cancelled"].astype(bool).isin([x == "Yes" for x in cancelled_filter])]
+                if qty_filter == "Inbound only":
+                    tx_filtered = tx_filtered[pd.to_numeric(tx_filtered["Qty In"], errors="coerce").fillna(0) > 0]
+                elif qty_filter == "Outbound only":
+                    tx_filtered = tx_filtered[pd.to_numeric(tx_filtered["Qty Out"], errors="coerce").fillna(0) > 0]
+                elif qty_filter == "No Qty / Adjustment":
+                    tx_filtered = tx_filtered[
+                        (pd.to_numeric(tx_filtered["Qty In"], errors="coerce").fillna(0) <= 0)
+                        & (pd.to_numeric(tx_filtered["Qty Out"], errors="coerce").fillna(0) <= 0)
+                    ]
+                if tx_date_range is not None and isinstance(tx_date_range, tuple) and len(tx_date_range) == 2:
+                    tx_start, tx_end = pd.to_datetime(tx_date_range[0]), pd.to_datetime(tx_date_range[1])
+                    tx_activity_dates = pd.to_datetime(tx_filtered["Activity Date"], errors="coerce")
+                    tx_filtered = tx_filtered[tx_activity_dates.between(tx_start, tx_end, inclusive="both")]
+                if balance_range is not None:
+                    tx_filtered = tx_filtered[
+                        pd.to_numeric(tx_filtered["Balance After Transaction"], errors="coerce").between(
+                            balance_range[0], balance_range[1], inclusive="both"
+                        )
+                    ]
+
+                ascending_tx = tx_sort_order == "Oldest first"
+                tx_filtered = tx_filtered.sort_values(["Activity Date", "Excel Row"], ascending=[ascending_tx, ascending_tx])
+
+                t1, t2, t3 = st.columns(3)
+                with t1:
+                    metric_card("Filtered Rows", fmt_num(len(tx_filtered)), f"Total rows: {len(tx_sku):,}")
+                with t2:
+                    metric_card("Filtered Qty In", fmt_num(pd.to_numeric(tx_filtered["Qty In"], errors="coerce").fillna(0).sum()), "Inbound in selected rows")
+                with t3:
+                    metric_card("Filtered Qty Out", fmt_num(pd.to_numeric(tx_filtered["Qty Out"], errors="coerce").fillna(0).sum()), "Outbound in selected rows")
+
+                show_limited_dataframe(tx_filtered[full_tx_cols], height=420, limit=500)
 
 with trend_tab:
     st.subheader("Outbound Trend")
