@@ -1108,9 +1108,6 @@ st.sidebar.markdown(
     🟠 <b>Warning:</b> 8–14 days remaining<br>
     🟡 <b>Watch:</b> 15–30 days remaining<br>
     🟢 <b>Healthy:</b> More than 30 days remaining<br><br>
-    <span style="color:#6B7280;font-size:0.84rem;">
-    Recent windows use the report date and count backward by dates that are present in the report data.
-    </span>
     </div>
     """,
     unsafe_allow_html=True,
@@ -1233,7 +1230,7 @@ report_end = model["report_end"]
 windows = model["windows"]
 
 st.markdown(
-    f"<div class='small-note'>Report Range: <b>{FIXED_REPORT_START_DATE}</b> to <b>{fmt_date(report_end)}</b> | Recent windows use dates present in the report data.</div>",
+    f"<div class='small-note'>Report Range: <b>{FIXED_REPORT_START_DATE}</b> to <b>{fmt_date(report_end)}</b></div>",
     unsafe_allow_html=True,
 )
 
