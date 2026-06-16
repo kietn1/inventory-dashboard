@@ -1449,7 +1449,7 @@ st.sidebar.markdown('<div class="sidebar-section-title">Filters</div>', unsafe_a
 show_risks = st.sidebar.multiselect(
     "Risk Level",
     options=["Critical", "Warning", "Watch", "Healthy"],
-    default=["Critical", "Warning", "Watch"],
+    default=["Critical", "Warning", "Watch", "Healthy"],
     key="filter_risk_levels",
 )
 min_usage = st.sidebar.number_input(
