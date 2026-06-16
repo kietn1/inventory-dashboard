@@ -1,8 +1,11 @@
+import hashlib
 import html
+import json
 import re
 import time
 from datetime import date, datetime
 from io import BytesIO
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -10,7 +13,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v8"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v21-health-label-bold"
+APP_CACHE_VERSION = "full-transactions-v22-persist-upload"
 
 
 # ============================================================
@@ -511,6 +514,65 @@ def parse_excel_or_text_date(value):
 
 class WrongFileFormatError(ValueError):
     pass
+
+
+# ============================================================
+# Persistent upload storage
+# ============================================================
+PERSISTENT_UPLOAD_DIR = Path.home() / ".inventory_dashboard_uploads"
+
+
+def stable_file_hash(file_bytes: bytes) -> str:
+    return hashlib.sha256(file_bytes).hexdigest()
+
+
+def safe_format_slug(format_name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", str(format_name)).strip("_") or "report"
+
+
+def persistent_upload_paths(format_name: str) -> tuple[Path, Path]:
+    slug = safe_format_slug(format_name)
+    return (
+        PERSISTENT_UPLOAD_DIR / f"{slug}_last_upload.bin",
+        PERSISTENT_UPLOAD_DIR / f"{slug}_last_upload.json",
+    )
+
+
+def save_persistent_upload(format_name: str, file_name: str, file_bytes: bytes) -> None:
+    try:
+        PERSISTENT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        data_path, meta_path = persistent_upload_paths(format_name)
+        data_path.write_bytes(file_bytes)
+        meta = {
+            "format_name": format_name,
+            "file_name": file_name,
+            "size": len(file_bytes),
+            "sha256": stable_file_hash(file_bytes),
+            "saved_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    except Exception:
+        # Persistent storage is a convenience feature; the upload should still work if saving fails.
+        pass
+
+
+def load_persistent_upload(format_name: str):
+    try:
+        data_path, meta_path = persistent_upload_paths(format_name)
+        if not data_path.exists() or not meta_path.exists():
+            return None
+        file_bytes = data_path.read_bytes()
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if meta.get("sha256") != stable_file_hash(file_bytes):
+            return None
+        return {
+            "file_bytes": file_bytes,
+            "file_name": meta.get("file_name", "Saved report.xlsx"),
+            "size": meta.get("size", len(file_bytes)),
+            "saved_at": meta.get("saved_at", ""),
+        }
+    except Exception:
+        return None
 
 
 def find_header_row(raw: pd.DataFrame) -> int:
@@ -1533,12 +1595,24 @@ uploaded = st.file_uploader(
 status_box = st.empty()
 progress_box = st.empty()
 
-if uploaded is None:
-    st.info("Select the matching report format on the left, then drag the Item Activity Report Excel file into the upload box above.")
-    st.stop()
+using_saved_report = False
+active_file_name = ""
 
-file_bytes = uploaded.getvalue()
-uploaded_key = f"{format_name}|{uploaded.name}|{uploaded.size}|{hash(file_bytes)}"
+if uploaded is not None:
+    file_bytes = uploaded.getvalue()
+    active_file_name = uploaded.name
+    save_persistent_upload(format_name, active_file_name, file_bytes)
+else:
+    saved_upload = load_persistent_upload(format_name)
+    if saved_upload is None:
+        st.info("Select the matching report format on the left, then drag the Item Activity Report Excel file into the upload box above.")
+        st.stop()
+    file_bytes = saved_upload["file_bytes"]
+    active_file_name = saved_upload["file_name"]
+    using_saved_report = True
+    st.caption(f"Using saved report: {active_file_name}")
+
+uploaded_key = f"{format_name}|{active_file_name}|{len(file_bytes)}|{stable_file_hash(file_bytes)}"
 first_file_load = st.session_state.get("loaded_file_key") != uploaded_key
 
 try:
