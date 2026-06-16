@@ -1467,115 +1467,41 @@ with sku_tab:
                 sku_filter_key = re.sub(r"[^A-Za-z0-9_]+", "_", str(selected_sku))[:55]
                 tx_filtered = tx_sku.copy()
 
-                with st.expander("Transaction Filters", expanded=True):
-                    f1, f2, f3 = st.columns(3)
-                    tx_type_options = sorted([x for x in tx_sku["Transaction Type"].dropna().astype(str).unique().tolist() if x])
-                    selected_tx_types = f1.multiselect(
-                        "Transaction Type",
-                        options=tx_type_options,
-                        default=tx_type_options,
-                        key=f"tx_type_{sku_filter_key}",
-                    )
-                    tx_search = f2.text_input(
-                        "Search Ref # / Trans. #",
-                        placeholder="Example: AXIA, PO, DO...",
-                        key=f"tx_search_{sku_filter_key}",
-                    )
-                    tx_sort_order = f3.selectbox(
-                        "Sort Transactions",
-                        options=["Newest first", "Oldest first"],
-                        index=0,
-                        key=f"tx_sort_{sku_filter_key}",
-                    )
+                f1, f2 = st.columns([2, 1])
+                tx_search = f1.text_input(
+                    "Search Ref # / Trans. #",
+                    placeholder="Example: AXIA, PO, DO...",
+                    key=f"tx_search_{sku_filter_key}",
+                )
 
-                    f4, f5, f6 = st.columns(3)
-                    not_shipped_filter = f4.multiselect(
-                        "Not Shipped",
-                        options=["Yes", "No"],
-                        default=["Yes", "No"],
-                        key=f"tx_not_shipped_{sku_filter_key}",
-                    )
-                    cancelled_filter = f5.multiselect(
-                        "Cancelled",
-                        options=["Yes", "No"],
-                        default=["Yes", "No"],
-                        key=f"tx_cancelled_{sku_filter_key}",
-                    )
-                    qty_filter = f6.selectbox(
-                        "Qty Filter",
-                        options=["All", "Inbound only", "Outbound only", "No Qty / Adjustment"],
-                        index=0,
-                        key=f"tx_qty_filter_{sku_filter_key}",
-                    )
+                tx_dates = pd.to_datetime(tx_sku["Activity Date"], errors="coerce").dropna()
+                tx_date_options = ["All dates"]
+                if not tx_dates.empty:
+                    unique_tx_dates = pd.Series(tx_dates.dt.normalize().unique()).sort_values(ascending=False)
+                    tx_date_options += [pd.to_datetime(d).strftime("%m/%d/%Y") for d in unique_tx_dates]
 
-                    tx_dates = pd.to_datetime(tx_sku["Activity Date"], errors="coerce").dropna()
-                    if not tx_dates.empty:
-                        min_tx_date = tx_dates.min().date()
-                        max_tx_date = tx_dates.max().date()
-                        tx_date_range = st.date_input(
-                            "Activity Date Range",
-                            value=(min_tx_date, max_tx_date),
-                            min_value=min_tx_date,
-                            max_value=max_tx_date,
-                            key=f"tx_date_{sku_filter_key}",
-                        )
-                    else:
-                        tx_date_range = None
+                selected_tx_date = f2.selectbox(
+                    "Activity Date",
+                    options=tx_date_options,
+                    index=0,
+                    key=f"tx_date_{sku_filter_key}",
+                    help="Choose one specific activity date, or keep All dates.",
+                )
 
-                    balance_values = pd.to_numeric(tx_sku["Balance After Transaction"], errors="coerce").dropna()
-                    enable_balance_filter = st.checkbox(
-                        "Filter Balance After Transaction",
-                        value=False,
-                        key=f"tx_balance_enabled_{sku_filter_key}",
-                    )
-                    balance_range = None
-                    if enable_balance_filter and not balance_values.empty:
-                        bal_min = int(np.floor(balance_values.min()))
-                        bal_max = int(np.ceil(balance_values.max()))
-                        if bal_min < bal_max:
-                            balance_range = st.slider(
-                                "Balance After Transaction Range",
-                                min_value=bal_min,
-                                max_value=bal_max,
-                                value=(bal_min, bal_max),
-                                step=1,
-                                key=f"tx_balance_range_{sku_filter_key}",
-                            )
-
-                if selected_tx_types:
-                    tx_filtered = tx_filtered[tx_filtered["Transaction Type"].astype(str).isin(selected_tx_types)]
                 if tx_search.strip():
                     tx_q = tx_search.strip().lower()
                     tx_filtered = tx_filtered[
                         tx_filtered["Ref #"].astype(str).str.lower().str.contains(tx_q, na=False)
                         | tx_filtered["Trans. #"].astype(str).str.lower().str.contains(tx_q, na=False)
                     ]
-                if set(not_shipped_filter) != {"Yes", "No"}:
-                    tx_filtered = tx_filtered[tx_filtered["Is Not Shipped"].astype(bool).isin([x == "Yes" for x in not_shipped_filter])]
-                if set(cancelled_filter) != {"Yes", "No"}:
-                    tx_filtered = tx_filtered[tx_filtered["Is Cancelled"].astype(bool).isin([x == "Yes" for x in cancelled_filter])]
-                if qty_filter == "Inbound only":
-                    tx_filtered = tx_filtered[pd.to_numeric(tx_filtered["Qty In"], errors="coerce").fillna(0) > 0]
-                elif qty_filter == "Outbound only":
-                    tx_filtered = tx_filtered[pd.to_numeric(tx_filtered["Qty Out"], errors="coerce").fillna(0) > 0]
-                elif qty_filter == "No Qty / Adjustment":
-                    tx_filtered = tx_filtered[
-                        (pd.to_numeric(tx_filtered["Qty In"], errors="coerce").fillna(0) <= 0)
-                        & (pd.to_numeric(tx_filtered["Qty Out"], errors="coerce").fillna(0) <= 0)
-                    ]
-                if tx_date_range is not None and isinstance(tx_date_range, tuple) and len(tx_date_range) == 2:
-                    tx_start, tx_end = pd.to_datetime(tx_date_range[0]), pd.to_datetime(tx_date_range[1])
-                    tx_activity_dates = pd.to_datetime(tx_filtered["Activity Date"], errors="coerce")
-                    tx_filtered = tx_filtered[tx_activity_dates.between(tx_start, tx_end, inclusive="both")]
-                if balance_range is not None:
-                    tx_filtered = tx_filtered[
-                        pd.to_numeric(tx_filtered["Balance After Transaction"], errors="coerce").between(
-                            balance_range[0], balance_range[1], inclusive="both"
-                        )
-                    ]
 
-                ascending_tx = tx_sort_order == "Oldest first"
-                tx_filtered = tx_filtered.sort_values(["Activity Date", "Excel Row"], ascending=[ascending_tx, ascending_tx])
+                if selected_tx_date != "All dates":
+                    selected_date_value = pd.to_datetime(selected_tx_date)
+                    tx_activity_dates = pd.to_datetime(tx_filtered["Activity Date"], errors="coerce").dt.normalize()
+                    tx_filtered = tx_filtered[tx_activity_dates == selected_date_value]
+
+                # Always keep transaction history newest first.
+                tx_filtered = tx_filtered.sort_values(["Activity Date", "Excel Row"], ascending=[False, False])
 
                 t1, t2, t3 = st.columns(3)
                 with t1:
