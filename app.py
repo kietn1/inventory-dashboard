@@ -150,6 +150,15 @@ st.markdown(
             box-shadow: 0 8px 24px rgba(16,24,40,.08);
             border-color: rgba(17,24,39,.12);
         }
+        .sidebar-section-title {
+            font-size: .82rem;
+            font-weight: 850;
+            color: #111827;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin: .25rem 0 .55rem 0;
+        }
+        .sidebar-section-gap { height: .45rem; }
         div[data-testid="stDataFrame"] {border-radius: 14px; overflow: hidden; margin-top: 0.15rem;}
         div[data-testid="stSidebar"] {background:#F5F5F7; transition: background 0.25s ease;}
         div[data-testid="stSidebar"] h1 {font-size: 1.35rem;}
@@ -1170,7 +1179,7 @@ format_name = st.sidebar.selectbox("Report Format", options=["Newark", "Carson"]
 config = FORMAT_CONFIGS[format_name]
 
 st.sidebar.divider()
-st.sidebar.subheader("Risk Filter")
+st.sidebar.markdown('<div class="sidebar-section-title">Filters</div>', unsafe_allow_html=True)
 show_risks = st.sidebar.multiselect(
     "Risk Level",
     options=["Critical", "Warning", "Watch", "Healthy"],
@@ -1179,7 +1188,7 @@ show_risks = st.sidebar.multiselect(
 min_usage = st.sidebar.number_input("Minimum Outbound Last 30 Days", min_value=0, value=0, step=1)
 
 # Reserved position for the SKU selector.
-# This keeps SKU selection above the Risk Level Notes after the file is loaded.
+# SKU is kept in the same Filters section as Risk Level for a cleaner sidebar.
 sku_sidebar_slot = st.sidebar.empty()
 
 st.sidebar.divider()
@@ -1313,8 +1322,7 @@ filtered = filtered[filtered["Outbound Last 30 Days"] >= min_usage]
 # Use SKU only. Open the dropdown and type to search by SKU.
 selected_sku = None
 with sku_sidebar_slot.container():
-    st.divider()
-    st.subheader("SKU")
+    st.markdown('<div class="sidebar-section-gap"></div>', unsafe_allow_html=True)
     if filtered.empty:
         st.info("No SKU matches the current filters.")
     else:
