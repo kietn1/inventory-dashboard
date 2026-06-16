@@ -9,6 +9,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v2"
 FIXED_REPORT_START_DATE = "09/01/2025"
+APP_CACHE_VERSION = "full-transactions-v4"
 
 
 # ============================================================
@@ -282,7 +283,7 @@ FORMAT_CONFIGS = {
             "qty_in": 12,
             "qty_out": 14,
             "balance": 19,
-            "ctn_balance": None,
+            "ctn_balance": 20,
         },
         "total_rule": "ref_total",
         "total_source": "Ref # = Total",
@@ -455,7 +456,7 @@ def load_excel_to_raw(file_bytes: bytes) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def process_excel_file(file_bytes: bytes, format_name: str) -> dict:
+def process_excel_file(file_bytes: bytes, format_name: str, cache_version: str = APP_CACHE_VERSION) -> dict:
     raw_df = load_excel_to_raw(file_bytes)
     config = FORMAT_CONFIGS[format_name]
     validate_selected_format(raw_df, config)
@@ -527,6 +528,8 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
         activity_text = clean_text(activity_raw)
         ref_text = clean_text(get_cell(row, cols["ref_no"]))
         trans_no = clean_text(get_cell(row, cols["trans_no"]))
+        qty_in_raw = clean_text(get_cell(row, cols["qty_in"]))
+        qty_out_raw = clean_text(get_cell(row, cols["qty_out"]))
         qty_in = first_qty_number(get_cell(row, cols["qty_in"]))
         qty_out = first_qty_number(get_cell(row, cols["qty_out"]))
         balance = first_qty_number(get_cell(row, cols["balance"]))
@@ -650,16 +653,23 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
             )
 
         # Full dated transaction history.
-        # Capture both inbound and outbound rows so each SKU shows the full balance movement.
-        if not pd.isna(activity_dt) and (qty_in > 0 or qty_out > 0):
-            if qty_in > 0 and qty_out > 0:
+        # Capture every dated activity row so each SKU shows the full balance movement.
+        # This includes inbound rows, outbound rows, not-shipped rows, and cancelled / no-qty rows
+        # where the balance stays the same.
+        if not pd.isna(activity_dt):
+            has_inbound = qty_in > 0
+            has_outbound = qty_out > 0
+
+            if has_inbound and has_outbound:
                 transaction_type = "Inbound / Outbound"
-            elif qty_in > 0:
+            elif has_inbound:
                 transaction_type = "Inbound"
-            elif qty_out > 0:
+            elif has_outbound:
                 transaction_type = "Outbound"
+            elif is_cancelled:
+                transaction_type = "Cancelled / No Qty"
             else:
-                transaction_type = ""
+                transaction_type = "No Qty"
 
             transactions.append(
                 {
@@ -671,6 +681,8 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                     "Transaction Type": transaction_type,
                     "Trans. #": trans_no,
                     "Ref #": ref_text,
+                    "Qty In / Ctn Raw": qty_in_raw,
+                    "Qty Out / Ctn Raw": qty_out_raw,
                     "Qty In": qty_in,
                     "Qty Out": qty_out,
                     "Balance After Transaction": balance,
@@ -679,13 +691,20 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                     "Is Cancelled": is_cancelled,
                 }
             )
-            existing_last = sku_records[current_sku]["Last Activity Date"]
-            if pd.isna(existing_last) or activity_dt > existing_last:
-                sku_records[current_sku]["Last Activity Date"] = activity_dt
+
+            # Keep this as the latest actual inventory movement date, not a no-qty cancellation row.
+            if has_inbound or has_outbound:
+                existing_last = sku_records[current_sku]["Last Activity Date"]
+                if pd.isna(existing_last) or activity_dt > existing_last:
+                    sku_records[current_sku]["Last Activity Date"] = activity_dt
 
     sku_df = pd.DataFrame(sku_records.values())
     tx_df = pd.DataFrame(transactions)
-    outbound_tx_df = tx_df[tx_df["Qty Out"] > 0].copy() if not tx_df.empty else tx_df.copy()
+    outbound_tx_df = (
+        tx_df[tx_df["Qty Out"] > 0].copy()
+        if not tx_df.empty and "Qty Out" in tx_df.columns
+        else pd.DataFrame(columns=tx_df.columns)
+    )
     official_total_df = pd.DataFrame(official_total_rows)
     official_ending_df = pd.DataFrame(official_ending_rows)
     beginning_balance_df = pd.DataFrame(beginning_balance_rows)
@@ -1160,7 +1179,7 @@ try:
         progress_bar.progress(52, text="Checking selected report format...")
         time.sleep(0.55)
 
-    model = process_excel_file(file_bytes, format_name)
+    model = process_excel_file(file_bytes, format_name, APP_CACHE_VERSION)
 
     if first_file_load:
         progress_bar.progress(76, text="Building shortage dashboard...")
@@ -1320,16 +1339,19 @@ with sku_tab:
         )
         st.dataframe(detail, use_container_width=True)
 
-        tx_sku = model["tx_df"]
+        tx_sku = model["tx_df"].copy()
         if not tx_sku.empty:
-            tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].sort_values("Activity Date", ascending=False)
+            tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].sort_values(["Activity Date", "Excel Row"], ascending=[True, True])
             st.subheader("Full transaction history")
             full_tx_cols = [
                 "Excel Row",
+                "Activity Date Raw",
                 "Activity Date",
                 "Transaction Type",
                 "Trans. #",
                 "Ref #",
+                "Qty In / Ctn Raw",
+                "Qty Out / Ctn Raw",
                 "Qty In",
                 "Qty Out",
                 "Balance After Transaction",
@@ -1337,7 +1359,22 @@ with sku_tab:
                 "Is Not Shipped",
                 "Is Cancelled",
             ]
-            show_limited_dataframe(tx_sku[full_tx_cols], height=420, limit=500)
+            for col in full_tx_cols:
+                if col not in tx_sku.columns:
+                    if col in ["Qty In", "Qty Out", "Balance After Transaction", "Ctn Balance After Transaction"]:
+                        tx_sku[col] = 0.0
+                    elif col in ["Qty In / Ctn Raw", "Qty Out / Ctn Raw", "Activity Date Raw"]:
+                        tx_sku[col] = ""
+                    elif col in ["Is Not Shipped", "Is Cancelled"]:
+                        tx_sku[col] = False
+                    elif col == "Activity Date":
+                        tx_sku[col] = pd.NaT
+                    else:
+                        tx_sku[col] = ""
+            if tx_sku.empty:
+                st.info("No transaction history found for this SKU.")
+            else:
+                show_limited_dataframe(tx_sku[full_tx_cols], height=420, limit=500)
 
 with trend_tab:
     st.subheader("Outbound Trend")
