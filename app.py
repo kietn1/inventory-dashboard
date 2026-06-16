@@ -1437,7 +1437,6 @@ with sku_tab:
         if not tx_sku.empty:
             tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].copy()
             st.subheader("Full transaction history")
-            st.caption("One clean Activity Date column is shown. Not Shipped is separated into the Is Not Shipped column.")
             full_tx_cols = [
                 "Excel Row",
                 "Activity Date",
