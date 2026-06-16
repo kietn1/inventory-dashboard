@@ -10,7 +10,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v8"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v19-sku-detail-only-search"
+APP_CACHE_VERSION = "full-transactions-v20-sku-type-or-select"
 
 
 # ============================================================
@@ -207,12 +207,14 @@ st.markdown(
         }
         div[data-testid="stSidebar"] .stSelectbox,
         div[data-testid="stSidebar"] .stMultiSelect,
-        div[data-testid="stSidebar"] .stNumberInput {
+        div[data-testid="stSidebar"] .stNumberInput,
+        div[data-testid="stSidebar"] .stTextInput {
             margin-bottom: .52rem;
         }
         div[data-testid="stSidebar"] .stSelectbox > div,
         div[data-testid="stSidebar"] .stMultiSelect > div,
-        div[data-testid="stSidebar"] .stNumberInput > div {
+        div[data-testid="stSidebar"] .stNumberInput > div,
+        div[data-testid="stSidebar"] .stTextInput > div {
             margin-top: .10rem;
         }
         div[data-testid="stFileUploader"] section {
@@ -1593,44 +1595,43 @@ filtered = filtered[filtered["Outbound Last 30 Days"] >= min_usage]
 priority_filtered = filtered.copy()
 
 # SKU Detail selector in the sidebar.
-# Uses a real text input so Ctrl+A, Delete, and Ctrl+V work normally.
-# This does not filter the Shortage Priority List.
+# The available SKU list follows the current Risk Level / Min 30D Outbound filters.
+# It does not filter the Shortage Priority List by SKU.
 selected_sku = None
 with sku_sidebar_slot.container():
     st.markdown('<div class="sidebar-section-gap"></div>', unsafe_allow_html=True)
+
+    available_sku_df = priority_filtered.copy()
+    available_skus = available_sku_df["SKU"].astype(str).dropna().tolist() if not available_sku_df.empty else []
+
     sku_query = st.text_input(
         "Search SKU",
         key="sku_search_text",
         placeholder="Type or paste SKU...",
     ).strip()
 
-    if sku_query:
-        q = sku_query.lower()
-        sku_match_mask = sku_df["SKU"].astype(str).str.lower().str.contains(q, na=False, regex=False)
-        sku_matches = sku_df[sku_match_mask]
-
-        if sku_matches.empty:
-            st.info("No SKU matches this search.")
-            if not priority_filtered.empty:
-                selected_sku = str(priority_filtered.iloc[0]["SKU"])
-            elif not sku_df.empty:
-                selected_sku = str(sku_df.iloc[0]["SKU"])
-        else:
-            exact_matches = sku_matches[sku_matches["SKU"].astype(str).str.lower() == q]
-            if not exact_matches.empty:
-                selected_sku = str(exact_matches.iloc[0]["SKU"])
-            else:
-                selected_sku = str(sku_matches.iloc[0]["SKU"])
-            st.caption(f"Selected: {selected_sku}")
+    if not available_skus:
+        st.info("No SKU available for the selected filters.")
     else:
-        if not priority_filtered.empty:
-            selected_sku = str(priority_filtered.iloc[0]["SKU"])
-            st.caption(f"Selected: {selected_sku}")
-        elif not sku_df.empty:
-            selected_sku = str(sku_df.iloc[0]["SKU"])
-            st.caption(f"Selected: {selected_sku}")
+        if sku_query:
+            q = sku_query.lower()
+            match_mask = available_sku_df["SKU"].astype(str).str.lower().str.contains(q, na=False, regex=False)
+            sku_select_df = available_sku_df[match_mask].copy()
+            if sku_select_df.empty:
+                st.info("No SKU matches the current filters.")
+                sku_select_df = available_sku_df.copy()
         else:
-            st.info("No SKU available.")
+            sku_select_df = available_sku_df.copy()
+
+        sku_options = sku_select_df["SKU"].astype(str).dropna().tolist()
+        selected_sku = st.selectbox(
+            "Select SKU",
+            options=sku_options,
+            index=0,
+            key="sku_select_list",
+            help="This list follows the selected Risk Level and Min 30D Outbound filters.",
+        )
+        st.caption(f"Selected: {selected_sku}")
 
 report_start = model["report_start"]
 report_end = model["report_end"]
