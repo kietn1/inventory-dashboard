@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-CUSTOMER_EXPORT_VERSION = "Customer export v3"
+CUSTOMER_EXPORT_VERSION = "Customer export v4"
 FIXED_REPORT_START_DATE = "09/01/2025"
 APP_CACHE_VERSION = "full-transactions-v6-one-activity-date"
 
@@ -1350,13 +1350,12 @@ with sku_tab:
                 "Qty In",
                 "Qty Out",
                 "Balance After Transaction",
-                "Ctn Balance After Transaction",
                 "Is Not Shipped",
                 "Is Cancelled",
             ]
             for col in full_tx_cols:
                 if col not in tx_sku.columns:
-                    if col in ["Qty In", "Qty Out", "Balance After Transaction", "Ctn Balance After Transaction"]:
+                    if col in ["Qty In", "Qty Out", "Balance After Transaction"]:
                         tx_sku[col] = 0.0
                     elif col in ["Is Not Shipped", "Is Cancelled"]:
                         tx_sku[col] = False
