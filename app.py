@@ -1,3 +1,4 @@
+import html
 import re
 import time
 from datetime import date, datetime
@@ -7,9 +8,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-CUSTOMER_EXPORT_VERSION = "Customer export v5"
+CUSTOMER_EXPORT_VERSION = "Customer export v7"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v9-spacing-polish"
+APP_CACHE_VERSION = "full-transactions-v11-sku-only-sidebar"
 
 
 # ============================================================
@@ -92,6 +93,34 @@ st.markdown(
             border-radius: 999px;
             padding: 6px 10px;
             margin: 0.15rem 0 0.75rem 0;
+        }
+        .selected-sku-card {
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 16px;
+            background: rgba(255,255,255,.88);
+            box-shadow: 0 6px 20px rgba(16,24,40,.055);
+            padding: 14px 16px;
+            margin: 0.15rem 0 0.85rem 0;
+        }
+        .selected-sku-label {
+            font-size: .76rem;
+            color: #6B7280;
+            font-weight: 750;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            margin-bottom: 4px;
+        }
+        .selected-sku-value {
+            font-size: 1.18rem;
+            color: #111827;
+            font-weight: 850;
+            line-height: 1.25;
+        }
+        .selected-sku-description {
+            font-size: .88rem;
+            color: #4B5563;
+            margin-top: 4px;
+            line-height: 1.35;
         }
         .sidebar-note {
             background: #FFFFFF;
@@ -308,7 +337,7 @@ FORMAT_CONFIGS = {
         "sidebar_title": "📦 Inventory Dashboard",
         "caption": "Upload an Item Activity Report Excel file to generate the shortage dashboard.",
         "upload_label": "Drop Item Activity Report here",
-        "placeholder": "Search SKU or description...",
+        "placeholder": "Search SKU...",
         "help": "Select the matching report format before uploading the Excel file.",
         "cols": {
             "sku": 0,
@@ -330,7 +359,7 @@ FORMAT_CONFIGS = {
         "sidebar_title": "📦 Inventory Dashboard",
         "caption": "Upload an Item Activity Report Excel file to generate the shortage dashboard.",
         "upload_label": "Drop Item Activity Report here",
-        "placeholder": "Search SKU or description...",
+        "placeholder": "Search SKU...",
         "help": "Select the matching report format before uploading the Excel file.",
         "cols": {
             "sku": 1,
@@ -1133,7 +1162,6 @@ show_risks = st.sidebar.multiselect(
     default=["Critical", "Warning", "Watch"],
 )
 min_usage = st.sidebar.number_input("Minimum Outbound Last 30 Days", min_value=0, value=0, step=1)
-search_text = st.sidebar.text_input("Search SKU / Description", placeholder=config["placeholder"])
 
 st.sidebar.divider()
 st.sidebar.markdown(
@@ -1261,42 +1289,26 @@ filtered = sku_df.copy()
 if show_risks:
     filtered = filtered[filtered["Risk Level"].isin(show_risks)]
 filtered = filtered[filtered["Outbound Last 30 Days"] >= min_usage]
-if search_text.strip():
-    q = search_text.strip().lower()
-    filtered = filtered[
-        filtered["SKU"].astype(str).str.lower().str.contains(q, na=False)
-        | filtered["Description"].astype(str).str.lower().str.contains(q, na=False)
-    ]
 
-# Sidebar SKU selector for the SKU Detail tab.
-# Streamlit selectbox supports typing inside the dropdown, so users can either select or type to search.
+# One combined SKU control in the sidebar.
+# Use SKU only. Open the dropdown and type to search by SKU.
+st.sidebar.divider()
+st.sidebar.subheader("SKU")
 selected_sku = None
 if filtered.empty:
-    st.sidebar.divider()
-    st.sidebar.subheader("SKU Detail")
     st.sidebar.info("No SKU matches the current filters.")
 else:
-    st.sidebar.divider()
-    st.sidebar.subheader("SKU Detail")
-    sku_options = filtered["SKU"].astype(str).tolist()
-    sku_desc_lookup = (
-        filtered.drop_duplicates("SKU")
-        .set_index("SKU")["Description"]
-        .astype(str)
-        .to_dict()
-    )
-
-    def sidebar_sku_label(sku):
-        desc = sku_desc_lookup.get(sku, "")
-        return f"{sku} — {desc}" if desc else str(sku)
-
-    selected_sku = st.sidebar.selectbox(
-        "Select / Type SKU",
+    sku_options = ["All SKUs"] + filtered["SKU"].astype(str).drop_duplicates().tolist()
+    selected_sku_choice = st.sidebar.selectbox(
+        "Search / Select SKU",
         options=sku_options,
-        format_func=sidebar_sku_label,
+        index=0,
         key="sidebar_selected_sku",
     )
-    st.sidebar.caption("Open the dropdown and type SKU or description to search.")
+
+    if selected_sku_choice != "All SKUs":
+        selected_sku = selected_sku_choice
+        filtered = filtered[filtered["SKU"].astype(str) == str(selected_sku_choice)]
 
 report_start = model["report_start"]
 report_end = model["report_end"]
@@ -1373,10 +1385,24 @@ st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 sku_tab, trend_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "Trend", "Audit", "Guide"])
 
 with sku_tab:
-    if filtered.empty or selected_sku is None:
+    if filtered.empty:
         st.warning("No SKU matches the current filters.")
+    elif selected_sku is None:
+        st.info("Select one SKU from the sidebar to view SKU Detail.")
     else:
         selected = sku_df[sku_df["SKU"].astype(str) == str(selected_sku)].iloc[0]
+        selected_sku_safe = html.escape(str(selected_sku))
+        selected_description_safe = html.escape(clean_text(selected["Description"]))
+        st.markdown(
+            f"""
+            <div class="selected-sku-card">
+                <div class="selected-sku-label">Selected SKU</div>
+                <div class="selected-sku-value">{selected_sku_safe}</div>
+                <div class="selected-sku-description">{selected_description_safe}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         d1, d2, d3, d4 = st.columns(4)
         with d1:
@@ -1389,7 +1415,7 @@ with sku_tab:
             metric_card("Forecast Stockout", fmt_date(selected["Forecast Stockout Date"]), "Calendar date estimate")
 
         st.markdown("<div class='section-block'></div>", unsafe_allow_html=True)
-        st.subheader(f"{selected_sku} — {selected['Description']}")
+        st.subheader("SKU metrics")
         detail_cols = [
             "Official Total Inbound",
             "Official Total Outbound",
