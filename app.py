@@ -9,7 +9,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v5"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v7-insight-filters"
+APP_CACHE_VERSION = "full-transactions-v8-no-sku-insight-filters"
 
 
 # ============================================================
@@ -1215,69 +1215,8 @@ except Exception as exc:
 sku_df = model["sku_df"].copy()
 
 # ============================================================
-# Data-driven SKU filters
+# Main SKU filters
 # ============================================================
-st.sidebar.divider()
-with st.sidebar.expander("SKU Insight Filters", expanded=True):
-    st.caption("Use these filters to narrow the shortage list to the SKUs that need review.")
-
-    ending_balance_range = None
-    ending_balance_values = pd.to_numeric(sku_df.get("Ending Balance"), errors="coerce").dropna()
-    enable_ending_balance_filter = st.checkbox("Filter Ending Balance", value=False)
-    if enable_ending_balance_filter and not ending_balance_values.empty:
-        ending_min = int(np.floor(ending_balance_values.min()))
-        ending_max = int(np.ceil(ending_balance_values.max()))
-        if ending_min < ending_max:
-            ending_balance_range = st.slider(
-                "Ending Balance Range",
-                min_value=ending_min,
-                max_value=ending_max,
-                value=(ending_min, ending_max),
-                step=1,
-            )
-        else:
-            st.caption("Ending Balance has only one value in this file.")
-
-    days_remaining_range = None
-    days_values = pd.to_numeric(sku_df.get("Days Remaining"), errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
-    enable_days_filter = st.checkbox("Filter Days Remaining", value=False)
-    if enable_days_filter and not days_values.empty:
-        days_min = max(0, int(np.floor(days_values.min())))
-        days_max = max(days_min + 1, int(np.ceil(min(days_values.max(), 365))))
-        days_remaining_range = st.slider(
-            "Days Remaining Range",
-            min_value=days_min,
-            max_value=days_max,
-            value=(days_min, days_max),
-            step=1,
-            help="Capped at 365 days so very high Healthy values do not make the slider hard to use.",
-        )
-
-    last_activity_range = None
-    last_activity_dates = pd.to_datetime(sku_df.get("Last Activity Date"), errors="coerce").dropna()
-    enable_last_activity_filter = st.checkbox("Filter Last Activity Date", value=False)
-    if enable_last_activity_filter and not last_activity_dates.empty:
-        min_last_date = last_activity_dates.min().date()
-        max_last_date = last_activity_dates.max().date()
-        last_activity_range = st.date_input(
-            "Last Activity Date Range",
-            value=(min_last_date, max_last_date),
-            min_value=min_last_date,
-            max_value=max_last_date,
-        )
-
-    sort_by = st.selectbox(
-        "Sort Priority List By",
-        options=[
-            "Risk priority",
-            "Highest outbound 30D",
-            "Lowest ending balance",
-            "Lowest days remaining",
-            "Latest activity date",
-        ],
-        index=0,
-    )
-
 filtered = sku_df.copy()
 if show_risks:
     filtered = filtered[filtered["Risk Level"].isin(show_risks)]
@@ -1288,28 +1227,6 @@ if search_text.strip():
         filtered["SKU"].astype(str).str.lower().str.contains(q, na=False)
         | filtered["Description"].astype(str).str.lower().str.contains(q, na=False)
     ]
-if ending_balance_range is not None:
-    filtered = filtered[
-        pd.to_numeric(filtered["Ending Balance"], errors="coerce").between(
-            ending_balance_range[0], ending_balance_range[1], inclusive="both"
-        )
-    ]
-if days_remaining_range is not None:
-    days_filter_values = pd.to_numeric(filtered["Days Remaining"], errors="coerce").replace([np.inf, -np.inf], np.nan)
-    filtered = filtered[days_filter_values.between(days_remaining_range[0], days_remaining_range[1], inclusive="both")]
-if last_activity_range is not None and isinstance(last_activity_range, tuple) and len(last_activity_range) == 2:
-    start_last, end_last = pd.to_datetime(last_activity_range[0]), pd.to_datetime(last_activity_range[1])
-    last_activity_filter_values = pd.to_datetime(filtered["Last Activity Date"], errors="coerce")
-    filtered = filtered[last_activity_filter_values.between(start_last, end_last, inclusive="both")]
-
-if sort_by == "Highest outbound 30D":
-    filtered = filtered.sort_values("Outbound Last 30 Days", ascending=False)
-elif sort_by == "Lowest ending balance":
-    filtered = filtered.sort_values("Ending Balance", ascending=True)
-elif sort_by == "Lowest days remaining":
-    filtered = filtered.replace([np.inf, -np.inf], np.nan).sort_values("Days Remaining", ascending=True, na_position="last")
-elif sort_by == "Latest activity date":
-    filtered = filtered.sort_values("Last Activity Date", ascending=False, na_position="last")
 
 report_start = model["report_start"]
 report_end = model["report_end"]
@@ -1377,6 +1294,10 @@ priority_display = prepare_display(filtered[selected_priority_cols])
 show_limited_dataframe(priority_display, height=440, limit=250)
 
 st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='section-subtitle'>Exports one clean Shortage Priority tab with all SKUs, color-coded Risk Level, and Recommended Action.</div>",
+    unsafe_allow_html=True,
+)
 export_file_name = report_download_filename(format_name, report_end)
 st.download_button(
     "⬇️ Download Inventory Status Report",
@@ -1433,6 +1354,7 @@ with sku_tab:
         if not tx_sku.empty:
             tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].copy()
             st.subheader("Full transaction history")
+            st.caption("One clean Activity Date column is shown. Not Shipped is separated into the Is Not Shipped column.")
             full_tx_cols = [
                 "Excel Row",
                 "Activity Date",
