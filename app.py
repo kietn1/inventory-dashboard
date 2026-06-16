@@ -1483,7 +1483,7 @@ with sku_tab:
                     )
                     tx_sort_order = f3.selectbox(
                         "Sort Transactions",
-                        options=["Oldest first", "Newest first"],
+                        options=["Newest first", "Oldest first"],
                         index=0,
                         key=f"tx_sort_{sku_filter_key}",
                     )
