@@ -10,7 +10,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v7"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v11-sku-only-sidebar"
+APP_CACHE_VERSION = "full-transactions-v12-sidebar-sku-before-notes"
 
 
 # ============================================================
@@ -1163,6 +1163,10 @@ show_risks = st.sidebar.multiselect(
 )
 min_usage = st.sidebar.number_input("Minimum Outbound Last 30 Days", min_value=0, value=0, step=1)
 
+# Reserved position for the SKU selector.
+# This keeps SKU selection above the Risk Level Notes after the file is loaded.
+sku_sidebar_slot = st.sidebar.empty()
+
 st.sidebar.divider()
 st.sidebar.markdown(
     """
@@ -1292,23 +1296,24 @@ filtered = filtered[filtered["Outbound Last 30 Days"] >= min_usage]
 
 # One combined SKU control in the sidebar.
 # Use SKU only. Open the dropdown and type to search by SKU.
-st.sidebar.divider()
-st.sidebar.subheader("SKU")
 selected_sku = None
-if filtered.empty:
-    st.sidebar.info("No SKU matches the current filters.")
-else:
-    sku_options = ["All SKUs"] + filtered["SKU"].astype(str).drop_duplicates().tolist()
-    selected_sku_choice = st.sidebar.selectbox(
-        "Search / Select SKU",
-        options=sku_options,
-        index=0,
-        key="sidebar_selected_sku",
-    )
+with sku_sidebar_slot.container():
+    st.divider()
+    st.subheader("SKU")
+    if filtered.empty:
+        st.info("No SKU matches the current filters.")
+    else:
+        sku_options = ["All SKUs"] + filtered["SKU"].astype(str).drop_duplicates().tolist()
+        selected_sku_choice = st.selectbox(
+            "Search / Select SKU",
+            options=sku_options,
+            index=0,
+            key="sidebar_selected_sku",
+        )
 
-    if selected_sku_choice != "All SKUs":
-        selected_sku = selected_sku_choice
-        filtered = filtered[filtered["SKU"].astype(str) == str(selected_sku_choice)]
+        if selected_sku_choice != "All SKUs":
+            selected_sku = selected_sku_choice
+            filtered = filtered[filtered["SKU"].astype(str) == str(selected_sku_choice)]
 
 report_start = model["report_start"]
 report_end = model["report_end"]
