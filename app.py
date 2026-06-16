@@ -8,9 +8,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-CUSTOMER_EXPORT_VERSION = "Customer export v7"
+CUSTOMER_EXPORT_VERSION = "Customer export v8"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v17-summary-export-format-warning"
+APP_CACHE_VERSION = "full-transactions-v19-sku-detail-only-search"
 
 
 # ============================================================
@@ -1434,7 +1434,7 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
 def reset_sidebar_filters():
     st.session_state["filter_risk_levels"] = ["Critical", "Warning", "Watch"]
     st.session_state["filter_min_usage"] = 0
-    st.session_state.pop("sidebar_selected_sku", None)
+    st.session_state["sku_search_text"] = ""
 
 
 st.sidebar.title("📦 Inventory Dashboard")
@@ -1584,30 +1584,53 @@ sku_df = model["sku_df"].copy()
 # ============================================================
 # Main SKU filters
 # ============================================================
+# The Shortage Priority List is controlled only by Risk Level and Min 30D Outbound.
+# The SKU search below is only for selecting the SKU Detail view.
 filtered = sku_df.copy()
 if show_risks:
     filtered = filtered[filtered["Risk Level"].isin(show_risks)]
 filtered = filtered[filtered["Outbound Last 30 Days"] >= min_usage]
+priority_filtered = filtered.copy()
 
-# One combined SKU control in the sidebar.
-# Use SKU only. The first row in the current filtered shortage list is selected by default.
+# SKU Detail selector in the sidebar.
+# Uses a real text input so Ctrl+A, Delete, and Ctrl+V work normally.
+# This does not filter the Shortage Priority List.
 selected_sku = None
 with sku_sidebar_slot.container():
     st.markdown('<div class="sidebar-section-gap"></div>', unsafe_allow_html=True)
-    if filtered.empty:
-        st.info("No SKU matches the current filters.")
-    else:
-        sku_options = filtered["SKU"].astype(str).drop_duplicates().tolist()
-        if st.session_state.get("sidebar_selected_sku") not in sku_options:
-            st.session_state["sidebar_selected_sku"] = sku_options[0]
-        selected_sku_choice = st.selectbox(
-            "Search / Select SKU",
-            options=sku_options,
-            key="sidebar_selected_sku",
-        )
+    sku_query = st.text_input(
+        "Search SKU",
+        key="sku_search_text",
+        placeholder="Type or paste SKU...",
+    ).strip()
 
-        selected_sku = selected_sku_choice
-        filtered = filtered[filtered["SKU"].astype(str) == str(selected_sku_choice)]
+    if sku_query:
+        q = sku_query.lower()
+        sku_match_mask = sku_df["SKU"].astype(str).str.lower().str.contains(q, na=False, regex=False)
+        sku_matches = sku_df[sku_match_mask]
+
+        if sku_matches.empty:
+            st.info("No SKU matches this search.")
+            if not priority_filtered.empty:
+                selected_sku = str(priority_filtered.iloc[0]["SKU"])
+            elif not sku_df.empty:
+                selected_sku = str(sku_df.iloc[0]["SKU"])
+        else:
+            exact_matches = sku_matches[sku_matches["SKU"].astype(str).str.lower() == q]
+            if not exact_matches.empty:
+                selected_sku = str(exact_matches.iloc[0]["SKU"])
+            else:
+                selected_sku = str(sku_matches.iloc[0]["SKU"])
+            st.caption(f"Selected: {selected_sku}")
+    else:
+        if not priority_filtered.empty:
+            selected_sku = str(priority_filtered.iloc[0]["SKU"])
+            st.caption(f"Selected: {selected_sku}")
+        elif not sku_df.empty:
+            selected_sku = str(sku_df.iloc[0]["SKU"])
+            st.caption(f"Selected: {selected_sku}")
+        else:
+            st.info("No SKU available.")
 
 report_start = model["report_start"]
 report_end = model["report_end"]
