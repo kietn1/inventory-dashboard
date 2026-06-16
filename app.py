@@ -13,7 +13,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v8"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v23-global-persist-upload"
+APP_CACHE_VERSION = "full-transactions-v24-site-persist-compare"
 
 
 # ============================================================
@@ -530,23 +530,23 @@ def safe_format_slug(format_name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", str(format_name)).strip("_") or "report"
 
 
-def persistent_upload_paths(format_name: str | None = None) -> tuple[Path, Path]:
-    """Use one shared saved upload across Newark and Carson.
+def persistent_upload_paths(format_name: str) -> tuple[Path, Path]:
+    """Keep one saved report per site/format.
 
-    The selected report format controls how the current file is processed,
-    but switching formats should not clear or replace the saved file.
-    A new upload is the only action that updates this saved report.
+    Newark and Carson use different report layouts, so each format keeps its
+    own saved upload. Switching formats reuses that format's saved report and
+    only changes when a new file is uploaded under that selected format.
     """
+    slug = safe_format_slug(format_name)
     return (
-        PERSISTENT_UPLOAD_DIR / "current_upload.bin",
-        PERSISTENT_UPLOAD_DIR / "current_upload.json",
+        PERSISTENT_UPLOAD_DIR / f"{slug}_upload.bin",
+        PERSISTENT_UPLOAD_DIR / f"{slug}_upload.json",
     )
-
 
 def save_persistent_upload(format_name: str, file_name: str, file_bytes: bytes) -> None:
     try:
         PERSISTENT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        data_path, meta_path = persistent_upload_paths()
+        data_path, meta_path = persistent_upload_paths(format_name)
         data_path.write_bytes(file_bytes)
         meta = {
             "last_selected_format": format_name,
@@ -561,9 +561,9 @@ def save_persistent_upload(format_name: str, file_name: str, file_bytes: bytes) 
         pass
 
 
-def load_persistent_upload(format_name: str | None = None):
+def load_persistent_upload(format_name: str):
     try:
-        data_path, meta_path = persistent_upload_paths()
+        data_path, meta_path = persistent_upload_paths(format_name)
         if not data_path.exists() or not meta_path.exists():
             return None
         file_bytes = data_path.read_bytes()
@@ -1522,7 +1522,7 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
 # Sidebar controls
 # ============================================================
 def reset_sidebar_filters():
-    st.session_state["filter_risk_levels"] = ["Critical", "Warning", "Watch"]
+    st.session_state["filter_risk_levels"] = ["Critical", "Warning", "Watch", "Healthy"]
     st.session_state["filter_min_usage"] = 0
     if "sku_select_combined" in st.session_state:
         del st.session_state["sku_select_combined"]
@@ -1531,6 +1531,11 @@ def reset_sidebar_filters():
 st.sidebar.title("📦 Inventory Dashboard")
 format_name = st.sidebar.selectbox("Report Format", options=["Newark", "Carson"], index=0)
 config = FORMAT_CONFIGS[format_name]
+
+saved_newark = load_persistent_upload("Newark")
+saved_carson = load_persistent_upload("Carson")
+st.sidebar.caption(f"Newark: {saved_newark['file_name'] if saved_newark else 'No saved report'}")
+st.sidebar.caption(f"Carson: {saved_carson['file_name'] if saved_carson else 'No saved report'}")
 
 st.sidebar.divider()
 st.sidebar.markdown('<div class="sidebar-section-title">Filters</div>', unsafe_allow_html=True)
@@ -1596,6 +1601,7 @@ uploaded = st.file_uploader(
     type=["xlsx", "xls"],
     help=config["help"],
     label_visibility="collapsed",
+    key=f"{format_name.lower()}_report_uploader",
 )
 
 status_box = st.empty()
@@ -1611,15 +1617,16 @@ if uploaded is not None:
 else:
     saved_upload = load_persistent_upload(format_name)
     if saved_upload is None:
-        st.info("Select the matching report format on the left, then drag the Item Activity Report Excel file into the upload box above.")
+        st.info(f"No saved {format_name} report yet. Select {format_name}, then upload the matching Item Activity Report once.")
         st.stop()
     file_bytes = saved_upload["file_bytes"]
     active_file_name = saved_upload["file_name"]
     using_saved_report = True
-    st.caption(f"Using saved report: {active_file_name}")
+    st.caption(f"Using saved {format_name} report: {active_file_name}")
 
 uploaded_key = f"{format_name}|{active_file_name}|{len(file_bytes)}|{stable_file_hash(file_bytes)}"
-first_file_load = st.session_state.get("loaded_file_key") != uploaded_key
+loaded_file_keys = st.session_state.setdefault("loaded_file_keys", set())
+first_file_load = uploaded_key not in loaded_file_keys
 
 try:
     if first_file_load:
@@ -1668,7 +1675,7 @@ try:
             unsafe_allow_html=True,
         )
         st.toast("Dashboard loaded successfully.", icon="✅")
-        st.session_state["loaded_file_key"] = uploaded_key
+        loaded_file_keys.add(uploaded_key)
     else:
         status_box.empty()
         progress_box.empty()
