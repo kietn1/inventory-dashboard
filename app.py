@@ -10,7 +10,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v7"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v16-professional-upgrades"
+APP_CACHE_VERSION = "full-transactions-v17-summary-export-format-warning"
 
 
 # ============================================================
@@ -93,6 +93,28 @@ st.markdown(
             border-radius: 999px;
             padding: 6px 10px;
             margin: 0.15rem 0 0.75rem 0;
+        }
+        .health-summary-card {
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 18px;
+            background: rgba(255,255,255,.92);
+            box-shadow: 0 8px 26px rgba(16,24,40,.055);
+            padding: 14px 16px;
+            margin: 0.10rem 0 0.85rem 0;
+        }
+        .health-summary-title {
+            font-size: .82rem;
+            color: #6B7280;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .055em;
+            margin-bottom: 4px;
+        }
+        .health-summary-text {
+            font-size: 1.02rem;
+            color: #111827;
+            font-weight: 760;
+            line-height: 1.38;
         }
         .selected-sku-card {
             border: 1px solid rgba(17,24,39,.09);
@@ -1061,6 +1083,158 @@ def report_download_filename(format_name: str, report_end) -> str:
     clean_format = re.sub(r"[^A-Za-z0-9]+", "_", str(format_name)).strip("_") or "Inventory"
     return f"{clean_format}_Inventory_Shortage_Report_{date_part}.xlsx"
 
+def prepare_transaction_export(tx_df: pd.DataFrame) -> pd.DataFrame:
+    export_cols = [
+        "SKU",
+        "Description",
+        "Activity Date",
+        "Transaction Type",
+        "Trans. #",
+        "Ref #",
+        "Qty In",
+        "Qty Out",
+        "Balance After Transaction",
+        "Is Not Shipped",
+        "Is Cancelled",
+    ]
+    out = tx_df.copy()
+    for col in export_cols:
+        if col not in out.columns:
+            if col in ["Qty In", "Qty Out", "Balance After Transaction"]:
+                out[col] = 0.0
+            elif col in ["Is Not Shipped", "Is Cancelled"]:
+                out[col] = False
+            elif col == "Activity Date":
+                out[col] = pd.NaT
+            else:
+                out[col] = ""
+
+    out = out[export_cols].copy()
+    out["Activity Date"] = pd.to_datetime(out["Activity Date"], errors="coerce")
+    for col in ["Qty In", "Qty Out", "Balance After Transaction"]:
+        out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).round(0)
+
+    out = out.sort_values(["SKU", "Activity Date"], ascending=[True, False]).reset_index(drop=True)
+    return out
+
+
+def transaction_download_filename(format_name: str, report_end) -> str:
+    try:
+        date_part = pd.to_datetime(report_end).strftime("%m%d%Y")
+    except Exception:
+        date_part = datetime.today().strftime("%m%d%Y")
+    clean_format = re.sub(r"[^A-Za-z0-9]+", "_", str(format_name)).strip("_") or "Inventory"
+    return f"{clean_format}_Full_Transaction_History_{date_part}.xlsx"
+
+
+@st.cache_data(show_spinner=False)
+def to_transaction_excel_bytes(model: dict, format_name: str, cache_version: str = APP_CACHE_VERSION) -> bytes:
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    report_end = model.get("report_end")
+    export_df = prepare_transaction_export(model.get("tx_df", pd.DataFrame()))
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        export_df.to_excel(writer, sheet_name="Transaction History", startrow=4, index=False)
+        worksheet = writer.sheets["Transaction History"]
+
+        last_col = max(export_df.shape[1], 1)
+        last_row = len(export_df) + 5
+        header_row = 5
+
+        worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
+        title_cell = worksheet.cell(row=1, column=1)
+        title_cell.value = "Full Transaction History"
+        title_cell.font = Font(bold=True, size=18, color="111827")
+        title_cell.alignment = Alignment(horizontal="left", vertical="center")
+        worksheet.row_dimensions[1].height = 26
+
+        worksheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_col)
+        range_cell = worksheet.cell(row=2, column=1)
+        range_cell.value = f"Report Date: {fmt_date(report_end)}"
+        range_cell.font = Font(size=10, color="4B5563")
+        range_cell.alignment = Alignment(horizontal="left", vertical="center")
+
+        header_fill = PatternFill("solid", fgColor="111827")
+        header_font = Font(bold=True, color="FFFFFF")
+        thin_gray = Side(style="thin", color="E5E7EB")
+        border = Border(left=thin_gray, right=thin_gray, top=thin_gray, bottom=thin_gray)
+
+        for cell in worksheet[header_row]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = border
+        worksheet.row_dimensions[header_row].height = 30
+
+        integer_columns = {"Qty In", "Qty Out", "Balance After Transaction"}
+        date_columns = {"Activity Date"}
+        text_columns = {"SKU", "Description", "Transaction Type", "Trans. #", "Ref #", "Is Not Shipped", "Is Cancelled"}
+
+        type_styles = {
+            "Inbound": {"fill": "DFF3E3", "font": "067647"},
+            "Outbound": {"fill": "FDE2E1", "font": "B42318"},
+            "Inbound / Outbound": {"fill": "E0F2FE", "font": "026AA2"},
+            "Adjustment / No Qty": {"fill": "F3F4F6", "font": "4B5563"},
+            "No Qty / Adjustment": {"fill": "F3F4F6", "font": "4B5563"},
+            "Cancelled / No Qty": {"fill": "F3F4F6", "font": "4B5563"},
+            "No Qty": {"fill": "F3F4F6", "font": "4B5563"},
+        }
+        tx_type_col_idx = list(export_df.columns).index("Transaction Type") + 1 if "Transaction Type" in export_df.columns else None
+
+        for row in worksheet.iter_rows(min_row=header_row + 1, max_row=last_row, min_col=1, max_col=last_col):
+            for cell in row:
+                header = worksheet.cell(row=header_row, column=cell.column).value
+                cell.border = border
+                cell.alignment = Alignment(
+                    horizontal="left" if header in text_columns else "right",
+                    vertical="center",
+                    wrap_text=header in {"Description"},
+                )
+                if header in integer_columns:
+                    cell.number_format = "#,##0"
+                elif header in date_columns:
+                    cell.number_format = "mm/dd/yyyy"
+
+            if tx_type_col_idx:
+                tx_cell = row[tx_type_col_idx - 1]
+                style = type_styles.get(str(tx_cell.value), None)
+                if style:
+                    tx_cell.fill = PatternFill("solid", fgColor=style["fill"])
+                    tx_cell.font = Font(bold=True, color=style["font"])
+                    tx_cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        preferred_widths = {
+            "SKU": 24,
+            "Description": 42,
+            "Activity Date": 16,
+            "Transaction Type": 20,
+            "Trans. #": 18,
+            "Ref #": 24,
+            "Qty In": 14,
+            "Qty Out": 14,
+            "Balance After Transaction": 24,
+            "Is Not Shipped": 16,
+            "Is Cancelled": 14,
+        }
+        for idx, col_name in enumerate(export_df.columns, start=1):
+            worksheet.column_dimensions[get_column_letter(idx)].width = preferred_widths.get(col_name, 16)
+
+        worksheet.freeze_panes = "A6"
+        worksheet.auto_filter.ref = f"A{header_row}:{get_column_letter(last_col)}{last_row}"
+        worksheet.sheet_view.showGridLines = False
+        worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+        worksheet.page_setup.fitToWidth = 1
+        worksheet.page_setup.fitToHeight = 0
+        worksheet.page_margins.left = 0.25
+        worksheet.page_margins.right = 0.25
+        worksheet.page_margins.top = 0.5
+        worksheet.page_margins.bottom = 0.5
+
+    return output.getvalue()
+
 
 @st.cache_data(show_spinner=False)
 def to_excel_bytes(model: dict, format_name: str) -> bytes:
@@ -1209,7 +1383,19 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
     else:
         st.caption(f"Showing {total_rows:,} rows.")
 
-    display_df = display_table(df.head(limit))
+    display_df = df.head(limit).copy()
+
+    if "Activity Date" in display_df.columns:
+        display_df["Activity Date"] = pd.to_datetime(display_df["Activity Date"], errors="coerce").dt.strftime("%m/%d/%Y").replace("NaT", "")
+
+    integer_cols = ["Excel Row", "Qty In", "Qty Out", "Balance After Transaction"]
+    for col in integer_cols:
+        if col in display_df.columns:
+            display_df[col] = pd.to_numeric(display_df[col], errors="coerce").round(0).astype("Int64")
+
+    for col in ["Is Not Shipped", "Is Cancelled"]:
+        if col in display_df.columns:
+            display_df[col] = display_df[col].map(lambda x: "Yes" if bool(x) else "No")
 
     def highlight_transaction_type(row):
         styles = ["" for _ in row]
@@ -1217,17 +1403,28 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
             return styles
         tx_type = str(row["Transaction Type"]).lower()
         if "inbound" in tx_type and "outbound" not in tx_type:
-            style = "background-color: #DFF3E3; color: #067647; font-weight: 700;"
+            style = "background-color: #DFF3E3; color: #067647; font-weight: 700; text-align: center;"
         elif "outbound" in tx_type and "inbound" not in tx_type:
-            style = "background-color: #FDE2E1; color: #B42318; font-weight: 700;"
+            style = "background-color: #FDE2E1; color: #B42318; font-weight: 700; text-align: center;"
         elif "inbound" in tx_type and "outbound" in tx_type:
-            style = "background-color: #E0F2FE; color: #026AA2; font-weight: 700;"
+            style = "background-color: #E0F2FE; color: #026AA2; font-weight: 700; text-align: center;"
         else:
-            style = "background-color: #F3F4F6; color: #4B5563; font-weight: 700;"
+            style = "background-color: #F3F4F6; color: #4B5563; font-weight: 700; text-align: center;"
         styles[list(row.index).index("Transaction Type")] = style
         return styles
 
+    numeric_subset = [col for col in ["Excel Row", "Qty In", "Qty Out", "Balance After Transaction"] if col in display_df.columns]
+    center_subset = [col for col in ["Activity Date", "Transaction Type", "Is Not Shipped", "Is Cancelled"] if col in display_df.columns]
+    left_subset = [col for col in ["Trans. #", "Ref #"] if col in display_df.columns]
+
     styled_df = display_df.style.apply(highlight_transaction_type, axis=1)
+    if numeric_subset:
+        styled_df = styled_df.set_properties(subset=numeric_subset, **{"text-align": "right"})
+    if center_subset:
+        styled_df = styled_df.set_properties(subset=center_subset, **{"text-align": "center"})
+    if left_subset:
+        styled_df = styled_df.set_properties(subset=left_subset, **{"text-align": "left"})
+
     st.dataframe(styled_df, use_container_width=True, hide_index=True, height=height)
 
 
@@ -1426,6 +1623,25 @@ warning_count = int((sku_df["Risk Level"] == "Warning").sum())
 watch_count = int((sku_df["Risk Level"] == "Watch").sum())
 healthy_count = int((sku_df["Risk Level"] == "Healthy").sum())
 
+review_count = critical_count + warning_count + watch_count
+if review_count > 0:
+    health_summary = (
+        f"Inventory health: {critical_count:,} Critical SKUs, "
+        f"{warning_count:,} Warning SKUs, and {watch_count:,} Watch SKUs need review."
+    )
+else:
+    health_summary = "Inventory health: no Critical, Warning, or Watch SKUs need review."
+
+st.markdown(
+    f"""
+    <div class="health-summary-card">
+        <div class="health-summary-title">Inventory Health Summary</div>
+        <div class="health-summary-text">{html.escape(health_summary)}</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 k1, k2, k3, k4 = st.columns(4)
 with k1:
     metric_card("Total SKUs", fmt_num(len(sku_df)), f"Healthy: {healthy_count:,}")
@@ -1473,14 +1689,26 @@ show_limited_dataframe(priority_display, height=440, limit=250)
 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
 export_file_name = report_download_filename(format_name, report_end)
-st.download_button(
-    "⬇️ Download Inventory Status Report",
-    data=to_excel_bytes(model, format_name),
-    file_name=export_file_name,
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    use_container_width=True,
-)
-st.caption(f"File name: {export_file_name}")
+transaction_file_name = transaction_download_filename(format_name, report_end)
+export_col_1, export_col_2 = st.columns(2)
+with export_col_1:
+    st.download_button(
+        "⬇️ Download Inventory Status Report",
+        data=to_excel_bytes(model, format_name),
+        file_name=export_file_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+    st.caption(f"File name: {export_file_name}")
+with export_col_2:
+    st.download_button(
+        "⬇️ Download Full Transaction History",
+        data=to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION),
+        file_name=transaction_file_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+    st.caption(f"File name: {transaction_file_name}")
 
 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 
@@ -1503,6 +1731,10 @@ with sku_tab:
             """,
             unsafe_allow_html=True,
         )
+
+        ending_balance_value = pd.to_numeric(pd.Series([selected["Ending Balance"]]), errors="coerce").fillna(0).iloc[0]
+        if ending_balance_value <= 0:
+            st.warning("This SKU has zero or negative ending balance. Please review inbound allocation.")
 
         d1, d2, d3, d4 = st.columns(4)
         with d1:
@@ -1679,8 +1911,5 @@ with guide_tab:
         2. Upload the matching **Item Activity Report** Excel file.
         3. Review **Critical**, **Warning**, and **Watch** SKUs first.
         4. Use **SKU Detail** to drill into one SKU and review transaction history.
-        5. Use **Audit** to verify official total rows, ending balance rows, Not Shipped rows, and Cancelled rows.
-
-        **Recent outbound rule:** only dates present in the uploaded report data are used.
-        """
+        5. Use **Audit** to verify official total rows, ending balance rows, Not Shipped rows, and Cancelled rows.        """
     )
