@@ -13,7 +13,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v8"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v22-persist-upload"
+APP_CACHE_VERSION = "full-transactions-v23-global-persist-upload"
 
 
 # ============================================================
@@ -530,21 +530,26 @@ def safe_format_slug(format_name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", str(format_name)).strip("_") or "report"
 
 
-def persistent_upload_paths(format_name: str) -> tuple[Path, Path]:
-    slug = safe_format_slug(format_name)
+def persistent_upload_paths(format_name: str | None = None) -> tuple[Path, Path]:
+    """Use one shared saved upload across Newark and Carson.
+
+    The selected report format controls how the current file is processed,
+    but switching formats should not clear or replace the saved file.
+    A new upload is the only action that updates this saved report.
+    """
     return (
-        PERSISTENT_UPLOAD_DIR / f"{slug}_last_upload.bin",
-        PERSISTENT_UPLOAD_DIR / f"{slug}_last_upload.json",
+        PERSISTENT_UPLOAD_DIR / "current_upload.bin",
+        PERSISTENT_UPLOAD_DIR / "current_upload.json",
     )
 
 
 def save_persistent_upload(format_name: str, file_name: str, file_bytes: bytes) -> None:
     try:
         PERSISTENT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        data_path, meta_path = persistent_upload_paths(format_name)
+        data_path, meta_path = persistent_upload_paths()
         data_path.write_bytes(file_bytes)
         meta = {
-            "format_name": format_name,
+            "last_selected_format": format_name,
             "file_name": file_name,
             "size": len(file_bytes),
             "sha256": stable_file_hash(file_bytes),
@@ -556,9 +561,9 @@ def save_persistent_upload(format_name: str, file_name: str, file_bytes: bytes) 
         pass
 
 
-def load_persistent_upload(format_name: str):
+def load_persistent_upload(format_name: str | None = None):
     try:
-        data_path, meta_path = persistent_upload_paths(format_name)
+        data_path, meta_path = persistent_upload_paths()
         if not data_path.exists() or not meta_path.exists():
             return None
         file_bytes = data_path.read_bytes()
@@ -570,6 +575,7 @@ def load_persistent_upload(format_name: str):
             "file_name": meta.get("file_name", "Saved report.xlsx"),
             "size": meta.get("size", len(file_bytes)),
             "saved_at": meta.get("saved_at", ""),
+            "last_selected_format": meta.get("last_selected_format", ""),
         }
     except Exception:
         return None
