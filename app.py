@@ -1280,17 +1280,7 @@ priority_cols = [
     "Days Remaining",
     "Forecast Stockout Date",
 ]
-with st.sidebar.expander("Shortage Table Columns", expanded=False):
-    selected_priority_cols = st.multiselect(
-        "Columns to show",
-        options=priority_cols,
-        default=priority_cols,
-        help="Choose the columns that appear in the main Shortage Priority List.",
-    )
-if not selected_priority_cols:
-    selected_priority_cols = priority_cols
-
-priority_display = prepare_display(filtered[selected_priority_cols])
+priority_display = prepare_display(filtered[priority_cols])
 show_limited_dataframe(priority_display, height=440, limit=250)
 
 st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
