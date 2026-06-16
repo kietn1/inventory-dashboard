@@ -113,7 +113,7 @@ st.markdown(
         .health-summary-text {
             font-size: 1.02rem;
             color: #111827;
-            font-weight: 760;
+            font-weight: 400;
             line-height: 1.38;
         }
         .selected-sku-card {
