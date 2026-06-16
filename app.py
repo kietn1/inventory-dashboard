@@ -10,7 +10,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v7"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v15-sidebar-spacing"
+APP_CACHE_VERSION = "full-transactions-v16-professional-upgrades"
 
 
 # ============================================================
@@ -1202,9 +1202,44 @@ def show_limited_dataframe(df: pd.DataFrame, height: int = 420, limit: int = 500
     st.dataframe(display_table(df.head(limit)), use_container_width=True, hide_index=True, height=height)
 
 
+def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int = 500):
+    total_rows = len(df)
+    if total_rows > limit:
+        st.caption(f"Showing first {limit:,} rows out of {total_rows:,} rows for faster loading.")
+    else:
+        st.caption(f"Showing {total_rows:,} rows.")
+
+    display_df = display_table(df.head(limit))
+
+    def highlight_transaction_type(row):
+        styles = ["" for _ in row]
+        if "Transaction Type" not in row.index:
+            return styles
+        tx_type = str(row["Transaction Type"]).lower()
+        if "inbound" in tx_type and "outbound" not in tx_type:
+            style = "background-color: #DFF3E3; color: #067647; font-weight: 700;"
+        elif "outbound" in tx_type and "inbound" not in tx_type:
+            style = "background-color: #FDE2E1; color: #B42318; font-weight: 700;"
+        elif "inbound" in tx_type and "outbound" in tx_type:
+            style = "background-color: #E0F2FE; color: #026AA2; font-weight: 700;"
+        else:
+            style = "background-color: #F3F4F6; color: #4B5563; font-weight: 700;"
+        styles[list(row.index).index("Transaction Type")] = style
+        return styles
+
+    styled_df = display_df.style.apply(highlight_transaction_type, axis=1)
+    st.dataframe(styled_df, use_container_width=True, hide_index=True, height=height)
+
+
 # ============================================================
 # Sidebar controls
 # ============================================================
+def reset_sidebar_filters():
+    st.session_state["filter_risk_levels"] = ["Critical", "Warning", "Watch"]
+    st.session_state["filter_min_usage"] = 0
+    st.session_state.pop("sidebar_selected_sku", None)
+
+
 st.sidebar.title("📦 Inventory Dashboard")
 format_name = st.sidebar.selectbox("Report Format", options=["Newark", "Carson"], index=0)
 config = FORMAT_CONFIGS[format_name]
@@ -1215,12 +1250,20 @@ show_risks = st.sidebar.multiselect(
     "Risk Level",
     options=["Critical", "Warning", "Watch", "Healthy"],
     default=["Critical", "Warning", "Watch"],
+    key="filter_risk_levels",
 )
-min_usage = st.sidebar.number_input("Minimum Outbound Last 30 Days", min_value=0, value=0, step=1)
+min_usage = st.sidebar.number_input(
+    "Min 30D Outbound",
+    min_value=0,
+    value=0,
+    step=1,
+    key="filter_min_usage",
+)
 
 # Reserved position for the SKU selector.
 # SKU is kept in the same Filters section as Risk Level for a cleaner sidebar.
 sku_sidebar_slot = st.sidebar.empty()
+st.sidebar.button("Reset Filters", use_container_width=True, on_click=reset_sidebar_filters)
 
 st.sidebar.divider()
 st.sidebar.markdown(
@@ -1358,10 +1401,11 @@ with sku_sidebar_slot.container():
         st.info("No SKU matches the current filters.")
     else:
         sku_options = filtered["SKU"].astype(str).drop_duplicates().tolist()
+        if st.session_state.get("sidebar_selected_sku") not in sku_options:
+            st.session_state["sidebar_selected_sku"] = sku_options[0]
         selected_sku_choice = st.selectbox(
             "Search / Select SKU",
             options=sku_options,
-            index=0,
             key="sidebar_selected_sku",
         )
 
@@ -1525,6 +1569,19 @@ with sku_tab:
             if tx_sku.empty:
                 st.info("No transaction history found for this SKU.")
             else:
+                total_qty_in = pd.to_numeric(tx_sku["Qty In"], errors="coerce").fillna(0).sum()
+                total_qty_out = pd.to_numeric(tx_sku["Qty Out"], errors="coerce").fillna(0).sum()
+
+                s1, s2, s3 = st.columns(3)
+                with s1:
+                    metric_card("Total Qty In", fmt_num(total_qty_in), "Inbound transaction total")
+                with s2:
+                    metric_card("Total Qty Out", fmt_num(total_qty_out), "Outbound transaction total")
+                with s3:
+                    metric_card("Current Balance", fmt_num(selected["Ending Balance"]), "Official ending balance")
+
+                st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
+
                 sku_filter_key = re.sub(r"[^A-Za-z0-9_]+", "_", str(selected_sku))[:55]
                 tx_filtered = tx_sku.copy()
 
@@ -1569,15 +1626,7 @@ with sku_tab:
                 # Always keep transaction history newest first.
                 tx_filtered = tx_filtered.sort_values(["Activity Date", "Excel Row"], ascending=[False, False])
 
-                t1, t2, t3 = st.columns(3)
-                with t1:
-                    metric_card("Filtered Rows", fmt_num(len(tx_filtered)), f"Total rows: {len(tx_sku):,}")
-                with t2:
-                    metric_card("Filtered Qty In", fmt_num(pd.to_numeric(tx_filtered["Qty In"], errors="coerce").fillna(0).sum()), "Inbound in selected rows")
-                with t3:
-                    metric_card("Filtered Qty Out", fmt_num(pd.to_numeric(tx_filtered["Qty Out"], errors="coerce").fillna(0).sum()), "Outbound in selected rows")
-
-                show_limited_dataframe(tx_filtered[full_tx_cols], height=420, limit=500)
+                show_transaction_dataframe(tx_filtered[full_tx_cols], height=420, limit=500)
 
 with trend_tab:
     st.subheader("Outbound Trend")
