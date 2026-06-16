@@ -10,7 +10,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v7"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v12-sidebar-sku-before-notes"
+APP_CACHE_VERSION = "full-transactions-v13-selected-sku-hero"
 
 
 # ============================================================
@@ -95,32 +95,47 @@ st.markdown(
             margin: 0.15rem 0 0.75rem 0;
         }
         .selected-sku-card {
-            border: 1px solid rgba(17,24,39,.08);
-            border-radius: 16px;
-            background: rgba(255,255,255,.88);
-            box-shadow: 0 6px 20px rgba(16,24,40,.055);
-            padding: 14px 16px;
-            margin: 0.15rem 0 0.85rem 0;
+            border: 1px solid rgba(17,24,39,.09);
+            border-radius: 22px;
+            background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(245,245,247,.90));
+            box-shadow: 0 12px 36px rgba(16,24,40,.09);
+            padding: 22px 24px;
+            margin: 0.20rem 0 1.05rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .selected-sku-card::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 6px;
+            background: #111827;
         }
         .selected-sku-label {
-            font-size: .76rem;
+            font-size: .82rem;
             color: #6B7280;
-            font-weight: 750;
+            font-weight: 800;
             text-transform: uppercase;
-            letter-spacing: .04em;
-            margin-bottom: 4px;
+            letter-spacing: .055em;
+            margin-bottom: 8px;
         }
         .selected-sku-value {
-            font-size: 1.18rem;
+            font-size: 2.35rem;
             color: #111827;
-            font-weight: 850;
-            line-height: 1.25;
+            font-weight: 900;
+            line-height: 1.05;
+            letter-spacing: -0.045em;
+            word-break: break-word;
         }
         .selected-sku-description {
-            font-size: .88rem;
-            color: #4B5563;
-            margin-top: 4px;
+            font-size: 1.12rem;
+            color: #374151;
+            margin-top: 10px;
             line-height: 1.35;
+            font-weight: 650;
+            word-break: break-word;
         }
         .sidebar-note {
             background: #FFFFFF;
