@@ -7,9 +7,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-CUSTOMER_EXPORT_VERSION = "Customer export v2"
+CUSTOMER_EXPORT_VERSION = "Customer export v3"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v4"
+APP_CACHE_VERSION = "full-transactions-v6-one-activity-date"
 
 
 # ============================================================
@@ -632,7 +632,6 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                     "Excel Row": excel_row_num + 1,
                     "SKU": current_sku,
                     "Description": sku_records[current_sku]["Description"],
-                    "Activity Date Raw": activity_text,
                     "Activity Date": activity_dt,
                     "Ref #": ref_text,
                     "Qty Out": qty_out,
@@ -645,8 +644,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                     "Excel Row": excel_row_num + 1,
                     "SKU": current_sku,
                     "Description": sku_records[current_sku]["Description"],
-                    "Activity Date Raw": activity_text,
-                    "Parsed Date": activity_dt,
+                    "Activity Date": activity_dt,
                     "Ref #": ref_text,
                     "Qty Out": qty_out,
                 }
@@ -676,7 +674,6 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                     "Excel Row": excel_row_num + 1,
                     "SKU": current_sku,
                     "Description": sku_records[current_sku]["Description"],
-                    "Activity Date Raw": activity_text,
                     "Activity Date": activity_dt,
                     "Transaction Type": transaction_type,
                     "Trans. #": trans_no,
@@ -1343,15 +1340,13 @@ with sku_tab:
         if not tx_sku.empty:
             tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].sort_values(["Activity Date", "Excel Row"], ascending=[True, True])
             st.subheader("Full transaction history")
+            st.caption("One clean Activity Date column is shown. Not Shipped is separated into the Is Not Shipped column.")
             full_tx_cols = [
                 "Excel Row",
-                "Activity Date Raw",
                 "Activity Date",
                 "Transaction Type",
                 "Trans. #",
                 "Ref #",
-                "Qty In / Ctn Raw",
-                "Qty Out / Ctn Raw",
                 "Qty In",
                 "Qty Out",
                 "Balance After Transaction",
@@ -1363,8 +1358,6 @@ with sku_tab:
                 if col not in tx_sku.columns:
                     if col in ["Qty In", "Qty Out", "Balance After Transaction", "Ctn Balance After Transaction"]:
                         tx_sku[col] = 0.0
-                    elif col in ["Qty In / Ctn Raw", "Qty Out / Ctn Raw", "Activity Date Raw"]:
-                        tx_sku[col] = ""
                     elif col in ["Is Not Shipped", "Is Cancelled"]:
                         tx_sku[col] = False
                     elif col == "Activity Date":
