@@ -1268,6 +1268,36 @@ if search_text.strip():
         | filtered["Description"].astype(str).str.lower().str.contains(q, na=False)
     ]
 
+# Sidebar SKU selector for the SKU Detail tab.
+# Streamlit selectbox supports typing inside the dropdown, so users can either select or type to search.
+selected_sku = None
+if filtered.empty:
+    st.sidebar.divider()
+    st.sidebar.subheader("SKU Detail")
+    st.sidebar.info("No SKU matches the current filters.")
+else:
+    st.sidebar.divider()
+    st.sidebar.subheader("SKU Detail")
+    sku_options = filtered["SKU"].astype(str).tolist()
+    sku_desc_lookup = (
+        filtered.drop_duplicates("SKU")
+        .set_index("SKU")["Description"]
+        .astype(str)
+        .to_dict()
+    )
+
+    def sidebar_sku_label(sku):
+        desc = sku_desc_lookup.get(sku, "")
+        return f"{sku} — {desc}" if desc else str(sku)
+
+    selected_sku = st.sidebar.selectbox(
+        "Select / Type SKU",
+        options=sku_options,
+        format_func=sidebar_sku_label,
+        key="sidebar_selected_sku",
+    )
+    st.sidebar.caption("Open the dropdown and type SKU or description to search.")
+
 report_start = model["report_start"]
 report_end = model["report_end"]
 windows = model["windows"]
@@ -1343,11 +1373,10 @@ st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 sku_tab, trend_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "Trend", "Audit", "Guide"])
 
 with sku_tab:
-    if filtered.empty:
+    if filtered.empty or selected_sku is None:
         st.warning("No SKU matches the current filters.")
     else:
-        selected_sku = st.selectbox("Select SKU", options=filtered["SKU"].tolist())
-        selected = sku_df[sku_df["SKU"] == selected_sku].iloc[0]
+        selected = sku_df[sku_df["SKU"].astype(str) == str(selected_sku)].iloc[0]
 
         d1, d2, d3, d4 = st.columns(4)
         with d1:
