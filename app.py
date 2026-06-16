@@ -1397,7 +1397,7 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
 
     for col in ["Is Not Shipped", "Is Cancelled"]:
         if col in display_df.columns:
-            display_df[col] = display_df[col].map(lambda x: "Yes" if bool(x) else "No")
+            display_df[col] = display_df[col].fillna(False).astype(bool)
 
     def highlight_transaction_type(row):
         styles = ["" for _ in row]
@@ -1427,7 +1427,27 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
     if left_subset:
         styled_df = styled_df.set_properties(subset=left_subset, **{"text-align": "left"})
 
-    st.dataframe(styled_df, use_container_width=True, hide_index=True, height=height)
+    column_config = {}
+    if "Is Not Shipped" in display_df.columns:
+        column_config["Is Not Shipped"] = st.column_config.CheckboxColumn(
+            "Is Not Shipped",
+            help="Checked when the transaction is marked Not Shipped.",
+            disabled=True,
+        )
+    if "Is Cancelled" in display_df.columns:
+        column_config["Is Cancelled"] = st.column_config.CheckboxColumn(
+            "Is Cancelled",
+            help="Checked when the transaction is marked Cancelled.",
+            disabled=True,
+        )
+
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True,
+        height=height,
+        column_config=column_config,
+    )
 
 
 # ============================================================
