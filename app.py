@@ -10,7 +10,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v8"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v20-sku-type-or-select"
+APP_CACHE_VERSION = "full-transactions-v21-health-label-bold"
 
 
 # ============================================================
@@ -1658,18 +1658,18 @@ healthy_count = int((sku_df["Risk Level"] == "Healthy").sum())
 
 review_count = critical_count + warning_count + watch_count
 if review_count > 0:
-    health_summary = (
-        f"Inventory health: {critical_count:,} Critical SKUs, "
+    health_summary_detail = (
+        f"{critical_count:,} Critical SKUs, "
         f"{warning_count:,} Warning SKUs, and {watch_count:,} Watch SKUs need review."
     )
 else:
-    health_summary = "Inventory health: no Critical, Warning, or Watch SKUs need review."
+    health_summary_detail = "no Critical, Warning, or Watch SKUs need review."
 
 st.markdown(
     f"""
     <div class="health-summary-card">
         <div class="health-summary-title">Inventory Health Summary</div>
-        <div class="health-summary-text">{html.escape(health_summary)}</div>
+        <div class="health-summary-text"><b>Inventory health:</b> {html.escape(health_summary_detail)}</div>
     </div>
     """,
     unsafe_allow_html=True,
