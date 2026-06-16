@@ -1475,17 +1475,20 @@ with sku_tab:
                 )
 
                 tx_dates = pd.to_datetime(tx_sku["Activity Date"], errors="coerce").dropna()
-                tx_date_options = ["All dates"]
                 if not tx_dates.empty:
-                    unique_tx_dates = pd.Series(tx_dates.dt.normalize().unique()).sort_values(ascending=False)
-                    tx_date_options += [pd.to_datetime(d).strftime("%m/%d/%Y") for d in unique_tx_dates]
+                    tx_min_date = tx_dates.min().date()
+                    tx_max_date = tx_dates.max().date()
+                else:
+                    tx_min_date = None
+                    tx_max_date = None
 
-                selected_tx_date = f2.selectbox(
+                selected_tx_date = f2.date_input(
                     "Activity Date",
-                    options=tx_date_options,
-                    index=0,
+                    value=None,
+                    min_value=tx_min_date,
+                    max_value=tx_max_date,
                     key=f"tx_date_{sku_filter_key}",
-                    help="Choose one specific activity date, or keep All dates.",
+                    help="Pick one specific activity date from the calendar, or leave blank to show all dates.",
                 )
 
                 if tx_search.strip():
@@ -1495,8 +1498,8 @@ with sku_tab:
                         | tx_filtered["Trans. #"].astype(str).str.lower().str.contains(tx_q, na=False)
                     ]
 
-                if selected_tx_date != "All dates":
-                    selected_date_value = pd.to_datetime(selected_tx_date)
+                if selected_tx_date is not None:
+                    selected_date_value = pd.to_datetime(selected_tx_date).normalize()
                     tx_activity_dates = pd.to_datetime(tx_filtered["Activity Date"], errors="coerce").dt.normalize()
                     tx_filtered = tx_filtered[tx_activity_dates == selected_date_value]
 
