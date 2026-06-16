@@ -9,7 +9,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v5"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v8-no-sku-insight-filters"
+APP_CACHE_VERSION = "full-transactions-v9-spacing-polish"
 
 
 # ============================================================
@@ -27,8 +27,8 @@ st.markdown(
     <style>
         :root { --soft-bg:#F5F5F7; --card:#FFFFFF; --text:#111827; --muted:#6B7280; --line:rgba(17,24,39,.10); }
         .main .block-container {
-            padding-top: 0.9rem;
-            padding-bottom: 1.4rem;
+            padding-top: 0.65rem;
+            padding-bottom: 1.15rem;
             max-width: 1500px;
             animation: fadeIn 0.35s ease-in-out;
         }
@@ -37,13 +37,40 @@ st.markdown(
             to { opacity: 1; transform: translateY(0); }
         }
         header, footer {visibility: hidden;}
+        .page-header {
+            margin: 0 0 0.75rem 0;
+            padding-bottom: 0.45rem;
+            border-bottom: 1px solid rgba(17,24,39,.07);
+        }
+        .page-title {
+            font-size: 1.82rem;
+            font-weight: 850;
+            color: #111827;
+            letter-spacing: -0.035em;
+            line-height: 1.12;
+            margin-bottom: 0.18rem;
+        }
+        .page-subtitle {
+            font-size: 0.88rem;
+            color: #6B7280;
+            line-height: 1.35;
+        }
+        .section-block {
+            margin-top: 1.05rem;
+        }
+        .section-divider {
+            height: 1px;
+            background: rgba(17,24,39,.08);
+            margin: 1.18rem 0 0.85rem 0;
+        }
+        .kpi-row-gap { height: 0.58rem; }
         .kpi-card {
             border: 1px solid var(--line);
-            border-radius: 18px;
-            padding: 16px 16px 13px 16px;
+            border-radius: 16px;
+            padding: 14px 15px 12px 15px;
             background: rgba(255,255,255,0.88);
-            box-shadow: 0 8px 28px rgba(16, 24, 40, 0.07);
-            min-height: 104px;
+            box-shadow: 0 7px 24px rgba(16, 24, 40, 0.065);
+            min-height: 96px;
             transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
         }
         .kpi-card:hover {
@@ -51,12 +78,21 @@ st.markdown(
             box-shadow: 0 10px 30px rgba(16, 24, 40, 0.10);
             border-color: rgba(0,0,0,0.12);
         }
-        .kpi-label {font-size: 0.82rem; color:#6B7280; font-weight: 650; margin-bottom: 7px;}
-        .kpi-value {font-size: 1.72rem; color:#111827; font-weight: 800; line-height: 1.08; letter-spacing:-0.03em;}
-        .kpi-help {font-size: 0.76rem; color:#9CA3AF; margin-top: 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-        .section-title {font-size:1.12rem; font-weight:800; color:#111827; margin-top: 0.3rem;}
-        .section-subtitle {font-size:0.84rem; color:#6B7280; margin-bottom: 0.7rem;}
-        .small-note {font-size:0.81rem; color:#6B7280;}
+        .kpi-label {font-size: 0.80rem; color:#6B7280; font-weight: 650; margin-bottom: 6px;}
+        .kpi-value {font-size: 1.62rem; color:#111827; font-weight: 800; line-height: 1.08; letter-spacing:-0.03em;}
+        .kpi-help {font-size: 0.74rem; color:#9CA3AF; margin-top: 7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+        .section-title {font-size:1.11rem; font-weight:820; color:#111827; margin: 0 0 0.18rem 0; line-height:1.25;}
+        .section-subtitle {font-size:0.84rem; color:#6B7280; margin: 0 0 0.55rem 0; line-height:1.35;}
+        .small-note {
+            display: inline-block;
+            font-size:0.81rem;
+            color:#6B7280;
+            background: rgba(255,255,255,0.74);
+            border: 1px solid rgba(17,24,39,.07);
+            border-radius: 999px;
+            padding: 6px 10px;
+            margin: 0.15rem 0 0.75rem 0;
+        }
         .sidebar-note {
             background: #FFFFFF;
             border: 1px solid rgba(17,24,39,.08);
@@ -70,14 +106,14 @@ st.markdown(
             box-shadow: 0 8px 24px rgba(16,24,40,.08);
             border-color: rgba(17,24,39,.12);
         }
-        div[data-testid="stDataFrame"] {border-radius: 14px; overflow: hidden;}
+        div[data-testid="stDataFrame"] {border-radius: 14px; overflow: hidden; margin-top: 0.15rem;}
         div[data-testid="stSidebar"] {background:#F5F5F7; transition: background 0.25s ease;}
         div[data-testid="stSidebar"] h1 {font-size: 1.35rem;}
         div[data-testid="stFileUploader"] section {
             border: 1.5px dashed rgba(17,24,39,.18);
-            border-radius: 18px;
+            border-radius: 16px;
             background: rgba(255,255,255,0.86);
-            padding: 22px;
+            padding: 16px;
             box-shadow: 0 8px 26px rgba(16,24,40,.06);
             transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
         }
@@ -168,11 +204,11 @@ st.markdown(
 
         .upload-hero {
             border: 1px solid rgba(17,24,39,.08);
-            border-radius: 20px;
+            border-radius: 18px;
             background: rgba(255,255,255,.82);
-            box-shadow: 0 8px 26px rgba(16,24,40,.05);
-            padding: 16px 18px;
-            margin: .35rem 0 .85rem 0;
+            box-shadow: 0 7px 22px rgba(16,24,40,.045);
+            padding: 12px 15px;
+            margin: .1rem 0 .55rem 0;
             animation: cardEnter .35s ease-out;
         }
         .upload-hero-title {
@@ -187,8 +223,8 @@ st.markdown(
         }
 
         .loading-stage-card, .ready-stage-card {
-            margin-top: .95rem;
-            margin-bottom: .85rem;
+            margin-top: .65rem;
+            margin-bottom: .65rem;
             border: 1px solid rgba(17,24,39,.08);
             border-radius: 18px;
             background: rgba(255,255,255,.94);
@@ -1117,8 +1153,15 @@ st.sidebar.markdown(
 # ============================================================
 # Main app
 # ============================================================
-st.title(config["title"])
-st.caption(config["caption"])
+st.markdown(
+    f"""
+    <div class="page-header">
+        <div class="page-title">{config["title"]}</div>
+        <div class="page-subtitle">{config["caption"]}</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.markdown(
     """
@@ -1249,6 +1292,8 @@ with k3:
 with k4:
     metric_card("Watch SKUs", fmt_num(watch_count), "Monitor usage trend")
 
+st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
+
 k5, k6, k7, k8 = st.columns(4)
 with k5:
     metric_card("Ending Balance", fmt_num(sku_df["Ending Balance"].sum()), "From official Ending Balance rows")
@@ -1259,6 +1304,7 @@ with k7:
 with k8:
     metric_card("Recent Outbound 14D / 7D", f"{fmt_num(sku_df['Outbound Last 14 Days'].sum())} / {fmt_num(sku_df['Outbound Last 7 Days'].sum())}", "Dated Qty Out rows only")
 
+st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
 st.markdown("<div class='section-subtitle'>Sorted by risk level, lowest days remaining, and recent outbound demand.</div>", unsafe_allow_html=True)
 
@@ -1280,6 +1326,7 @@ priority_cols = [
 priority_display = prepare_display(filtered[priority_cols])
 show_limited_dataframe(priority_display, height=440, limit=250)
 
+st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
 export_file_name = report_download_filename(format_name, report_end)
 st.download_button(
@@ -1290,6 +1337,8 @@ st.download_button(
     use_container_width=True,
 )
 st.caption(f"File name: {export_file_name}")
+
+st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 
 sku_tab, trend_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "Trend", "Audit", "Guide"])
 
@@ -1310,6 +1359,7 @@ with sku_tab:
         with d4:
             metric_card("Forecast Stockout", fmt_date(selected["Forecast Stockout Date"]), "Calendar date estimate")
 
+        st.markdown("<div class='section-block'></div>", unsafe_allow_html=True)
         st.subheader(f"{selected_sku} — {selected['Description']}")
         detail_cols = [
             "Official Total Inbound",
@@ -1336,6 +1386,7 @@ with sku_tab:
         tx_sku = model["tx_df"].copy()
         if not tx_sku.empty:
             tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].copy()
+            st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
             st.subheader("Full transaction history")
             full_tx_cols = [
                 "Excel Row",
@@ -1401,6 +1452,8 @@ with sku_tab:
                     selected_date_value = pd.to_datetime(selected_tx_date).normalize()
                     tx_activity_dates = pd.to_datetime(tx_filtered["Activity Date"], errors="coerce").dt.normalize()
                     tx_filtered = tx_filtered[tx_activity_dates == selected_date_value]
+
+                st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
 
                 # Always keep transaction history newest first.
                 tx_filtered = tx_filtered.sort_values(["Activity Date", "Excel Row"], ascending=[False, False])
