@@ -1436,7 +1436,8 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
 def reset_sidebar_filters():
     st.session_state["filter_risk_levels"] = ["Critical", "Warning", "Watch"]
     st.session_state["filter_min_usage"] = 0
-    st.session_state["sku_search_text"] = ""
+    if "sku_select_combined" in st.session_state:
+        del st.session_state["sku_select_combined"]
 
 
 st.sidebar.title("📦 Inventory Dashboard")
@@ -1604,34 +1605,22 @@ with sku_sidebar_slot.container():
     available_sku_df = priority_filtered.copy()
     available_skus = available_sku_df["SKU"].astype(str).dropna().tolist() if not available_sku_df.empty else []
 
-    sku_query = st.text_input(
-        "Search SKU",
-        key="sku_search_text",
-        placeholder="Type or paste SKU...",
-    ).strip()
-
     if not available_skus:
         st.info("No SKU available for the selected filters.")
     else:
-        if sku_query:
-            q = sku_query.lower()
-            match_mask = available_sku_df["SKU"].astype(str).str.lower().str.contains(q, na=False, regex=False)
-            sku_select_df = available_sku_df[match_mask].copy()
-            if sku_select_df.empty:
-                st.info("No SKU matches the current filters.")
-                sku_select_df = available_sku_df.copy()
-        else:
-            sku_select_df = available_sku_df.copy()
+        # One combined searchable dropdown.
+        # Open it and type to search, or choose directly from the list.
+        # The options follow Risk Level and Min 30D Outbound filters only.
+        if st.session_state.get("sku_select_combined") not in available_skus:
+            st.session_state.pop("sku_select_combined", None)
 
-        sku_options = sku_select_df["SKU"].astype(str).dropna().tolist()
         selected_sku = st.selectbox(
-            "Select SKU",
-            options=sku_options,
+            "Search / Select SKU",
+            options=available_skus,
             index=0,
-            key="sku_select_list",
-            help="This list follows the selected Risk Level and Min 30D Outbound filters.",
+            key="sku_select_combined",
+            help="Type to search or select from the list. This only controls SKU Detail.",
         )
-        st.caption(f"Selected: {selected_sku}")
 
 report_start = model["report_start"]
 report_end = model["report_end"]
