@@ -1694,40 +1694,34 @@ sku_df = model["sku_df"].copy()
 # ============================================================
 # Main SKU filters
 # ============================================================
-# The Shortage Priority List is controlled only by Risk Level and Min 30D Outbound.
-# The SKU search below is only for selecting the SKU Detail view.
-filtered = sku_df.copy()
-if show_risks:
-    filtered = filtered[filtered["Risk Level"].isin(show_risks)]
-filtered = filtered[filtered["Outbound Last 30 Days"] >= min_usage]
-priority_filtered = filtered.copy()
+all_skus = sku_df["SKU"].astype(str).dropna().tolist()
+sku_options = [""] + all_skus
 
-# SKU Detail selector in the sidebar.
-# The available SKU list follows the current Risk Level / Min 30D Outbound filters.
-# It does not filter the Shortage Priority List by SKU.
-selected_sku = None
 with sku_sidebar_slot.container():
     st.markdown('<div class="sidebar-section-gap"></div>', unsafe_allow_html=True)
 
-    available_sku_df = priority_filtered.copy()
-    available_skus = available_sku_df["SKU"].astype(str).dropna().tolist() if not available_sku_df.empty else []
+    if st.session_state.get("sku_select_combined") not in sku_options:
+        st.session_state.pop("sku_select_combined", None)
 
-    if not available_skus:
-        st.info("No SKU available for the selected filters.")
-    else:
-        # One combined searchable dropdown.
-        # Open it and type to search, or choose directly from the list.
-        # The options follow Risk Level and Min 30D Outbound filters only.
-        if st.session_state.get("sku_select_combined") not in available_skus:
-            st.session_state.pop("sku_select_combined", None)
+    selected_sku = st.selectbox(
+        "Search / Select SKU",
+        options=sku_options,
+        index=0,
+        key="sku_select_combined",
+        format_func=lambda x: "" if x == "" else x,
+        help="Select a SKU to show only that SKU. Leave blank to use Risk Level filters.",
+    )
 
-        selected_sku = st.selectbox(
-            "Search / Select SKU",
-            options=available_skus,
-            index=0,
-            key="sku_select_combined",
-            help="Type to search or select from the list. This only controls SKU Detail.",
-        )
+filtered = sku_df.copy()
+
+if selected_sku:
+    filtered = filtered[filtered["SKU"].astype(str) == str(selected_sku)]
+else:
+    if show_risks:
+        filtered = filtered[filtered["Risk Level"].isin(show_risks)]
+    filtered = filtered[filtered["Outbound Last 30 Days"] >= min_usage]
+
+priority_filtered = filtered.copy()
 
 report_start = model["report_start"]
 report_end = model["report_end"]
@@ -1803,7 +1797,7 @@ priority_cols = [
     "Days Remaining",
     "Forecast Stockout Date",
 ]
-priority_display = prepare_display(filtered[priority_cols])
+priority_display = prepare_display(priority_filtered[priority_cols])
 show_limited_dataframe(priority_display, height=440, limit=250)
 
 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
@@ -1835,7 +1829,7 @@ st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 sku_tab, trend_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "Trend", "Audit", "Guide"])
 
 with sku_tab:
-    if filtered.empty or selected_sku is None:
+    if priority_filtered.empty or not selected_sku:
         st.warning("No SKU matches the current filters.")
     else:
         selected = sku_df[sku_df["SKU"].astype(str) == str(selected_sku)].iloc[0]
