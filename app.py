@@ -1670,8 +1670,11 @@ except Exception as exc:
 
 sku_df = model["sku_df"].copy()
 
-all_skus = sku_df["SKU"].astype(str).dropna().tolist()
-sku_options = [""] + all_skus
+sku_option_source = sku_df.copy()
+if show_risks:
+    sku_option_source = sku_option_source[sku_option_source["Risk Level"].isin(show_risks)]
+sku_option_source = sku_option_source[sku_option_source["Outbound Last 30 Days"] >= min_usage]
+sku_options = [""] + sku_option_source["SKU"].astype(str).dropna().tolist()
 
 with sku_sidebar_slot.container():
     st.markdown('<div class="sidebar-section-gap"></div>', unsafe_allow_html=True)
@@ -1689,16 +1692,11 @@ with sku_sidebar_slot.container():
     )
 
 selected_sku = clean_text(selected_sku)
-filtered = sku_df.copy()
 
 if selected_sku:
-    filtered = filtered[filtered["SKU"].astype(str) == str(selected_sku)]
+    priority_filtered = sku_df[sku_df["SKU"].astype(str) == str(selected_sku)].copy()
 else:
-    if show_risks:
-        filtered = filtered[filtered["Risk Level"].isin(show_risks)]
-    filtered = filtered[filtered["Outbound Last 30 Days"] >= min_usage]
-
-priority_filtered = filtered.copy()
+    priority_filtered = sku_option_source.copy()
 
 report_start = model["report_start"]
 report_end = model["report_end"]
