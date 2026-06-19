@@ -16,9 +16,6 @@ FIXED_REPORT_START_DATE = "09/01/2025"
 APP_CACHE_VERSION = "full-transactions-v24-site-persist-compare"
 
 
-# ============================================================
-# Streamlit page setup
-# ============================================================
 st.set_page_config(
     page_title="Inventory Shortage Dashboard",
     page_icon="📦",
@@ -410,9 +407,6 @@ st.markdown(
 )
 
 
-# ============================================================
-# Format settings
-# ============================================================
 FORMAT_CONFIGS = {
     "Newark": {
         "title": "Inventory Shortage",
@@ -461,9 +455,6 @@ FORMAT_CONFIGS = {
 }
 
 
-# ============================================================
-# Utility functions
-# ============================================================
 def clean_text(value) -> str:
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return ""
@@ -516,9 +507,6 @@ class WrongFileFormatError(ValueError):
     pass
 
 
-# ============================================================
-# Persistent upload storage
-# ============================================================
 PERSISTENT_UPLOAD_DIR = Path.home() / ".inventory_dashboard_uploads"
 
 
@@ -557,7 +545,7 @@ def save_persistent_upload(format_name: str, file_name: str, file_bytes: bytes) 
         }
         meta_path.write_text(json.dumps(meta), encoding="utf-8")
     except Exception:
-        # Persistent storage is a convenience feature; the upload should still work if saving fails.
+
         pass
 
 
@@ -624,7 +612,7 @@ def extract_report_range(raw: pd.DataFrame):
         if "item activity from" not in row_text:
             continue
 
-        # Carson often stores the full range in one title cell.
+
         match = re.search(
             r"item\s+activity\s+from:\s*(.*?)\s+to\s+(.*)$",
             row_text_original,
@@ -635,7 +623,7 @@ def extract_report_range(raw: pd.DataFrame):
             end_dt = parse_excel_or_text_date(match.group(2))
             break
 
-        # Newark often splits dates across cells.
+
         to_index = None
         for i, value in enumerate(row):
             if clean_text(value).lower() == "to":
@@ -773,7 +761,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                 )
             continue
 
-        # SKU section rows.
+
         if sku_cell and sku_lower != "sku" and not (config["total_rule"] == "ref_total" and ref_lower == "total"):
             current_sku = sku_cell
             if desc_cell:
@@ -862,10 +850,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                 }
             )
 
-        # Full dated transaction history.
-        # Capture every dated activity row so each SKU shows the full balance movement.
-        # This includes inbound rows, outbound rows, not-shipped rows, and cancelled / no-qty rows
-        # where the balance stays the same.
+
         if not pd.isna(activity_dt):
             has_inbound = qty_in > 0
             has_outbound = qty_out > 0
@@ -901,7 +886,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                 }
             )
 
-            # Keep this as the latest actual inventory movement date, not a no-qty cancellation row.
+
             if has_inbound or has_outbound:
                 existing_last = sku_records[current_sku]["Last Activity Date"]
                 if pd.isna(existing_last) or activity_dt > existing_last:
@@ -931,8 +916,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
     report_end = pd.to_datetime(report_end).normalize()
     report_start = pd.to_datetime(report_start).normalize()
 
-    # Use outbound dates present in the report data, not calendar/holiday counting.
-    # Full transaction history is captured in tx_df, but shortage velocity uses Qty Out only.
+
     window_dates = {
         "Outbound Last 30 Days": last_data_activity_dates(outbound_tx_df, report_end, 30),
         "Outbound Last 14 Days": last_data_activity_dates(outbound_tx_df, report_end, 14),
@@ -1325,7 +1309,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
         last_row = len(export_df) + 5
         header_row = 5
 
-        # Professional title area.
+
         worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
         title_cell = worksheet.cell(row=1, column=1)
         title_cell.value = "Inventory Status Report"
@@ -1345,7 +1329,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
         note_cell.font = Font(size=10, italic=True, color="6B7280")
         note_cell.alignment = Alignment(horizontal="left", vertical="center")
 
-        # Styling palettes.
+
         header_fill = PatternFill("solid", fgColor="111827")
         header_font = Font(bold=True, color="FFFFFF")
         thin_gray = Side(style="thin", color="E5E7EB")
@@ -1360,7 +1344,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
             "Healthy": {"fill": "DFF3E3", "font": "067647"},
         }
 
-        # Header formatting.
+
         for cell in worksheet[header_row]:
             cell.fill = header_fill
             cell.font = header_font
@@ -1368,7 +1352,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
             cell.border = border
         worksheet.row_dimensions[header_row].height = 30
 
-        # Body formatting and risk colors.
+
         risk_col_idx = list(export_df.columns).index("Risk Level") + 1
         date_columns = {"Forecast Stockout Date", "Last Activity Date"}
         decimal_columns = {"Avg Daily Usage 30D"}
@@ -1401,7 +1385,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
                 risk_cell.font = Font(bold=True, color=style["font"])
                 risk_cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Column widths.
+
         preferred_widths = {
             "SKU": 24,
             "Description": 42,
@@ -1421,11 +1405,11 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
             letter = get_column_letter(idx)
             worksheet.column_dimensions[letter].width = preferred_widths.get(col_name, 16)
 
-        # Professional sheet behavior.
+
         worksheet.freeze_panes = "A6"
         worksheet.auto_filter.ref = f"A{header_row}:{get_column_letter(last_col)}{last_row}"
         worksheet.sheet_view.showGridLines = False
-        # Hide Excel row/column headers for a cleaner customer-facing view.
+
         worksheet.sheet_view.showRowColHeaders = False
         worksheet.sheet_properties.pageSetUpPr.fitToPage = True
         worksheet.page_setup.fitToWidth = 1
@@ -1518,19 +1502,19 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
     )
 
 
-# ============================================================
-# Sidebar controls
-# ============================================================
-def reset_sidebar_filters():
-    st.session_state["filter_risk_levels"] = ["Critical", "Warning", "Watch", "Healthy"]
-    st.session_state["filter_min_usage"] = 0
-    if "sku_select_combined" in st.session_state:
-        del st.session_state["sku_select_combined"]
+def reset_sidebar_filters(site_key):
+    st.session_state[f"{site_key}_filter_risk_levels"] = ["Critical", "Warning", "Watch", "Healthy"]
+    st.session_state[f"{site_key}_filter_min_usage"] = 0
+    st.session_state[f"{site_key}_sku_select_combined"] = ""
 
 
 st.sidebar.title("📦 Inventory Dashboard")
-format_name = st.sidebar.selectbox("Report Format", options=["Newark", "Carson"], index=0)
+format_name = st.sidebar.selectbox("Report Format", options=["Newark", "Carson"], index=0, key="report_format")
 config = FORMAT_CONFIGS[format_name]
+site_key = safe_format_slug(format_name).lower()
+risk_filter_key = f"{site_key}_filter_risk_levels"
+min_usage_filter_key = f"{site_key}_filter_min_usage"
+sku_select_key = f"{site_key}_sku_select_combined"
 
 saved_newark = load_persistent_upload("Newark")
 saved_carson = load_persistent_upload("Carson")
@@ -1543,20 +1527,18 @@ show_risks = st.sidebar.multiselect(
     "Risk Level",
     options=["Critical", "Warning", "Watch", "Healthy"],
     default=["Critical", "Warning", "Watch", "Healthy"],
-    key="filter_risk_levels",
+    key=risk_filter_key,
 )
 min_usage = st.sidebar.number_input(
     "Min 30D Outbound",
     min_value=0,
     value=0,
     step=1,
-    key="filter_min_usage",
+    key=min_usage_filter_key,
 )
 
-# Reserved position for the SKU selector.
-# SKU is kept in the same Filters section as Risk Level for a cleaner sidebar.
 sku_sidebar_slot = st.sidebar.empty()
-st.sidebar.button("Reset Filters", use_container_width=True, on_click=reset_sidebar_filters)
+st.sidebar.button("Reset Filters", use_container_width=True, on_click=reset_sidebar_filters, args=(site_key,))
 
 st.sidebar.divider()
 st.sidebar.markdown(
@@ -1573,9 +1555,6 @@ st.sidebar.markdown(
 )
 
 
-# ============================================================
-# Main app
-# ============================================================
 st.markdown(
     f"""
     <div class="page-header">
@@ -1691,27 +1670,25 @@ except Exception as exc:
 
 sku_df = model["sku_df"].copy()
 
-# ============================================================
-# Main SKU filters
-# ============================================================
 all_skus = sku_df["SKU"].astype(str).dropna().tolist()
 sku_options = [""] + all_skus
 
 with sku_sidebar_slot.container():
     st.markdown('<div class="sidebar-section-gap"></div>', unsafe_allow_html=True)
 
-    if st.session_state.get("sku_select_combined") not in sku_options:
-        st.session_state.pop("sku_select_combined", None)
+    if st.session_state.get(sku_select_key) not in sku_options:
+        st.session_state[sku_select_key] = ""
 
     selected_sku = st.selectbox(
         "Search / Select SKU",
         options=sku_options,
         index=0,
-        key="sku_select_combined",
+        key=sku_select_key,
         format_func=lambda x: "" if x == "" else x,
         help="Select a SKU to show only that SKU. Leave blank to use Risk Level filters.",
     )
 
+selected_sku = clean_text(selected_sku)
 filtered = sku_df.copy()
 
 if selected_sku:
@@ -1829,7 +1806,9 @@ st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 sku_tab, trend_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "Trend", "Audit", "Guide"])
 
 with sku_tab:
-    if priority_filtered.empty or not selected_sku:
+    if not selected_sku:
+        st.info("Select a SKU to view SKU Detail.")
+    elif priority_filtered.empty:
         st.warning("No SKU matches the current filters.")
     else:
         selected = sku_df[sku_df["SKU"].astype(str) == str(selected_sku)].iloc[0]
@@ -1928,7 +1907,7 @@ with sku_tab:
 
                 st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
 
-                sku_filter_key = re.sub(r"[^A-Za-z0-9_]+", "_", str(selected_sku))[:55]
+                sku_filter_key = re.sub(r"[^A-Za-z0-9_]+", "_", f"{format_name}_{selected_sku}")[:55]
                 tx_filtered = tx_sku.copy()
 
                 f1, f2 = st.columns([2, 1])
@@ -1969,7 +1948,7 @@ with sku_tab:
 
                 st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
 
-                # Always keep transaction history newest first.
+
                 tx_filtered = tx_filtered.sort_values(["Activity Date", "Excel Row"], ascending=[False, False])
 
                 show_transaction_dataframe(tx_filtered[full_tx_cols], height=420, limit=500)
