@@ -468,7 +468,6 @@ def get_cell(row, col_idx):
 
 
 def first_qty_number(value) -> float:
-    """Parse Qty like ' 5,139 / 198' and return first number only: 5139."""
     text = clean_text(value)
     if not text:
         return 0.0
@@ -479,7 +478,6 @@ def first_qty_number(value) -> float:
 
 
 def parse_excel_or_text_date(value):
-    """Parse Excel dates, serial dates, and text like '6/1/2026 (Not Shipped)'."""
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return pd.NaT
 
@@ -519,12 +517,6 @@ def safe_format_slug(format_name: str) -> str:
 
 
 def persistent_upload_paths(format_name: str) -> tuple[Path, Path]:
-    """Keep one saved report per site/format.
-
-    Newark and Carson use different report layouts, so each format keeps its
-    own saved upload. Switching formats reuses that format's saved report and
-    only changes when a new file is uploaded under that selected format.
-    """
     slug = safe_format_slug(format_name)
     return (
         PERSISTENT_UPLOAD_DIR / f"{slug}_upload.bin",
@@ -581,7 +573,6 @@ def find_header_row(raw: pd.DataFrame) -> int:
 
 
 def validate_selected_format(raw: pd.DataFrame, config: dict):
-    """Catch the common case where the selected format does not match the uploaded file."""
     header_idx = find_header_row(raw)
     header_row = raw.iloc[header_idx]
     cols = config["cols"]
@@ -664,7 +655,6 @@ def process_excel_file(file_bytes: bytes, format_name: str, cache_version: str =
 
 
 def last_data_activity_dates(tx_df: pd.DataFrame, end_date, count: int) -> list:
-    """Use dates present in the uploaded data, including report end date when present."""
     if tx_df.empty:
         return []
     end_date = pd.to_datetime(end_date).normalize()
@@ -1088,7 +1078,6 @@ def prepare_display(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def prepare_customer_export(df: pd.DataFrame) -> pd.DataFrame:
-    """Prepare a customer-facing export with all SKUs and no internal source row numbers."""
     customer_cols = [
         "SKU",
         "Description",
@@ -1129,7 +1118,6 @@ def prepare_customer_export(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def report_download_filename(format_name: str, report_end) -> str:
-    """Use the selected format and report end date for a customer-ready file name."""
     try:
         date_part = pd.to_datetime(report_end).strftime("%m%d%Y")
     except Exception:
@@ -1292,7 +1280,6 @@ def to_transaction_excel_bytes(model: dict, format_name: str, cache_version: str
 
 @st.cache_data(show_spinner=False)
 def to_excel_bytes(model: dict, format_name: str) -> bytes:
-    """Create a polished customer-facing workbook with only the Shortage Priority tab."""
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
@@ -1924,14 +1911,32 @@ with sku_tab:
                     tx_min_date = None
                     tx_max_date = None
 
-                selected_tx_date = f2.date_input(
-                    "Activity Date",
-                    value=None,
-                    min_value=tx_min_date,
-                    max_value=tx_max_date,
-                    key=f"tx_date_{sku_filter_key}",
-                    help="Pick one specific activity date from the calendar, or leave blank to show all dates.",
+                activity_date_mode = f2.selectbox(
+                    "Activity Date Filter",
+                    options=["All Dates", "Single Date", "Date Range"],
+                    key=f"tx_date_mode_{sku_filter_key}",
                 )
+
+                selected_tx_date = None
+                selected_tx_date_range = None
+
+                if activity_date_mode == "Single Date":
+                    selected_tx_date = f2.date_input(
+                        "Activity Date",
+                        value=None,
+                        min_value=tx_min_date,
+                        max_value=tx_max_date,
+                        key=f"tx_date_{sku_filter_key}",
+                    )
+                elif activity_date_mode == "Date Range":
+                    default_tx_date_range = (tx_min_date, tx_max_date) if tx_min_date is not None and tx_max_date is not None else None
+                    selected_tx_date_range = f2.date_input(
+                        "Activity Date Range",
+                        value=default_tx_date_range,
+                        min_value=tx_min_date,
+                        max_value=tx_max_date,
+                        key=f"tx_date_range_{sku_filter_key}",
+                    )
 
                 tx_terms = []
                 if tx_search.strip():
@@ -1942,10 +1947,20 @@ with sku_tab:
                         | tx_filtered["Trans. #"].astype(str).str.lower().str.contains(tx_pattern, na=False, regex=True)
                     ]
 
-                if selected_tx_date is not None:
+                if activity_date_mode == "Single Date" and selected_tx_date is not None:
                     selected_date_value = pd.to_datetime(selected_tx_date).normalize()
                     tx_activity_dates = pd.to_datetime(tx_filtered["Activity Date"], errors="coerce").dt.normalize()
                     tx_filtered = tx_filtered[tx_activity_dates == selected_date_value]
+                elif activity_date_mode == "Date Range" and selected_tx_date_range is not None:
+                    if isinstance(selected_tx_date_range, tuple) and len(selected_tx_date_range) == 2:
+                        range_start = pd.to_datetime(selected_tx_date_range[0]).normalize()
+                        range_end = pd.to_datetime(selected_tx_date_range[1]).normalize()
+                        if range_start > range_end:
+                            range_start, range_end = range_end, range_start
+                        tx_activity_dates = pd.to_datetime(tx_filtered["Activity Date"], errors="coerce").dt.normalize()
+                        tx_filtered = tx_filtered[(tx_activity_dates >= range_start) & (tx_activity_dates <= range_end)]
+                    else:
+                        st.warning("Please select both start and end date for Activity Date Range.")
 
                 if tx_terms:
                     tx_result_text = (
