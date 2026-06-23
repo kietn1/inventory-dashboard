@@ -3299,7 +3299,7 @@ with stock_check_tab:
         with input_count_col_3:
             st.caption(f"Input issue rows: {len(issue_rows):,}")
 
-    detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, tx_df)
+    detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, model.get("tx_df", pd.DataFrame()))
 
     if input_df.empty:
         st.info("Paste values under DO #, Item Code / SKU, and Qty to check stock availability.")
