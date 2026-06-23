@@ -564,6 +564,256 @@ st.markdown(
             .tx-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .tx-filter-top { flex-direction: column; }
         }
+
+        .main .block-container {
+            padding-top: .55rem;
+            padding-left: 1.25rem;
+            padding-right: 1.25rem;
+            padding-bottom: .95rem;
+            max-width: 1440px;
+        }
+        .page-header {
+            margin-bottom: .58rem;
+            padding-bottom: .38rem;
+        }
+        .page-title {
+            font-size: 1.68rem;
+            margin-bottom: .12rem;
+        }
+        .page-subtitle {
+            font-size: .84rem;
+        }
+        .upload-hero {
+            padding: 10px 13px;
+            margin: 0 0 .46rem 0;
+            border-radius: 16px;
+        }
+        .upload-hero-title {
+            font-size: .98rem;
+            margin-bottom: 2px;
+        }
+        .upload-hero-subtitle {
+            font-size: .82rem;
+        }
+        div[data-testid="stFileUploader"] section {
+            padding: 12px 14px;
+            border-radius: 15px;
+            animation: none;
+        }
+        .small-note {
+            padding: 5px 9px;
+            margin: .02rem 0 .58rem 0;
+            font-size: .78rem;
+        }
+        .health-summary-card {
+            padding: 12px 14px;
+            margin: .02rem 0 .66rem 0;
+            border-radius: 16px;
+        }
+        .health-summary-title {
+            font-size: .76rem;
+            margin-bottom: 3px;
+        }
+        .health-summary-text {
+            font-size: .98rem;
+            line-height: 1.32;
+        }
+        .kpi-card {
+            padding: 12px 13px 10px 13px;
+            min-height: 84px;
+            border-radius: 14px;
+        }
+        .kpi-label {
+            font-size: .76rem;
+            margin-bottom: 4px;
+        }
+        .kpi-value {
+            font-size: 1.46rem;
+            line-height: 1.05;
+        }
+        .kpi-help {
+            font-size: .71rem;
+            margin-top: 5px;
+        }
+        .kpi-row-gap {
+            height: .42rem;
+        }
+        .section-block {
+            margin-top: .78rem;
+        }
+        .section-divider {
+            margin: .88rem 0 .62rem 0;
+            background: rgba(17,24,39,.065);
+        }
+        .section-title {
+            font-size: 1.03rem;
+            margin: 0 0 .10rem 0;
+        }
+        .section-subtitle {
+            font-size: .80rem;
+            margin: 0 0 .42rem 0;
+        }
+        .selected-sku-card {
+            padding: 18px 21px;
+            margin: .12rem 0 .82rem 0;
+            border-radius: 19px;
+        }
+        .selected-sku-card::before {
+            width: 5px;
+        }
+        .selected-sku-label {
+            font-size: .76rem;
+            margin-bottom: 6px;
+        }
+        .selected-sku-value {
+            font-size: 2.05rem;
+        }
+        .selected-sku-description {
+            font-size: 1.02rem;
+            margin-top: 7px;
+        }
+        .tx-filter-shell {
+            padding: 14px 16px 12px 16px;
+            margin: .10rem 0 .62rem 0;
+            border-radius: 20px;
+        }
+        .tx-filter-top {
+            margin-bottom: 0;
+        }
+        .tx-filter-title {
+            font-size: 1.04rem;
+        }
+        .tx-filter-subtitle {
+            font-size: .80rem;
+            margin-top: 2px;
+        }
+        .tx-filter-card {
+            padding: 11px 12px;
+            min-height: 0;
+            border-radius: 16px;
+        }
+        .tx-filter-card-title {
+            font-size: .74rem;
+            margin-bottom: 5px;
+        }
+        .tx-filter-card-subtitle {
+            font-size: .76rem;
+            margin-bottom: 7px;
+        }
+        .tx-example-row {
+            gap: 5px;
+            margin: -1px 0 7px 0;
+        }
+        .tx-example-pill, .tx-pill, .tx-pill-ok, .tx-pill-missing, .tx-pill-muted {
+            padding: 3px 7px;
+            font-size: .72rem;
+        }
+        .tx-status-grid {
+            gap: 8px;
+            margin: 9px 0 6px 0;
+        }
+        .tx-status-card {
+            padding: 9px 10px;
+            min-height: 66px;
+            border-radius: 14px;
+        }
+        .tx-status-label {
+            font-size: .69rem;
+            margin-bottom: 3px;
+        }
+        .tx-status-value {
+            font-size: 1.12rem;
+        }
+        .tx-status-help {
+            font-size: .70rem;
+            margin-top: 3px;
+        }
+        .tx-result-box {
+            padding: 9px 11px;
+            margin: 8px 0 5px 0;
+            border-radius: 14px;
+        }
+        .tx-result-title {
+            font-size: .80rem;
+            margin-bottom: 5px;
+        }
+        .tx-pill-wrap {
+            gap: 5px;
+        }
+        .lookup-hero {
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 20px;
+            background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(245,245,247,.9));
+            box-shadow: 0 10px 30px rgba(16,24,40,.065);
+            padding: 16px 18px;
+            margin: .08rem 0 .72rem 0;
+        }
+        .lookup-title {
+            font-size: 1.16rem;
+            font-weight: 880;
+            color: #111827;
+            letter-spacing: -.028em;
+            line-height: 1.18;
+        }
+        .lookup-subtitle {
+            font-size: .82rem;
+            color: #6B7280;
+            line-height: 1.34;
+            margin-top: 4px;
+        }
+        .compact-heading {
+            margin-top: .1rem;
+            margin-bottom: .28rem;
+        }
+        div[data-testid="stDataFrame"] {
+            margin-top: .08rem;
+            border-radius: 13px;
+            box-shadow: 0 4px 16px rgba(16,24,40,.04);
+        }
+        div[data-testid="stTabs"] {
+            margin-top: .10rem;
+        }
+        div[data-testid="stTabs"] [role="tablist"] {
+            gap: 6px;
+            border-bottom: 1px solid rgba(17,24,39,.08);
+        }
+        div[data-testid="stTabs"] button[role="tab"] {
+            padding: 8px 12px;
+            border-radius: 12px 12px 0 0;
+            font-weight: 760;
+        }
+        div[data-testid="stExpander"] {
+            border-radius: 15px;
+            margin-bottom: .42rem;
+        }
+        div[data-testid="stExpander"] details summary {
+            padding-top: 8px;
+            padding-bottom: 8px;
+        }
+        div[data-testid="stTextArea"] textarea {
+            min-height: 118px !important;
+            border-radius: 13px !important;
+        }
+        div[data-testid="stRadio"] {
+            margin-top: -.1rem;
+        }
+        div[data-testid="stDownloadButton"] button, .stButton > button {
+            min-height: 2.45rem;
+            font-weight: 730;
+        }
+        div[data-testid="stCaptionContainer"] {
+            margin-top: -.18rem;
+        }
+        @media (max-width: 900px) {
+            .main .block-container {
+                padding-left: .85rem;
+                padding-right: .85rem;
+            }
+            .selected-sku-value {
+                font-size: 1.65rem;
+            }
+        }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -1383,7 +1633,7 @@ def to_transaction_excel_bytes(model: dict, format_name: str, cache_version: str
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             cell.border = border
-        worksheet.row_dimensions[header_row].height = 30
+        worksheet.row_dimensions[header_row].height = 28
 
         integer_columns = {"Qty In", "Qty Out", "Balance After Transaction"}
         date_columns = {"Activity Date"}
@@ -1401,6 +1651,7 @@ def to_transaction_excel_bytes(model: dict, format_name: str, cache_version: str
         tx_type_col_idx = list(export_df.columns).index("Transaction Type") + 1 if "Transaction Type" in export_df.columns else None
 
         for row in worksheet.iter_rows(min_row=header_row + 1, max_row=last_row, min_col=1, max_col=last_col):
+            worksheet.row_dimensions[row[0].row].height = 22
             for cell in row:
                 header = worksheet.cell(row=header_row, column=cell.column).value
                 cell.border = border
@@ -1511,7 +1762,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             cell.border = border
-        worksheet.row_dimensions[header_row].height = 30
+        worksheet.row_dimensions[header_row].height = 28
 
 
         risk_col_idx = list(export_df.columns).index("Risk Level") + 1
@@ -1528,6 +1779,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
         text_columns = {"SKU", "Description", "Risk Level", "Recommended Action"}
 
         for row in worksheet.iter_rows(min_row=header_row + 1, max_row=last_row, min_col=1, max_col=last_col):
+            worksheet.row_dimensions[row[0].row].height = 22
             for cell in row:
                 header = worksheet.cell(row=header_row, column=cell.column).value
                 cell.border = border
@@ -1582,12 +1834,13 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
 
     return output.getvalue()
 
-def show_limited_dataframe(df: pd.DataFrame, height: int = 420, limit: int = 500):
+def show_limited_dataframe(df: pd.DataFrame, height: int = 420, limit: int = 500, show_count: bool = True):
     total_rows = len(df)
-    if total_rows > limit:
-        st.caption(f"Showing first {limit:,} rows out of {total_rows:,} rows for faster loading. Download export for full data.")
-    else:
-        st.caption(f"Showing {total_rows:,} rows.")
+    if show_count:
+        if total_rows > limit:
+            st.caption(f"Showing first {limit:,} rows out of {total_rows:,} rows for faster loading. Download export for full data.")
+        else:
+            st.caption(f"Showing {total_rows:,} rows.")
     st.dataframe(display_table(df.head(limit)), use_container_width=True, hide_index=True, height=height)
 
 
@@ -1943,7 +2196,7 @@ priority_cols = [
     "Forecast Stockout Date",
 ]
 priority_display = prepare_display(priority_filtered[priority_cols])
-show_limited_dataframe(priority_display, height=440, limit=250)
+show_limited_dataframe(priority_display, height=420, limit=250)
 
 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
@@ -1971,7 +2224,7 @@ with export_col_2:
 
 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 
-sku_tab, do_lookup_tab, trend_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "DO Lookup", "Trend", "Audit", "Guide"])
+sku_tab, do_lookup_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "DO Lookup", "Audit", "Guide"])
 
 with sku_tab:
     if not selected_sku:
@@ -2309,8 +2562,15 @@ with sku_tab:
 
 
 with do_lookup_tab:
-    st.subheader("DO Lookup")
-    st.caption("Search DO # values in a separate lookup tab and see all matching items across all SKUs.")
+    st.markdown(
+        """
+        <div class="lookup-hero">
+            <div class="lookup-title">DO Lookup</div>
+            <div class="lookup-subtitle">Paste one or multiple DO # values to view all matching items across every SKU. Results are grouped by each searched DO # for easy review.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     do_tx = model["tx_df"].copy()
     do_lookup_key = f"do_lookup_{site_key}"
@@ -2318,8 +2578,8 @@ with do_lookup_tab:
 
     do_header_left, do_header_right = st.columns([5, 1.15])
     with do_header_left:
-        st.markdown("<div class='section-title'>Search DO #</div>", unsafe_allow_html=True)
-        st.markdown("<div class='section-subtitle'>Enter one DO #, or paste multiple values using line breaks, commas, or semicolons.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title compact-heading'>Search DO #</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-subtitle'>Use line breaks, commas, or semicolons. Each DO will display in its own grouped section.</div>", unsafe_allow_html=True)
     with do_header_right:
         if st.button("Clear", use_container_width=True, key=do_clear_key):
             st.session_state[do_lookup_key] = ""
@@ -2329,7 +2589,7 @@ with do_lookup_tab:
         "Search DO #",
         placeholder="AXIA_2484\nPO_0090",
         key=do_lookup_key,
-        height=112,
+        height=104,
         label_visibility="collapsed",
     )
 
@@ -2450,8 +2710,49 @@ with do_lookup_tab:
             do_detail_df["Qty In"] = pd.to_numeric(do_detail_df["Qty In"], errors="coerce").fillna(0)
             do_detail_df["Qty Out"] = pd.to_numeric(do_detail_df["Qty Out"], errors="coerce").fillna(0)
 
+            overview_rows = []
+            for term in do_lookup_terms:
+                term_detail_df = do_detail_df[do_detail_df["Searched DO #"] == term].copy()
+                if term_detail_df.empty:
+                    overview_rows.append(
+                        {
+                            "DO #": term,
+                            "Status": "Not Found",
+                            "SKU Count": 0,
+                            "Qty In": 0,
+                            "Qty Out": 0,
+                            "Activity Date Range": "-",
+                        }
+                    )
+                else:
+                    term_dates = pd.to_datetime(term_detail_df["Activity Date"], errors="coerce").dropna()
+                    if term_dates.empty:
+                        date_range_text = "-"
+                    else:
+                        date_start = term_dates.min().strftime("%m/%d/%Y")
+                        date_end = term_dates.max().strftime("%m/%d/%Y")
+                        date_range_text = date_start if date_start == date_end else f"{date_start} - {date_end}"
+                    overview_rows.append(
+                        {
+                            "DO #": term,
+                            "Status": "Found",
+                            "SKU Count": term_detail_df["SKU"].astype(str).replace("", np.nan).dropna().nunique(),
+                            "Qty In": pd.to_numeric(term_detail_df["Qty In"], errors="coerce").fillna(0).sum(),
+                            "Qty Out": pd.to_numeric(term_detail_df["Qty Out"], errors="coerce").fillna(0).sum(),
+                            "Activity Date Range": date_range_text,
+                        }
+                    )
+
+            st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-title'>DO Search Overview</div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-subtitle'>Shows each pasted DO # in the same order entered, so missing and matched values are easy to review.</div>", unsafe_allow_html=True)
+            overview_df = pd.DataFrame(overview_rows)
+            overview_height = min(310, max(132, 74 + (len(overview_df) * 32)))
+            show_limited_dataframe(overview_df, height=overview_height, limit=1000, show_count=False)
+
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
             st.markdown("<div class='section-title'>Items Belonging to Each DO #</div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-subtitle'>Each section below is separated by the exact DO # you searched.</div>", unsafe_allow_html=True)
 
             for term in do_found_terms:
                 term_detail_df = do_detail_df[do_detail_df["Searched DO #"] == term].copy()
@@ -2468,15 +2769,15 @@ with do_lookup_tab:
                     .reset_index()
                 )
                 term_summary = term_summary.sort_values(["Ref #", "SKU"], ascending=[True, True]).reset_index(drop=True)
+                term_summary = term_summary.rename(columns={"Searched DO #": "DO #"})
                 term_qty_out = pd.to_numeric(term_detail_df["Qty Out"], errors="coerce").fillna(0).sum()
+                term_qty_in = pd.to_numeric(term_detail_df["Qty In"], errors="coerce").fillna(0).sum()
                 term_sku_count = term_summary["SKU"].astype(str).replace("", np.nan).dropna().nunique()
+                term_table_height = min(360, max(142, 76 + (len(term_summary) * 31)))
 
-                with st.expander(f"{term} — {term_sku_count:,} SKU(s), Qty Out {fmt_num(term_qty_out)}", expanded=True):
-                    show_limited_dataframe(term_summary, height=260, limit=500)
+                with st.expander(f"{term} | {term_sku_count:,} SKU(s) | Qty In {fmt_num(term_qty_in)} | Qty Out {fmt_num(term_qty_out)}", expanded=len(do_found_terms) <= 5):
+                    show_limited_dataframe(term_summary, height=term_table_height, limit=500, show_count=False)
 
-            st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-title'>Detailed Matching Transactions</div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-subtitle'>Includes the searched DO # column so each original row stays tied to the pasted value.</div>", unsafe_allow_html=True)
             do_detail_cols = [
                 "Searched DO #",
                 "Excel Row",
@@ -2493,20 +2794,10 @@ with do_lookup_tab:
                 "Is Cancelled",
             ]
             do_detail_df = do_detail_df.sort_values(["Searched DO #", "Activity Date", "Excel Row", "SKU"], ascending=[True, False, False, True])
-            show_transaction_dataframe(do_detail_df[do_detail_cols], height=420, limit=500)
+            with st.expander("Detailed Matching Transactions", expanded=False):
+                st.markdown("<div class='section-subtitle'>Original transaction rows with the searched DO # kept as the first column.</div>", unsafe_allow_html=True)
+                show_transaction_dataframe(do_detail_df[do_detail_cols], height=380, limit=500)
 
-with trend_tab:
-    st.subheader("Outbound Trend")
-    trend_df = model["trend_df"]
-    if trend_df.empty:
-        st.info("No dated outbound transactions found.")
-    else:
-        trend_plot = trend_df.copy()
-        trend_plot["Activity Date"] = pd.to_datetime(trend_plot["Activity Date"])
-        st.line_chart(trend_plot, x="Activity Date", y="Qty Out", height=360, use_container_width=True)
-
-        top_usage = sku_df.sort_values("Outbound Last 30 Days", ascending=False).head(20)[["SKU", "Outbound Last 30 Days"]]
-        st.bar_chart(top_usage, x="SKU", y="Outbound Last 30 Days", height=360, use_container_width=True)
 
 with audit_tab:
     st.subheader("Audit Checks")
