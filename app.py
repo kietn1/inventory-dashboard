@@ -2363,6 +2363,40 @@ def show_limited_dataframe(df: pd.DataFrame, height: int = 420, limit: int = 500
     st.dataframe(display_table(df.head(limit)), use_container_width=True, hide_index=True, height=height)
 
 
+def show_temporary_balance_dataframe(df: pd.DataFrame, height: int = 420, limit: int = 2000, show_count: bool = True):
+    total_rows = len(df)
+    if show_count:
+        if total_rows > limit:
+            st.caption(f"Showing first {limit:,} rows out of {total_rows:,} rows for faster loading. Download export for full data.")
+        else:
+            st.caption(f"Showing {total_rows:,} rows.")
+
+    display_df = prepare_stock_check_display(df.head(limit))
+
+    def highlight_temporary_balance(row):
+        styles = ["" for _ in row]
+        if "Temporary Balance" not in row.index:
+            return styles
+        value = pd.to_numeric(pd.Series([row.get("Temporary Balance")]), errors="coerce").iloc[0]
+        qty_to_check = pd.to_numeric(pd.Series([row.get("Total Qty To Check", 0)]), errors="coerce").fillna(0).iloc[0]
+        temp_idx = list(row.index).index("Temporary Balance")
+        if pd.isna(value):
+            styles[temp_idx] = "background-color: #F3F4F6; color: #4B5563; font-weight: 850; text-align: right;"
+        elif value < 0:
+            styles[temp_idx] = "background-color: #FDE2E1; color: #B42318; font-weight: 900; text-align: right;"
+        elif qty_to_check > 0:
+            styles[temp_idx] = "background-color: #DFF3E3; color: #067647; font-weight: 900; text-align: right;"
+        else:
+            styles[temp_idx] = "background-color: #F3F4F6; color: #4B5563; font-weight: 850; text-align: right;"
+        return styles
+
+    styled_df = display_df.style.apply(highlight_temporary_balance, axis=1)
+    numeric_subset = [col for col in ["Current Ending Balance", "Total Qty To Check", "Temporary Balance", "Shortage Qty"] if col in display_df.columns]
+    if numeric_subset:
+        styled_df = styled_df.set_properties(subset=numeric_subset, **{"text-align": "right"})
+    st.dataframe(styled_df, use_container_width=True, hide_index=True, height=height)
+
+
 def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int = 500):
     total_rows = len(df)
     if total_rows > limit:
@@ -3336,11 +3370,19 @@ with stock_check_tab:
 
 
     stock_table_version_key = f"stock_check_table_version_{site_key}"
+    stock_result_signature_key = f"stock_check_result_signature_{site_key}"
+    stock_detail_result_key = f"stock_check_detail_result_{site_key}"
+    stock_overview_result_key = f"stock_check_overview_result_{site_key}"
+    stock_issues_result_key = f"stock_check_issues_result_{site_key}"
+    stock_temp_result_key = f"stock_check_temp_balance_result_{site_key}"
+    stock_temp_filter_key = f"temp_balance_sku_select_{site_key}"
     st.session_state.setdefault(stock_table_version_key, 0)
     reset_col_1, reset_col_2 = st.columns([1, 5])
     with reset_col_1:
         if st.button("Reset", use_container_width=True, key=f"stock_check_reset_{site_key}"):
             st.session_state[stock_table_version_key] += 1
+            for key in [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key]:
+                st.session_state.pop(key, None)
             st.rerun()
 
     stock_table_key = f"stock_check_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
@@ -3380,7 +3422,29 @@ with stock_check_tab:
         with input_count_col_3:
             st.caption(f"Input issue rows: {len(issue_rows):,}")
 
-    detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, model.get("tx_df", pd.DataFrame()))
+    input_signature_source = input_df.fillna("").astype(str).to_json(orient="records") if not input_df.empty else ""
+    stock_current_signature = hashlib.sha256(f"{uploaded_key}|{input_signature_source}".encode("utf-8")).hexdigest()
+
+    if input_df.empty:
+        detail_df = pd.DataFrame()
+        overview_df = pd.DataFrame()
+        issues_df = pd.DataFrame()
+        temporary_balance_df = pd.DataFrame()
+        for key in [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key]:
+            st.session_state.pop(key, None)
+    elif st.session_state.get(stock_result_signature_key) == stock_current_signature:
+        detail_df = st.session_state.get(stock_detail_result_key, pd.DataFrame())
+        overview_df = st.session_state.get(stock_overview_result_key, pd.DataFrame())
+        issues_df = st.session_state.get(stock_issues_result_key, pd.DataFrame())
+        temporary_balance_df = st.session_state.get(stock_temp_result_key, pd.DataFrame())
+    else:
+        detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, model.get("tx_df", pd.DataFrame()))
+        temporary_balance_df = build_temporary_balance_table(sku_df, detail_df) if not detail_df.empty else pd.DataFrame()
+        st.session_state[stock_result_signature_key] = stock_current_signature
+        st.session_state[stock_detail_result_key] = detail_df
+        st.session_state[stock_overview_result_key] = overview_df
+        st.session_state[stock_issues_result_key] = issues_df
+        st.session_state[stock_temp_result_key] = temporary_balance_df
 
     if input_df.empty:
         st.info("Paste values under DO #, Item Code / SKU, and Qty to check stock availability.")
@@ -3474,7 +3538,6 @@ with stock_check_tab:
                     do_height = min(360, max(142, 76 + (len(do_display) * 31)))
                     show_limited_dataframe(do_display, height=do_height, limit=500, show_count=False)
 
-            temporary_balance_df = build_temporary_balance_table(sku_df, detail_df)
             if not temporary_balance_df.empty:
                 affected_sku_count = int((pd.to_numeric(temporary_balance_df["Total Qty To Check"], errors="coerce").fillna(0) > 0).sum())
                 temporary_shortage_count = int((temporary_balance_df["Temporary Status"] == "Shortage").sum()) if "Temporary Status" in temporary_balance_df.columns else 0
@@ -3482,18 +3545,20 @@ with stock_check_tab:
                 st.markdown("<div class='section-title'>Temporary Balance by SKU</div>", unsafe_allow_html=True)
                 st.markdown(f"<div class='section-subtitle'>All SKUs are included. Affected SKUs are shown first based on the pasted DO demand. Affected SKUs: {affected_sku_count:,} | Temporary shortage SKUs: {temporary_shortage_count:,}</div>", unsafe_allow_html=True)
                 temp_sku_options = ["All SKUs"] + temporary_balance_df["SKU"].astype(str).dropna().tolist()
+                if st.session_state.get(stock_temp_filter_key) not in temp_sku_options:
+                    st.session_state[stock_temp_filter_key] = "All SKUs"
                 temp_sku_filter = st.selectbox(
                     "Choose SKU",
                     options=temp_sku_options,
-                    index=0,
-                    key=f"temp_balance_sku_select_{site_key}_{st.session_state[stock_table_version_key]}",
+                    index=temp_sku_options.index(st.session_state.get(stock_temp_filter_key, "All SKUs")),
+                    key=stock_temp_filter_key,
                 )
                 filtered_temp_balance_df = temporary_balance_df.copy()
                 if temp_sku_filter != "All SKUs":
                     filtered_temp_balance_df = filtered_temp_balance_df[filtered_temp_balance_df["SKU"].astype(str) == str(temp_sku_filter)].copy()
-                temp_display = prepare_stock_check_display(filtered_temp_balance_df.drop(columns=["Impact Sort", "Status Sort"], errors="ignore"))
+                temp_display = filtered_temp_balance_df.drop(columns=["Impact Sort", "Status Sort"], errors="ignore")
                 temp_height = min(560, max(190, 76 + (min(len(temp_display), 14) * 31)))
-                show_limited_dataframe(temp_display, height=temp_height, limit=2000, show_count=True)
+                show_temporary_balance_dataframe(temp_display, height=temp_height, limit=2000, show_count=True)
 
             export_stock_df = prepare_stock_check_display(detail_df.drop(columns=["Input Order"], errors="ignore"))
             export_overview_df = prepare_stock_check_display(overview_df)
