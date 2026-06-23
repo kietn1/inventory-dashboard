@@ -1971,7 +1971,7 @@ with export_col_2:
 
 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 
-sku_tab, trend_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "Trend", "Audit", "Guide"])
+sku_tab, do_lookup_tab, trend_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "DO Lookup", "Trend", "Audit", "Guide"])
 
 with sku_tab:
     if not selected_sku:
@@ -2307,6 +2307,171 @@ with sku_tab:
 
                 show_transaction_dataframe(tx_filtered[full_tx_cols], height=420, limit=500)
 
+
+with do_lookup_tab:
+    st.subheader("DO Lookup")
+    st.caption("Search a DO # to see every item tied to that Ref # / Trans. # across all SKUs.")
+
+    do_tx = model["tx_df"].copy()
+    do_lookup_key = f"do_lookup_{site_key}"
+    do_clear_key = f"clear_do_lookup_{site_key}"
+
+    do_header_left, do_header_right = st.columns([5, 1.15])
+    with do_header_left:
+        st.markdown("<div class='section-title'>Search DO #</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-subtitle'>Enter one DO #, or paste multiple values using line breaks, commas, or semicolons.</div>", unsafe_allow_html=True)
+    with do_header_right:
+        if st.button("Clear", use_container_width=True, key=do_clear_key):
+            st.session_state[do_lookup_key] = ""
+            st.rerun()
+
+    do_lookup_value = st.text_area(
+        "Search DO #",
+        placeholder="AXIA_2484\nPO_0090",
+        key=do_lookup_key,
+        height=112,
+        label_visibility="collapsed",
+    )
+
+    do_lookup_terms = [x.strip() for x in re.split(r"[\n,;]+", do_lookup_value) if x.strip()]
+
+    if do_tx.empty:
+        st.info("No transaction data found in this report.")
+    elif not do_lookup_terms:
+        st.markdown(
+            """
+            <div class="tx-result-box">
+                <div class="tx-result-title">Waiting for DO #</div>
+                <div class="tx-pill-wrap"><span class="tx-pill-muted">Enter a DO # to show all items belonging to it.</span></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        for col in ["Ref #", "Trans. #", "SKU", "Description", "Activity Date", "Transaction Type", "Qty In", "Qty Out", "Balance After Transaction", "Is Not Shipped", "Is Cancelled", "Excel Row"]:
+            if col not in do_tx.columns:
+                if col in ["Qty In", "Qty Out", "Balance After Transaction"]:
+                    do_tx[col] = 0.0
+                elif col in ["Is Not Shipped", "Is Cancelled"]:
+                    do_tx[col] = False
+                elif col == "Activity Date":
+                    do_tx[col] = pd.NaT
+                else:
+                    do_tx[col] = ""
+
+        do_search_text = (
+            do_tx["Ref #"].astype(str).str.lower()
+            + " "
+            + do_tx["Trans. #"].astype(str).str.lower()
+        )
+        do_pattern = "|".join(re.escape(term.lower()) for term in do_lookup_terms)
+        do_match_mask = do_search_text.str.contains(do_pattern, na=False, regex=True)
+        do_detail_df = do_tx[do_match_mask].copy()
+
+        do_missing_terms = [
+            term for term in do_lookup_terms
+            if not do_search_text.str.contains(re.escape(term.lower()), na=False, regex=True).any()
+        ]
+        do_found_terms = [term for term in do_lookup_terms if term not in do_missing_terms]
+
+        unique_sku_count = do_detail_df["SKU"].astype(str).replace("", np.nan).dropna().nunique() if not do_detail_df.empty else 0
+        total_do_qty_out = pd.to_numeric(do_detail_df["Qty Out"], errors="coerce").fillna(0).sum() if not do_detail_df.empty else 0
+        total_do_qty_in = pd.to_numeric(do_detail_df["Qty In"], errors="coerce").fillna(0).sum() if not do_detail_df.empty else 0
+        matched_value_text = f"{len(do_found_terms):,} / {len(do_lookup_terms):,}"
+
+        st.markdown(
+            f"""
+            <div class="tx-status-grid">
+                <div class="tx-status-card">
+                    <div class="tx-status-label">Search Values</div>
+                    <div class="tx-status-value">{len(do_lookup_terms):,}</div>
+                    <div class="tx-status-help">DO # entered</div>
+                </div>
+                <div class="tx-status-card">
+                    <div class="tx-status-label">Matched Values</div>
+                    <div class="tx-status-value">{html.escape(matched_value_text)}</div>
+                    <div class="tx-status-help">found in Ref # / Trans. #</div>
+                </div>
+                <div class="tx-status-card">
+                    <div class="tx-status-label">Items / SKUs</div>
+                    <div class="tx-status-value">{unique_sku_count:,}</div>
+                    <div class="tx-status-help">unique SKU count</div>
+                </div>
+                <div class="tx-status-card">
+                    <div class="tx-status-label">Qty In / Out</div>
+                    <div class="tx-status-value">{fmt_num(total_do_qty_in)} / {fmt_num(total_do_qty_out)}</div>
+                    <div class="tx-status-help">matched rows total</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if do_missing_terms:
+            st.markdown(
+                f"""
+                <div class="tx-result-box tx-result-box-missing">
+                    <div class="tx-result-title">Not found in full transaction history</div>
+                    <div class="tx-pill-wrap">{html_pills(do_missing_terms, 'tx-pill-missing')}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        if do_found_terms:
+            st.markdown(
+                f"""
+                <div class="tx-result-box tx-result-box-ok">
+                    <div class="tx-result-title">Found DO #</div>
+                    <div class="tx-pill-wrap">{html_pills(do_found_terms, 'tx-pill-ok')}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        if do_detail_df.empty:
+            st.info("No matching rows found for the entered DO #.")
+        else:
+            do_detail_df["Activity Date"] = pd.to_datetime(do_detail_df["Activity Date"], errors="coerce")
+            do_summary = (
+                do_detail_df.groupby(["Ref #", "SKU", "Description"], dropna=False)
+                .agg(
+                    **{
+                        "First Activity Date": ("Activity Date", "min"),
+                        "Latest Activity Date": ("Activity Date", "max"),
+                        "Total Qty In": ("Qty In", "sum"),
+                        "Total Qty Out": ("Qty Out", "sum"),
+                        "Transaction Rows": ("Excel Row", "count"),
+                    }
+                )
+                .reset_index()
+            )
+            do_summary = do_summary.sort_values(["Ref #", "SKU"], ascending=[True, True]).reset_index(drop=True)
+
+            st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-title'>Items Belonging to DO #</div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-subtitle'>Summary by Ref #, SKU, and description.</div>", unsafe_allow_html=True)
+            show_limited_dataframe(do_summary, height=360, limit=500)
+
+            st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-title'>Detailed Matching Transactions</div>", unsafe_allow_html=True)
+            do_detail_cols = [
+                "Excel Row",
+                "SKU",
+                "Description",
+                "Activity Date",
+                "Transaction Type",
+                "Trans. #",
+                "Ref #",
+                "Qty In",
+                "Qty Out",
+                "Balance After Transaction",
+                "Is Not Shipped",
+                "Is Cancelled",
+            ]
+            do_detail_df = do_detail_df.sort_values(["Activity Date", "Excel Row", "SKU"], ascending=[False, False, True])
+            show_transaction_dataframe(do_detail_df[do_detail_cols], height=420, limit=500)
+
 with trend_tab:
     st.subheader("Outbound Trend")
     trend_df = model["trend_df"]
@@ -2358,5 +2523,6 @@ with guide_tab:
         2. Upload the matching **Item Activity Report** Excel file.
         3. Review **Critical**, **Warning**, and **Watch** SKUs first.
         4. Use **SKU Detail** to drill into one SKU and review transaction history.
-        5. Use **Audit** to verify official total rows, ending balance rows, Not Shipped rows, and Cancelled rows.        """
+        5. Use **DO Lookup** to search one DO # and see every item tied to that Ref # / Trans. # across all SKUs.
+        6. Use **Audit** to verify official total rows, ending balance rows, Not Shipped rows, and Cancelled rows.        """
     )
