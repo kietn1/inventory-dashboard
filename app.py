@@ -2452,7 +2452,6 @@ with do_lookup_tab:
 
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
             st.markdown("<div class='section-title'>Items Belonging to Each DO #</div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-subtitle'>Each pasted DO # is shown in its own section, so results do not mix together.</div>", unsafe_allow_html=True)
 
             for term in do_found_terms:
                 term_detail_df = do_detail_df[do_detail_df["Searched DO #"] == term].copy()
