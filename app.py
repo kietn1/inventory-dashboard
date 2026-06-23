@@ -2310,7 +2310,6 @@ with sku_tab:
 
 with do_lookup_tab:
     st.subheader("DO Lookup")
-    st.caption("Search DO # values in a separate lookup tab and see all matching items across all SKUs.")
 
     do_tx = model["tx_df"].copy()
     do_lookup_key = f"do_lookup_{site_key}"
