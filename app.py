@@ -2664,7 +2664,7 @@ with do_lookup_tab:
                 <div class="tx-status-card">
                     <div class="tx-status-label">Matched Values</div>
                     <div class="tx-status-value">{html.escape(matched_value_text)}</div>
-                    <div class="tx-status-help">found in Ref # / Trans. #</div>
+                    <div class="tx-status-help">found in DO # / Trans. #</div>
                 </div>
                 <div class="tx-status-card">
                     <div class="tx-status-label">Items / SKUs</div>
@@ -2757,7 +2757,7 @@ with do_lookup_tab:
             for term in do_found_terms:
                 term_detail_df = do_detail_df[do_detail_df["Searched DO #"] == term].copy()
                 term_summary = (
-                    term_detail_df.groupby(["Searched DO #", "Ref #", "SKU", "Description"], dropna=False)
+                    term_detail_df.groupby(["Searched DO #", "SKU", "Description"], dropna=False)
                     .agg(
                         **{
                             "First Activity Date": ("Activity Date", "min"),
@@ -2768,7 +2768,7 @@ with do_lookup_tab:
                     )
                     .reset_index()
                 )
-                term_summary = term_summary.sort_values(["Ref #", "SKU"], ascending=[True, True]).reset_index(drop=True)
+                term_summary = term_summary.sort_values(["SKU"], ascending=[True]).reset_index(drop=True)
                 term_summary = term_summary.rename(columns={"Searched DO #": "DO #"})
                 term_qty_out = pd.to_numeric(term_detail_df["Qty Out"], errors="coerce").fillna(0).sum()
                 term_qty_in = pd.to_numeric(term_detail_df["Qty In"], errors="coerce").fillna(0).sum()
@@ -2779,14 +2779,13 @@ with do_lookup_tab:
                     show_limited_dataframe(term_summary, height=term_table_height, limit=500, show_count=False)
 
             do_detail_cols = [
-                "Searched DO #",
+                "DO #",
                 "Excel Row",
                 "SKU",
                 "Description",
                 "Activity Date",
                 "Transaction Type",
                 "Trans. #",
-                "Ref #",
                 "Qty In",
                 "Qty Out",
                 "Balance After Transaction",
@@ -2794,9 +2793,10 @@ with do_lookup_tab:
                 "Is Cancelled",
             ]
             do_detail_df = do_detail_df.sort_values(["Searched DO #", "Activity Date", "Excel Row", "SKU"], ascending=[True, False, False, True])
+            do_detail_display_df = do_detail_df.rename(columns={"Searched DO #": "DO #"})
             with st.expander("Detailed Matching Transactions", expanded=False):
-                st.markdown("<div class='section-subtitle'>Original transaction rows with the searched DO # kept as the first column.</div>", unsafe_allow_html=True)
-                show_transaction_dataframe(do_detail_df[do_detail_cols], height=380, limit=500)
+                st.markdown("<div class='section-subtitle'>Original transaction rows with DO # shown as the first column.</div>", unsafe_allow_html=True)
+                show_transaction_dataframe(do_detail_display_df[do_detail_cols], height=380, limit=500)
 
 
 with audit_tab:
@@ -2837,6 +2837,6 @@ with guide_tab:
         2. Upload the matching **Item Activity Report** Excel file.
         3. Review **Critical**, **Warning**, and **Watch** SKUs first.
         4. Use **SKU Detail** to drill into one SKU and review transaction history.
-        5. Use **DO Lookup** to search one DO # and see every item tied to that Ref # / Trans. # across all SKUs.
+        5. Use **DO Lookup** to search one DO # and see every item tied to that DO # / Trans. # across all SKUs.
         6. Use **Audit** to verify official total rows, ending balance rows, Not Shipped rows, and Cancelled rows.        """
     )
