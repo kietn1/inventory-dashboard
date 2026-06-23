@@ -2283,18 +2283,11 @@ with sku_tab:
                         )
                     else:
                         st.markdown(
-                            f"""
+                            """
                             <div class="tx-result-box tx-result-box-ok">
                                 <div class="tx-result-title">All searched values were found</div>
-                                <div class="tx-pill-wrap">{html_pills(tx_found_terms, 'tx-pill-ok')}</div>
                             </div>
                             """,
-                            unsafe_allow_html=True,
-                        )
-
-                    with st.expander("Matched search values", expanded=False):
-                        st.markdown(
-                            f"<div class='tx-pill-wrap'>{html_pills(tx_found_terms, 'tx-pill-ok')}</div>",
                             unsafe_allow_html=True,
                         )
                 else:
