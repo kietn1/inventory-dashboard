@@ -2310,7 +2310,6 @@ with sku_tab:
 
 with do_lookup_tab:
     st.subheader("DO Lookup")
-    st.caption("Search one or multiple DO # values and review each DO in its own clean item section.")
 
     do_tx = model["tx_df"].copy()
     do_lookup_key = f"do_lookup_{site_key}"
@@ -2484,7 +2483,6 @@ with do_lookup_tab:
 
         overview_df = pd.DataFrame(do_overview_rows)
         st.markdown("<div class='section-title'>DO Search Overview</div>", unsafe_allow_html=True)
-        st.markdown("<div class='section-subtitle'>One line per pasted DO #, keeping the same order you entered.</div>", unsafe_allow_html=True)
         overview_height = min(360, max(150, 42 * (len(overview_df) + 1)))
         st.dataframe(display_table(overview_df), use_container_width=True, hide_index=True, height=overview_height)
 
