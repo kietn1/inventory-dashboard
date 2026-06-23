@@ -1495,6 +1495,15 @@ def reset_sidebar_filters(site_key):
     st.session_state[f"{site_key}_sku_select_combined"] = ""
 
 
+def reset_transaction_filters(search_key, mode_key, date_key, range_key):
+    st.session_state[search_key] = ""
+    st.session_state[mode_key] = "All Dates"
+    if date_key in st.session_state:
+        st.session_state.pop(date_key)
+    if range_key in st.session_state:
+        st.session_state.pop(range_key)
+
+
 st.sidebar.title("📦 Inventory Dashboard")
 format_name = st.sidebar.selectbox("Report Format", options=["Newark", "Carson"], index=0, key="report_format")
 config = FORMAT_CONFIGS[format_name]
@@ -1894,14 +1903,10 @@ with sku_tab:
 
                 sku_filter_key = re.sub(r"[^A-Za-z0-9_]+", "_", f"{format_name}_{selected_sku}")[:55]
                 tx_filtered = tx_sku.copy()
-
-                f1, f2 = st.columns([2, 1])
-                tx_search = f1.text_area(
-                    "Search Ref # / Trans. #",
-                    placeholder="Example:\nPO_0090\nPO_0086\nAXIA_2484",
-                    key=f"tx_search_{sku_filter_key}",
-                    height=110,
-                )
+                tx_search_key = f"tx_search_{sku_filter_key}"
+                tx_mode_key = f"tx_date_mode_{sku_filter_key}"
+                tx_date_key = f"tx_date_{sku_filter_key}"
+                tx_range_key = f"tx_date_range_{sku_filter_key}"
 
                 tx_dates = pd.to_datetime(tx_sku["Activity Date"], errors="coerce").dropna()
                 if not tx_dates.empty:
@@ -1911,32 +1916,56 @@ with sku_tab:
                     tx_min_date = None
                     tx_max_date = None
 
-                activity_date_mode = f2.selectbox(
-                    "Activity Date Filter",
-                    options=["All Dates", "Single Date", "Date Range"],
-                    key=f"tx_date_mode_{sku_filter_key}",
-                )
-
-                selected_tx_date = None
-                selected_tx_date_range = None
-
-                if activity_date_mode == "Single Date":
-                    selected_tx_date = f2.date_input(
-                        "Activity Date",
-                        value=None,
-                        min_value=tx_min_date,
-                        max_value=tx_max_date,
-                        key=f"tx_date_{sku_filter_key}",
+                filter_header_left, filter_header_right = st.columns([5, 1.1])
+                with filter_header_left:
+                    st.markdown("<div class='section-title'>Transaction Filters</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='section-subtitle'>Paste one or multiple Ref # / Trans. # values, then narrow by date if needed.</div>", unsafe_allow_html=True)
+                with filter_header_right:
+                    st.button(
+                        "Clear Filters",
+                        use_container_width=True,
+                        key=f"clear_tx_filters_{sku_filter_key}",
+                        on_click=reset_transaction_filters,
+                        args=(tx_search_key, tx_mode_key, tx_date_key, tx_range_key),
                     )
-                elif activity_date_mode == "Date Range":
-                    default_tx_date_range = (tx_min_date, tx_max_date) if tx_min_date is not None and tx_max_date is not None else None
-                    selected_tx_date_range = f2.date_input(
-                        "Activity Date Range",
-                        value=default_tx_date_range,
-                        min_value=tx_min_date,
-                        max_value=tx_max_date,
-                        key=f"tx_date_range_{sku_filter_key}",
+
+                search_col, date_col = st.columns([2.25, 1])
+                with search_col:
+                    tx_search = st.text_area(
+                        "Search Ref # / Trans. #",
+                        placeholder="Paste one per line:\nPO_0090\nPO_0086\nAXIA_2484",
+                        key=tx_search_key,
+                        height=132,
                     )
+                with date_col:
+                    activity_date_mode = st.radio(
+                        "Activity Date Filter",
+                        options=["All Dates", "Single Date", "Date Range"],
+                        horizontal=True,
+                        key=tx_mode_key,
+                    )
+                    selected_tx_date = None
+                    selected_tx_date_range = None
+                    if activity_date_mode == "Single Date":
+                        selected_tx_date = st.date_input(
+                            "Select Activity Date",
+                            value=None,
+                            min_value=tx_min_date,
+                            max_value=tx_max_date,
+                            key=tx_date_key,
+                        )
+                    elif activity_date_mode == "Date Range":
+                        default_tx_date_range = (tx_min_date, tx_max_date) if tx_min_date is not None and tx_max_date is not None else None
+                        selected_tx_date_range = st.date_input(
+                            "Select Activity Date Range",
+                            value=default_tx_date_range,
+                            min_value=tx_min_date,
+                            max_value=tx_max_date,
+                            key=tx_range_key,
+                        )
+                    else:
+                        if tx_min_date is not None and tx_max_date is not None:
+                            st.caption(f"Available dates: {tx_min_date.strftime('%m/%d/%Y')} - {tx_max_date.strftime('%m/%d/%Y')}")
 
                 tx_terms = []
                 if tx_search.strip():
@@ -1972,13 +2001,22 @@ with sku_tab:
                         term for term in tx_terms
                         if not tx_result_text.str.contains(re.escape(term.lower()), na=False, regex=True).any()
                     ]
-                    if tx_missing_terms:
-                        st.error("Not found in results: " + ", ".join(tx_missing_terms))
-                    else:
-                        st.success("All searched Ref # / Trans. # were found.")
+                    tx_found_count = len(tx_terms) - len(tx_missing_terms)
+                    status_left, status_right = st.columns([1.35, 2.65])
+                    with status_left:
+                        if tx_missing_terms:
+                            st.error(f"Found {tx_found_count:,} of {len(tx_terms):,} searched values.")
+                        else:
+                            st.success(f"Found all {len(tx_terms):,} searched values.")
+                    with status_right:
+                        if tx_missing_terms:
+                            st.error("Not found in results: " + ", ".join(tx_missing_terms))
+                        else:
+                            st.success("No missing Ref # / Trans. # values.")
+                else:
+                    st.caption(f"Showing {len(tx_filtered):,} transaction rows for the selected SKU and date filter.")
 
                 st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
-
 
                 tx_filtered = tx_filtered.sort_values(["Activity Date", "Excel Row"], ascending=[False, False])
 
