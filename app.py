@@ -1971,7 +1971,7 @@ with export_col_2:
 
 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 
-sku_tab, do_lookup_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "DO Lookup", "Audit", "Guide"])
+sku_tab, do_lookup_tab, trend_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "DO Lookup", "Trend", "Audit", "Guide"])
 
 with sku_tab:
     if not selected_sku:
@@ -2310,40 +2310,28 @@ with sku_tab:
 
 with do_lookup_tab:
     st.subheader("DO Lookup")
+    st.caption("Search DO # values in a separate lookup tab and see all matching items across all SKUs.")
 
     do_tx = model["tx_df"].copy()
     do_lookup_key = f"do_lookup_{site_key}"
     do_clear_key = f"clear_do_lookup_{site_key}"
 
-    do_input_col, do_helper_col = st.columns([1.65, 1])
-    with do_input_col:
+    do_header_left, do_header_right = st.columns([5, 1.15])
+    with do_header_left:
         st.markdown("<div class='section-title'>Search DO #</div>", unsafe_allow_html=True)
-        st.markdown("<div class='section-subtitle'>Paste one DO # per line, or separate values by comma / semicolon.</div>", unsafe_allow_html=True)
-        do_lookup_value = st.text_area(
-            "Search DO #",
-            placeholder="AXIA_2484\nPO_0090\nPO_0086",
-            key=do_lookup_key,
-            height=138,
-            label_visibility="collapsed",
-        )
-    with do_helper_col:
-        st.markdown(
-            """
-            <div class="tx-filter-card" style="min-height:138px;">
-                <div class="tx-filter-card-title">Lookup Format</div>
-                <div class="tx-filter-card-subtitle">Best for checking all items connected to each pasted DO # across the full transaction history.</div>
-                <div class="tx-example-row">
-                    <span class="tx-example-pill">AXIA_2484</span>
-                    <span class="tx-example-pill">PO_0090</span>
-                    <span class="tx-example-pill">PO_0086</span>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if st.button("Clear DO Lookup", use_container_width=True, key=do_clear_key):
+        st.markdown("<div class='section-subtitle'>Enter one DO #, or paste multiple values using line breaks, commas, or semicolons.</div>", unsafe_allow_html=True)
+    with do_header_right:
+        if st.button("Clear", use_container_width=True, key=do_clear_key):
             st.session_state[do_lookup_key] = ""
             st.rerun()
+
+    do_lookup_value = st.text_area(
+        "Search DO #",
+        placeholder="AXIA_2484\nPO_0090",
+        key=do_lookup_key,
+        height=112,
+        label_visibility="collapsed",
+    )
 
     do_lookup_terms = []
     seen_do_terms = set()
@@ -2361,7 +2349,7 @@ with do_lookup_tab:
             """
             <div class="tx-result-box">
                 <div class="tx-result-title">Waiting for DO #</div>
-                <div class="tx-pill-wrap"><span class="tx-pill-muted">Enter one or multiple DO # values to show the items belonging to each DO.</span></div>
+                <div class="tx-pill-wrap"><span class="tx-pill-muted">Enter a DO # to show all items belonging to it.</span></div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -2378,76 +2366,28 @@ with do_lookup_tab:
                 else:
                     do_tx[col] = ""
 
-        def normalize_do_value(value):
-            return re.sub(r"\s+", " ", clean_text(value)).strip().lower()
-
-        def unique_join(values, limit=4):
-            cleaned = []
-            seen_values = set()
-            for item in values:
-                item_text = clean_text(item)
-                item_key = item_text.lower()
-                if item_text and item_key not in seen_values:
-                    cleaned.append(item_text)
-                    seen_values.add(item_key)
-            if not cleaned:
-                return ""
-            if len(cleaned) > limit:
-                return ", ".join(cleaned[:limit]) + f" +{len(cleaned) - limit} more"
-            return ", ".join(cleaned)
-
-        ref_norm = do_tx["Ref #"].map(normalize_do_value)
-        trans_norm = do_tx["Trans. #"].map(normalize_do_value)
-        do_search_text = ref_norm + " " + trans_norm
+        do_search_text = (
+            do_tx["Ref #"].astype(str).str.lower()
+            + " "
+            + do_tx["Trans. #"].astype(str).str.lower()
+        )
 
         do_found_terms = []
         do_missing_terms = []
         do_matched_frames = []
-        do_overview_rows = []
 
-        for index, term in enumerate(do_lookup_terms, start=1):
-            term_norm = normalize_do_value(term)
-            term_mask = (ref_norm == term_norm) | (trans_norm == term_norm)
-            if not term_mask.any() and term_norm:
-                term_mask = do_search_text.str.contains(re.escape(term_norm), na=False, regex=True)
-
+        for term in do_lookup_terms:
+            term_mask = do_search_text.str.contains(re.escape(term.lower()), na=False, regex=True)
             if term_mask.any():
                 do_found_terms.append(term)
                 term_df = do_tx[term_mask].copy()
                 term_df.insert(0, "Searched DO #", term)
                 do_matched_frames.append(term_df)
-                term_qty_in = pd.to_numeric(term_df["Qty In"], errors="coerce").fillna(0).sum()
-                term_qty_out = pd.to_numeric(term_df["Qty Out"], errors="coerce").fillna(0).sum()
-                term_sku_count = term_df["SKU"].astype(str).replace("", np.nan).dropna().nunique()
-                term_dates = pd.to_datetime(term_df["Activity Date"], errors="coerce").dropna()
-                do_overview_rows.append(
-                    {
-                        "#": index,
-                        "DO #": term,
-                        "Status": "Found",
-                        "Items / SKUs": term_sku_count,
-                        "Total Qty In": term_qty_in,
-                        "Total Qty Out": term_qty_out,
-                        "First Activity Date": term_dates.min() if not term_dates.empty else pd.NaT,
-                        "Latest Activity Date": term_dates.max() if not term_dates.empty else pd.NaT,
-                    }
-                )
             else:
                 do_missing_terms.append(term)
-                do_overview_rows.append(
-                    {
-                        "#": index,
-                        "DO #": term,
-                        "Status": "Not Found",
-                        "Items / SKUs": 0,
-                        "Total Qty In": 0,
-                        "Total Qty Out": 0,
-                        "First Activity Date": pd.NaT,
-                        "Latest Activity Date": pd.NaT,
-                    }
-                )
 
         do_detail_df = pd.concat(do_matched_frames, ignore_index=True) if do_matched_frames else pd.DataFrame(columns=["Searched DO #"] + list(do_tx.columns))
+
         unique_sku_count = do_detail_df["SKU"].astype(str).replace("", np.nan).dropna().nunique() if not do_detail_df.empty else 0
         total_do_qty_out = pd.to_numeric(do_detail_df["Qty Out"], errors="coerce").fillna(0).sum() if not do_detail_df.empty else 0
         total_do_qty_in = pd.to_numeric(do_detail_df["Qty In"], errors="coerce").fillna(0).sum() if not do_detail_df.empty else 0
@@ -2457,41 +2397,47 @@ with do_lookup_tab:
             f"""
             <div class="tx-status-grid">
                 <div class="tx-status-card">
-                    <div class="tx-status-label">DO # Entered</div>
+                    <div class="tx-status-label">Search Values</div>
                     <div class="tx-status-value">{len(do_lookup_terms):,}</div>
-                    <div class="tx-status-help">unique search values</div>
+                    <div class="tx-status-help">DO # entered</div>
                 </div>
                 <div class="tx-status-card">
-                    <div class="tx-status-label">Found</div>
+                    <div class="tx-status-label">Matched Values</div>
                     <div class="tx-status-value">{html.escape(matched_value_text)}</div>
-                    <div class="tx-status-help">matched in Ref # / Trans. #</div>
+                    <div class="tx-status-help">found in Ref # / Trans. #</div>
                 </div>
                 <div class="tx-status-card">
-                    <div class="tx-status-label">Total Items</div>
+                    <div class="tx-status-label">Items / SKUs</div>
                     <div class="tx-status-value">{unique_sku_count:,}</div>
                     <div class="tx-status-help">unique SKU count</div>
                 </div>
                 <div class="tx-status-card">
-                    <div class="tx-status-label">Total Qty In / Out</div>
+                    <div class="tx-status-label">Qty In / Out</div>
                     <div class="tx-status-value">{fmt_num(total_do_qty_in)} / {fmt_num(total_do_qty_out)}</div>
-                    <div class="tx-status-help">all matched DO rows</div>
+                    <div class="tx-status-help">matched rows total</div>
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        overview_df = pd.DataFrame(do_overview_rows)
-        st.markdown("<div class='section-title'>DO Search Overview</div>", unsafe_allow_html=True)
-        overview_height = min(360, max(150, 42 * (len(overview_df) + 1)))
-        st.dataframe(display_table(overview_df), use_container_width=True, hide_index=True, height=overview_height)
-
         if do_missing_terms:
             st.markdown(
                 f"""
                 <div class="tx-result-box tx-result-box-missing">
-                    <div class="tx-result-title">Not found</div>
+                    <div class="tx-result-title">Not found in full transaction history</div>
                     <div class="tx-pill-wrap">{html_pills(do_missing_terms, 'tx-pill-missing')}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        if do_found_terms:
+            st.markdown(
+                f"""
+                <div class="tx-result-box tx-result-box-ok">
+                    <div class="tx-result-title">Found DO #</div>
+                    <div class="tx-pill-wrap">{html_pills(do_found_terms, 'tx-pill-ok')}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -2504,18 +2450,16 @@ with do_lookup_tab:
             do_detail_df["Qty In"] = pd.to_numeric(do_detail_df["Qty In"], errors="coerce").fillna(0)
             do_detail_df["Qty Out"] = pd.to_numeric(do_detail_df["Qty Out"], errors="coerce").fillna(0)
 
-            item_summary_export_frames = []
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-title'>Items by DO #</div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-title'>Items Belonging to Each DO #</div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-subtitle'>Each pasted DO # is shown in its own section, so results do not mix together.</div>", unsafe_allow_html=True)
 
             for term in do_found_terms:
                 term_detail_df = do_detail_df[do_detail_df["Searched DO #"] == term].copy()
                 term_summary = (
-                    term_detail_df.groupby(["SKU", "Description"], dropna=False)
+                    term_detail_df.groupby(["Searched DO #", "Ref #", "SKU", "Description"], dropna=False)
                     .agg(
                         **{
-                            "Ref #": ("Ref #", unique_join),
-                            "Trans. #": ("Trans. #", unique_join),
                             "First Activity Date": ("Activity Date", "min"),
                             "Latest Activity Date": ("Activity Date", "max"),
                             "Total Qty In": ("Qty In", "sum"),
@@ -2524,34 +2468,17 @@ with do_lookup_tab:
                     )
                     .reset_index()
                 )
-                term_summary = term_summary.sort_values(["SKU", "Description"], ascending=[True, True]).reset_index(drop=True)
-                term_summary_export = term_summary.copy()
-                term_summary_export.insert(0, "DO #", term)
-                item_summary_export_frames.append(term_summary_export)
-
-                term_qty_in = pd.to_numeric(term_detail_df["Qty In"], errors="coerce").fillna(0).sum()
+                term_summary = term_summary.sort_values(["Ref #", "SKU"], ascending=[True, True]).reset_index(drop=True)
                 term_qty_out = pd.to_numeric(term_detail_df["Qty Out"], errors="coerce").fillna(0).sum()
                 term_sku_count = term_summary["SKU"].astype(str).replace("", np.nan).dropna().nunique()
-                term_dates = pd.to_datetime(term_detail_df["Activity Date"], errors="coerce").dropna()
-                term_date_text = "-"
-                if not term_dates.empty:
-                    term_date_text = f"{fmt_date(term_dates.min())} - {fmt_date(term_dates.max())}"
 
-                with st.expander(f"{term}  •  {term_sku_count:,} item(s)  •  Qty Out {fmt_num(term_qty_out)}", expanded=True):
-                    c1, c2, c3, c4 = st.columns(4)
-                    with c1:
-                        metric_card("Items / SKUs", fmt_num(term_sku_count), "unique SKUs in this DO")
-                    with c2:
-                        metric_card("Qty Out", fmt_num(term_qty_out), "total outbound qty")
-                    with c3:
-                        metric_card("Qty In", fmt_num(term_qty_in), "total inbound qty")
-                    with c4:
-                        metric_card("Activity Date", term_date_text, "first - latest")
-                    table_height = min(430, max(170, 38 * (len(term_summary) + 1)))
-                    st.dataframe(display_table(term_summary), use_container_width=True, hide_index=True, height=table_height)
+                with st.expander(f"{term} — {term_sku_count:,} SKU(s), Qty Out {fmt_num(term_qty_out)}", expanded=True):
+                    show_limited_dataframe(term_summary, height=260, limit=500)
 
-            item_summary_export_df = pd.concat(item_summary_export_frames, ignore_index=True) if item_summary_export_frames else pd.DataFrame()
-            export_detail_cols = [
+            st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-title'>Detailed Matching Transactions</div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-subtitle'>Includes the searched DO # column so each original row stays tied to the pasted value.</div>", unsafe_allow_html=True)
+            do_detail_cols = [
                 "Searched DO #",
                 "Excel Row",
                 "SKU",
@@ -2566,33 +2493,21 @@ with do_lookup_tab:
                 "Is Not Shipped",
                 "Is Cancelled",
             ]
-            do_detail_export_df = do_detail_df[export_detail_cols].sort_values(["Searched DO #", "SKU", "Activity Date", "Excel Row"], ascending=[True, True, False, False]).copy()
+            do_detail_df = do_detail_df.sort_values(["Searched DO #", "Activity Date", "Excel Row", "SKU"], ascending=[True, False, False, True])
+            show_transaction_dataframe(do_detail_df[do_detail_cols], height=420, limit=500)
 
-            st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-title'>DO Lookup Export</div>", unsafe_allow_html=True)
-            export_do_col1, export_do_col2 = st.columns(2)
-            with export_do_col1:
-                st.download_button(
-                    "⬇️ Download DO Item Summary CSV",
-                    data=item_summary_export_df.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"{safe_format_slug(format_name)}_DO_Item_Summary.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                )
-            with export_do_col2:
-                st.download_button(
-                    "⬇️ Download DO Detail CSV",
-                    data=do_detail_export_df.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"{safe_format_slug(format_name)}_DO_Detail.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                )
+with trend_tab:
+    st.subheader("Outbound Trend")
+    trend_df = model["trend_df"]
+    if trend_df.empty:
+        st.info("No dated outbound transactions found.")
+    else:
+        trend_plot = trend_df.copy()
+        trend_plot["Activity Date"] = pd.to_datetime(trend_plot["Activity Date"])
+        st.line_chart(trend_plot, x="Activity Date", y="Qty Out", height=360, use_container_width=True)
 
-            with st.expander("Detailed matching transactions", expanded=False):
-                st.markdown("<div class='section-subtitle'>Original matching report rows, including the searched DO # column for traceability.</div>", unsafe_allow_html=True)
-                do_detail_display_df = do_detail_export_df.sort_values(["Searched DO #", "Activity Date", "Excel Row", "SKU"], ascending=[True, False, False, True])
-                show_transaction_dataframe(do_detail_display_df, height=420, limit=500)
-
+        top_usage = sku_df.sort_values("Outbound Last 30 Days", ascending=False).head(20)[["SKU", "Outbound Last 30 Days"]]
+        st.bar_chart(top_usage, x="SKU", y="Outbound Last 30 Days", height=360, use_container_width=True)
 
 with audit_tab:
     st.subheader("Audit Checks")
