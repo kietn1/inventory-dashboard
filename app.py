@@ -2507,7 +2507,6 @@ with do_lookup_tab:
             item_summary_export_frames = []
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
             st.markdown("<div class='section-title'>Items by DO #</div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-subtitle'>Each DO # has its own section, so items are easy to distinguish when multiple DOs are pasted.</div>", unsafe_allow_html=True)
 
             for term in do_found_terms:
                 term_detail_df = do_detail_df[do_detail_df["Searched DO #"] == term].copy()
