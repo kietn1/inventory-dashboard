@@ -3481,7 +3481,17 @@ with stock_check_tab:
                 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
                 st.markdown("<div class='section-title'>Temporary Balance by SKU</div>", unsafe_allow_html=True)
                 st.markdown(f"<div class='section-subtitle'>All SKUs are included. Affected SKUs are shown first based on the pasted DO demand. Affected SKUs: {affected_sku_count:,} | Temporary shortage SKUs: {temporary_shortage_count:,}</div>", unsafe_allow_html=True)
-                temp_display = prepare_stock_check_display(temporary_balance_df.drop(columns=["Impact Sort", "Status Sort"], errors="ignore"))
+                temp_sku_options = ["All SKUs"] + temporary_balance_df["SKU"].astype(str).dropna().tolist()
+                temp_sku_filter = st.selectbox(
+                    "Choose SKU",
+                    options=temp_sku_options,
+                    index=0,
+                    key=f"temp_balance_sku_select_{site_key}_{st.session_state[stock_table_version_key]}",
+                )
+                filtered_temp_balance_df = temporary_balance_df.copy()
+                if temp_sku_filter != "All SKUs":
+                    filtered_temp_balance_df = filtered_temp_balance_df[filtered_temp_balance_df["SKU"].astype(str) == str(temp_sku_filter)].copy()
+                temp_display = prepare_stock_check_display(filtered_temp_balance_df.drop(columns=["Impact Sort", "Status Sort"], errors="ignore"))
                 temp_height = min(560, max(190, 76 + (min(len(temp_display), 14) * 31)))
                 show_limited_dataframe(temp_display, height=temp_height, limit=2000, show_count=True)
 
