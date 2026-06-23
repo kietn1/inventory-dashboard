@@ -1992,6 +1992,7 @@ def stock_status_badge(value: str) -> str:
         "Not Found": "Missing SKU",
         "Invalid Qty": "Invalid Qty",
         "Already Covered": "Already in Report",
+        "No Change": "No Change",
     }.get(str(value), str(value))
 
 
@@ -1999,14 +2000,19 @@ def prepare_stock_check_display(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     if "Status" in out.columns:
         out["Status"] = out["Status"].map(stock_status_badge)
+    if "Temporary Status" in out.columns:
+        out["Temporary Status"] = out["Temporary Status"].map(stock_status_badge)
     numeric_cols = [
         "Current Stock",
+        "Current Ending Balance",
         "Available Before",
         "Requested Qty",
         "Existing Report Qty Out",
         "Qty To Check",
+        "Total Qty To Check",
         "Remaining After This Check",
         "Remaining After This DO",
+        "Temporary Balance",
         "Shortage Qty",
         "Total Requested Qty",
     ]
@@ -2017,9 +2023,85 @@ def prepare_stock_check_display(df: pd.DataFrame) -> pd.DataFrame:
     for col in count_cols:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).round(0).astype("Int64")
-    if "Report Activity Date" in out.columns:
-        out["Report Activity Date"] = pd.to_datetime(out["Report Activity Date"], errors="coerce").dt.strftime("%m/%d/%Y").replace("NaT", "")
+    for date_col in ["Report Activity Date", "Last Activity Date"]:
+        if date_col in out.columns:
+            out[date_col] = pd.to_datetime(out[date_col], errors="coerce").dt.strftime("%m/%d/%Y").replace("NaT", "")
     return out
+
+
+def build_temporary_balance_table(sku_df: pd.DataFrame, detail_df: pd.DataFrame) -> pd.DataFrame:
+    if sku_df.empty:
+        return pd.DataFrame()
+
+    base_cols = ["SKU", "Description", "Ending Balance", "Risk Level", "Last Activity Date"]
+    base = sku_df.copy()
+    for col in base_cols:
+        if col not in base.columns:
+            base[col] = "" if col not in ["Ending Balance", "Last Activity Date"] else np.nan
+
+    balance_df = base[base_cols].copy()
+    balance_df["SKU Key"] = balance_df["SKU"].astype(str).map(normalize_lookup_key)
+    balance_df["Current Ending Balance"] = pd.to_numeric(balance_df["Ending Balance"], errors="coerce").fillna(0)
+
+    if detail_df.empty or "Qty To Check" not in detail_df.columns:
+        impact_df = pd.DataFrame(columns=["SKU Key", "Total Qty To Check", "Affected DO #"])
+    else:
+        impact_source = detail_df.copy()
+        impact_source["SKU Key"] = impact_source["SKU"].astype(str).map(normalize_lookup_key)
+        impact_source["Qty To Check"] = pd.to_numeric(impact_source["Qty To Check"], errors="coerce").fillna(0)
+        impact_source = impact_source[(impact_source["SKU Key"] != "") & (impact_source["Qty To Check"] > 0)].copy()
+        if impact_source.empty:
+            impact_df = pd.DataFrame(columns=["SKU Key", "Total Qty To Check", "Affected DO #"])
+        else:
+            impact_df = (
+                impact_source.groupby("SKU Key", sort=False)
+                .agg(
+                    **{
+                        "Total Qty To Check": ("Qty To Check", "sum"),
+                        "Affected DO #": ("DO #", lambda values: ", ".join(dict.fromkeys(clean_text(v) for v in values if clean_text(v)))),
+                    }
+                )
+                .reset_index()
+            )
+
+    balance_df = balance_df.merge(impact_df, on="SKU Key", how="left")
+    balance_df["Total Qty To Check"] = pd.to_numeric(balance_df["Total Qty To Check"], errors="coerce").fillna(0)
+    balance_df["Affected DO #"] = balance_df["Affected DO #"].fillna("")
+    balance_df["Temporary Balance"] = balance_df["Current Ending Balance"] - balance_df["Total Qty To Check"]
+    balance_df["Shortage Qty"] = np.where(balance_df["Temporary Balance"] < 0, balance_df["Temporary Balance"].abs(), 0)
+    balance_df["Temporary Status"] = np.select(
+        [
+            balance_df["Total Qty To Check"] <= 0,
+            balance_df["Temporary Balance"] >= 0,
+        ],
+        ["No Change", "Enough"],
+        default="Shortage",
+    )
+    status_sort = {"Shortage": 0, "Enough": 1, "No Change": 2}
+    balance_df["Impact Sort"] = np.where(balance_df["Total Qty To Check"] > 0, 0, 1)
+    balance_df["Status Sort"] = balance_df["Temporary Status"].map(status_sort).fillna(9)
+    balance_df = balance_df.sort_values(
+        ["Impact Sort", "Status Sort", "Temporary Balance", "SKU"],
+        ascending=[True, True, True, True],
+    ).reset_index(drop=True)
+
+    return balance_df[
+        [
+            "SKU",
+            "Description",
+            "Risk Level",
+            "Current Ending Balance",
+            "Total Qty To Check",
+            "Temporary Balance",
+            "Shortage Qty",
+            "Temporary Status",
+            "Affected DO #",
+            "Last Activity Date",
+            "Impact Sort",
+            "Status Sort",
+        ]
+    ]
+
 
 def transaction_download_filename(format_name: str, report_end) -> str:
     try:
@@ -3252,17 +3334,16 @@ with stock_check_tab:
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        """
-        <div class="stock-input-example">
-            <div class="tx-filter-card-title">Stock Check Input Table</div>
-            <div class="tx-filter-card-subtitle">Paste values directly into the table. Use the ready columns below and do not paste headers. Existing DOs in the report are compared before new stock is deducted.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
-    stock_table_key = f"stock_check_table_input_{site_key}"
+    stock_table_version_key = f"stock_check_table_version_{site_key}"
+    st.session_state.setdefault(stock_table_version_key, 0)
+    reset_col_1, reset_col_2 = st.columns([1, 5])
+    with reset_col_1:
+        if st.button("Reset", use_container_width=True, key=f"stock_check_reset_{site_key}"):
+            st.session_state[stock_table_version_key] += 1
+            st.rerun()
+
+    stock_table_key = f"stock_check_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
     stock_template_df = pd.DataFrame(
         {
             "DO #": [""] * 30,
@@ -3393,9 +3474,21 @@ with stock_check_tab:
                     do_height = min(360, max(142, 76 + (len(do_display) * 31)))
                     show_limited_dataframe(do_display, height=do_height, limit=500, show_count=False)
 
+            temporary_balance_df = build_temporary_balance_table(sku_df, detail_df)
+            if not temporary_balance_df.empty:
+                affected_sku_count = int((pd.to_numeric(temporary_balance_df["Total Qty To Check"], errors="coerce").fillna(0) > 0).sum())
+                temporary_shortage_count = int((temporary_balance_df["Temporary Status"] == "Shortage").sum()) if "Temporary Status" in temporary_balance_df.columns else 0
+                st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-title'>Temporary Balance by SKU</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='section-subtitle'>All SKUs are included. Affected SKUs are shown first based on the pasted DO demand. Affected SKUs: {affected_sku_count:,} | Temporary shortage SKUs: {temporary_shortage_count:,}</div>", unsafe_allow_html=True)
+                temp_display = prepare_stock_check_display(temporary_balance_df.drop(columns=["Impact Sort", "Status Sort"], errors="ignore"))
+                temp_height = min(560, max(190, 76 + (min(len(temp_display), 14) * 31)))
+                show_limited_dataframe(temp_display, height=temp_height, limit=2000, show_count=True)
+
             export_stock_df = prepare_stock_check_display(detail_df.drop(columns=["Input Order"], errors="ignore"))
             export_overview_df = prepare_stock_check_display(overview_df)
-            download_col_1, download_col_2 = st.columns(2)
+            export_temp_df = prepare_stock_check_display(temporary_balance_df.drop(columns=["Impact Sort", "Status Sort"], errors="ignore")) if not temporary_balance_df.empty else pd.DataFrame()
+            download_col_1, download_col_2, download_col_3 = st.columns(3)
             with download_col_1:
                 st.download_button(
                     "⬇️ Download Stock Check Detail CSV",
@@ -3412,6 +3505,15 @@ with stock_check_tab:
                     mime="text/csv",
                     use_container_width=True,
                 )
+            with download_col_3:
+                if not export_temp_df.empty:
+                    st.download_button(
+                        "⬇️ Download Temporary Balance CSV",
+                        data=export_temp_df.to_csv(index=False).encode("utf-8-sig"),
+                        file_name=f"{safe_format_slug(format_name)}_Temporary_Balance_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
 
         if not issues_df.empty:
             with st.expander("Input Issues", expanded=detail_df.empty):
