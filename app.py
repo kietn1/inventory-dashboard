@@ -1757,6 +1757,37 @@ def parse_stock_check_columns(do_text: str, sku_text: str, qty_text: str) -> tup
     return pd.DataFrame(rows, columns=["Input Order", "DO #", "SKU", "Requested Qty", "Issue"]), counts
 
 
+def parse_stock_check_table(table_df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    if table_df is None or table_df.empty:
+        return pd.DataFrame(columns=["Input Order", "DO #", "SKU", "Requested Qty", "Issue"])
+    for idx, row in table_df.reset_index(drop=True).iterrows():
+        do_no = clean_text(row.get("DO #", ""))
+        sku = clean_text(row.get("Item Code / SKU", row.get("SKU", "")))
+        qty_text_value = clean_text(row.get("Qty", ""))
+        if not do_no and not sku and not qty_text_value:
+            continue
+        match = re.search(r"-?\d+(?:\.\d+)?", qty_text_value.replace(",", ""))
+        qty = float(match.group()) if match else np.nan
+        issue = ""
+        if not do_no:
+            issue = "Missing DO #"
+        elif not sku:
+            issue = "Missing SKU"
+        elif pd.isna(qty) or qty <= 0:
+            issue = "Invalid Qty"
+        rows.append(
+            {
+                "Input Order": len(rows) + 1,
+                "DO #": do_no,
+                "SKU": sku,
+                "Requested Qty": qty,
+                "Issue": issue,
+            }
+        )
+    return pd.DataFrame(rows, columns=["Input Order", "DO #", "SKU", "Requested Qty", "Issue"])
+
+
 def normalize_lookup_key(value) -> str:
     return clean_text(value).upper()
 
@@ -3224,69 +3255,51 @@ with stock_check_tab:
     st.markdown(
         """
         <div class="stock-input-example">
-            <div class="tx-filter-card-title">Ready paste columns</div>
-            <div class="tx-filter-card-subtitle">Paste values only. Row 1 in each box must belong together. Existing DOs in the report are compared before new stock is deducted.</div>
+            <div class="tx-filter-card-title">Stock Check Input Table</div>
+            <div class="tx-filter-card-subtitle">Paste values directly into the table. Use the ready columns below and do not paste headers. Existing DOs in the report are compared before new stock is deducted.</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    do_input_col, sku_input_col, qty_input_col = st.columns([1.15, 1.3, .75])
-    stock_do_key = f"stock_check_do_input_{site_key}"
-    stock_sku_key = f"stock_check_sku_input_{site_key}"
-    stock_qty_key = f"stock_check_qty_input_{site_key}"
-    with do_input_col:
-        stock_do_text = st.text_area(
-            "DO #",
-            height=176,
-            placeholder="AXIA_2801\nAXIA_2801\nAXIA_2802",
-            key=stock_do_key,
-            help="Paste DO numbers only.",
-        )
-    with sku_input_col:
-        stock_sku_text = st.text_area(
-            "Item Code / SKU",
-            height=176,
-            placeholder="SBED-00051\nSBED-00061\nSBED-00051",
-            key=stock_sku_key,
-            help="Paste item codes/SKUs only.",
-        )
-    with qty_input_col:
-        stock_qty_text = st.text_area(
-            "Qty",
-            height=176,
-            placeholder="10\n5\n8",
-            key=stock_qty_key,
-            help="Paste requested quantities only.",
-        )
+    stock_table_key = f"stock_check_table_input_{site_key}"
+    stock_template_df = pd.DataFrame(
+        {
+            "DO #": [""] * 30,
+            "Item Code / SKU": [""] * 30,
+            "Qty": [""] * 30,
+        }
+    )
+    stock_table_df = st.data_editor(
+        stock_template_df,
+        use_container_width=True,
+        hide_index=True,
+        height=342,
+        num_rows="dynamic",
+        key=stock_table_key,
+        column_config={
+            "DO #": st.column_config.TextColumn("DO #", help="Paste or enter the DO number."),
+            "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU", help="Paste or enter the item code/SKU."),
+            "Qty": st.column_config.TextColumn("Qty", help="Paste or enter the requested quantity."),
+        },
+    )
 
-    input_df, input_counts = parse_stock_check_columns(stock_do_text, stock_sku_text, stock_qty_text)
-    input_has_values = any(value > 0 for value in input_counts.values())
-    row_count_mismatch = input_has_values and len(set(input_counts.values())) > 1
+    input_df = parse_stock_check_table(stock_table_df)
+    input_has_values = not input_df.empty
+    row_count_mismatch = False
 
     if input_has_values:
-        count_col_1, count_col_2, count_col_3 = st.columns(3)
-        with count_col_1:
-            st.caption(f"DO # rows: {input_counts['DO #']:,}")
-        with count_col_2:
-            st.caption(f"SKU rows: {input_counts['SKU']:,}")
-        with count_col_3:
-            st.caption(f"Qty rows: {input_counts['Qty']:,}")
+        valid_rows = input_df[input_df["Issue"].astype(str) == ""]
+        issue_rows = input_df[input_df["Issue"].astype(str) != ""]
+        input_count_col_1, input_count_col_2, input_count_col_3 = st.columns(3)
+        with input_count_col_1:
+            st.caption(f"Rows entered: {len(input_df):,}")
+        with input_count_col_2:
+            st.caption(f"Valid rows: {len(valid_rows):,}")
+        with input_count_col_3:
+            st.caption(f"Input issue rows: {len(issue_rows):,}")
 
-    if row_count_mismatch:
-        st.error("Input row count mismatch. Please make sure DO #, Item Code / SKU, and Qty have the same number of rows.")
-
-    if input_has_values and not input_df.empty:
-        with st.expander("Parsed Input Preview", expanded=row_count_mismatch):
-            preview_df = input_df.rename(columns={"Requested Qty": "Qty"}).copy()
-            preview_display = prepare_stock_check_display(preview_df.drop(columns=["Input Order"], errors="ignore"))
-            preview_height = min(280, max(122, 74 + (len(preview_display) * 32)))
-            show_limited_dataframe(preview_display, height=preview_height, limit=1000, show_count=False)
-
-    if row_count_mismatch:
-        detail_df, overview_df, issues_df = pd.DataFrame(), pd.DataFrame(), input_df.copy()
-    else:
-        detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, tx_df)
+    detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, tx_df)
 
     if input_df.empty:
         st.info("Paste values under DO #, Item Code / SKU, and Qty to check stock availability.")
