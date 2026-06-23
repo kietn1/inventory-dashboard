@@ -1718,7 +1718,107 @@ def parse_stock_check_input(raw_text: str) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["Input Order", "DO #", "SKU", "Requested Qty", "Issue"])
 
 
-def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def split_stock_check_column(raw_text: str) -> list:
+    values = [clean_text(line) for line in str(raw_text or "").splitlines()]
+    while values and values[-1] == "":
+        values.pop()
+    return values
+
+
+def parse_stock_check_columns(do_text: str, sku_text: str, qty_text: str) -> tuple[pd.DataFrame, dict]:
+    do_values = split_stock_check_column(do_text)
+    sku_values = split_stock_check_column(sku_text)
+    qty_values = split_stock_check_column(qty_text)
+    counts = {"DO #": len(do_values), "SKU": len(sku_values), "Qty": len(qty_values)}
+    max_rows = max(counts.values()) if counts else 0
+    rows = []
+    for idx in range(max_rows):
+        do_no = clean_text(do_values[idx]) if idx < len(do_values) else ""
+        sku = clean_text(sku_values[idx]) if idx < len(sku_values) else ""
+        qty_text_value = clean_text(qty_values[idx]) if idx < len(qty_values) else ""
+        match = re.search(r"-?\d+(?:\.\d+)?", qty_text_value.replace(",", ""))
+        qty = float(match.group()) if match else np.nan
+        issue = ""
+        if not do_no:
+            issue = "Missing DO #"
+        elif not sku:
+            issue = "Missing SKU"
+        elif pd.isna(qty) or qty <= 0:
+            issue = "Invalid Qty"
+        rows.append(
+            {
+                "Input Order": idx + 1,
+                "DO #": do_no,
+                "SKU": sku,
+                "Requested Qty": qty,
+                "Issue": issue,
+            }
+        )
+    return pd.DataFrame(rows, columns=["Input Order", "DO #", "SKU", "Requested Qty", "Issue"]), counts
+
+
+def normalize_lookup_key(value) -> str:
+    return clean_text(value).upper()
+
+
+def build_existing_do_tables(tx_df: pd.DataFrame) -> tuple[set, dict, dict]:
+    if tx_df is None or tx_df.empty:
+        return set(), {}, {}
+
+    source_rows = []
+    for source_col in ["Ref #", "Trans. #"]:
+        if source_col not in tx_df.columns:
+            continue
+        tmp = tx_df.copy()
+        tmp["DO Key"] = tmp[source_col].astype(str).map(normalize_lookup_key)
+        tmp = tmp[tmp["DO Key"] != ""].copy()
+        if tmp.empty:
+            continue
+        tmp["DO #"] = tmp[source_col].astype(str).map(clean_text)
+        source_rows.append(tmp)
+
+    if not source_rows:
+        return set(), {}, {}
+
+    all_do_df = pd.concat(source_rows, ignore_index=True).drop_duplicates(subset=["DO Key", "SKU", "Excel Row"])
+    all_do_df["SKU Key"] = all_do_df["SKU"].astype(str).map(normalize_lookup_key)
+    all_do_df["Qty Out"] = pd.to_numeric(all_do_df.get("Qty Out", 0), errors="coerce").fillna(0)
+    all_do_df["Qty In"] = pd.to_numeric(all_do_df.get("Qty In", 0), errors="coerce").fillna(0)
+    all_do_df["Activity Date"] = pd.to_datetime(all_do_df.get("Activity Date", pd.NaT), errors="coerce")
+
+    item_df = (
+        all_do_df.groupby(["DO Key", "SKU Key"], sort=False, as_index=False)
+        .agg(
+            {
+                "DO #": "first",
+                "SKU": "first",
+                "Description": "first",
+                "Qty Out": "sum",
+                "Qty In": "sum",
+                "Activity Date": "max",
+            }
+        )
+    )
+    do_df = (
+        all_do_df.groupby("DO Key", sort=False, as_index=False)
+        .agg(
+            {
+                "DO #": "first",
+                "Qty Out": "sum",
+                "Qty In": "sum",
+                "Activity Date": "max",
+                "SKU Key": "nunique",
+            }
+        )
+    )
+
+    existing_do_keys = set(do_df["DO Key"].astype(str))
+    existing_item_lookup = {(row["DO Key"], row["SKU Key"]): row.to_dict() for _, row in item_df.iterrows()}
+    existing_do_lookup = {row["DO Key"]: row.to_dict() for _, row in do_df.iterrows()}
+    return existing_do_keys, existing_item_lookup, existing_do_lookup
+
+
+def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame, tx_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if input_df.empty:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
@@ -1727,8 +1827,8 @@ def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame) -> tu
     if valid_df.empty:
         return pd.DataFrame(), pd.DataFrame(), issues_df
 
-    valid_df["SKU Key"] = valid_df["SKU"].astype(str).str.strip().str.upper()
-    valid_df["DO Key"] = valid_df["DO #"].astype(str).str.strip()
+    valid_df["SKU Key"] = valid_df["SKU"].astype(str).map(normalize_lookup_key)
+    valid_df["DO Key"] = valid_df["DO #"].astype(str).map(normalize_lookup_key)
     request_df = (
         valid_df.groupby(["DO Key", "DO #", "SKU Key", "SKU"], sort=False, as_index=False)
         .agg({"Input Order": "min", "Requested Qty": "sum"})
@@ -1737,50 +1837,76 @@ def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame) -> tu
     )
 
     stock_df = sku_df[["SKU", "Description", "Ending Balance"]].copy()
-    stock_df["SKU Key"] = stock_df["SKU"].astype(str).str.strip().str.upper()
+    stock_df["SKU Key"] = stock_df["SKU"].astype(str).map(normalize_lookup_key)
     stock_df = stock_df.drop_duplicates("SKU Key", keep="first")
     stock_lookup = stock_df.set_index("SKU Key").to_dict("index")
+    existing_do_keys, existing_item_lookup, existing_do_lookup = build_existing_do_tables(tx_df)
     remaining = {}
     detail_rows = []
 
     for _, row in request_df.iterrows():
+        do_key = row["DO Key"]
         sku_key = row["SKU Key"]
         requested_qty = float(row["Requested Qty"])
         stock_info = stock_lookup.get(sku_key)
+        existing_item = existing_item_lookup.get((do_key, sku_key), {})
+        existing_report_qty = float(pd.to_numeric(pd.Series([existing_item.get("Qty Out", 0)]), errors="coerce").fillna(0).iloc[0])
+        qty_to_check = max(0.0, requested_qty - existing_report_qty)
+        report_do_status = "Existing DO" if do_key in existing_do_keys else "New DO"
+        report_item_status = "Found" if existing_item else ("Not Found" if report_do_status == "Existing DO" else "New")
+
         if stock_info is None:
+            description = existing_item.get("Description", "")
+            status = "Already Covered" if report_do_status == "Existing DO" and qty_to_check <= 0 else "Not Found"
             detail_rows.append(
                 {
                     "Input Order": int(row["Input Order"]),
                     "DO #": row["DO #"],
-                    "SKU": row["SKU"],
-                    "Description": "",
+                    "SKU": existing_item.get("SKU", row["SKU"]),
+                    "Description": description,
+                    "Report DO Status": report_do_status,
+                    "Report Item Status": report_item_status,
                     "Current Stock": np.nan,
                     "Available Before": np.nan,
                     "Requested Qty": requested_qty,
-                    "Remaining After This DO": np.nan,
-                    "Shortage Qty": requested_qty,
-                    "Status": "Not Found",
+                    "Existing Report Qty Out": existing_report_qty,
+                    "Qty To Check": qty_to_check,
+                    "Remaining After This Check": np.nan,
+                    "Shortage Qty": qty_to_check if status == "Not Found" else 0.0,
+                    "Status": status,
                 }
             )
             continue
+
         current_stock = float(pd.to_numeric(pd.Series([stock_info.get("Ending Balance", 0)]), errors="coerce").fillna(0).iloc[0])
         if sku_key not in remaining:
             remaining[sku_key] = current_stock
         available_before = remaining[sku_key]
-        remaining_after = available_before - requested_qty
-        shortage_qty = max(0.0, requested_qty - max(available_before, 0.0))
-        status = "Enough" if remaining_after >= 0 else "Shortage"
-        remaining[sku_key] = remaining_after
+
+        if qty_to_check <= 0:
+            remaining_after = available_before
+            shortage_qty = 0.0
+            status = "Already Covered" if report_do_status == "Existing DO" else "Enough"
+        else:
+            remaining_after = available_before - qty_to_check
+            shortage_qty = max(0.0, qty_to_check - max(available_before, 0.0))
+            status = "Enough" if remaining_after >= 0 else "Shortage"
+            remaining[sku_key] = remaining_after
+
         detail_rows.append(
             {
                 "Input Order": int(row["Input Order"]),
                 "DO #": row["DO #"],
                 "SKU": stock_info.get("SKU", row["SKU"]),
-                "Description": stock_info.get("Description", ""),
+                "Description": stock_info.get("Description", existing_item.get("Description", "")),
+                "Report DO Status": report_do_status,
+                "Report Item Status": report_item_status,
                 "Current Stock": current_stock,
                 "Available Before": available_before,
                 "Requested Qty": requested_qty,
-                "Remaining After This DO": remaining_after,
+                "Existing Report Qty Out": existing_report_qty,
+                "Qty To Check": qty_to_check,
+                "Remaining After This Check": remaining_after,
                 "Shortage Qty": shortage_qty,
                 "Status": status,
             }
@@ -1791,27 +1917,36 @@ def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame) -> tu
     do_order_df = valid_df[["DO Key", "DO #", "Input Order"]].drop_duplicates("DO Key").sort_values("Input Order")
     for _, do_row in do_order_df.iterrows():
         do_key = do_row["DO Key"]
-        do_detail = detail_df[detail_df["DO #"].astype(str).str.strip() == do_key].copy()
+        do_detail = detail_df[detail_df["DO #"].astype(str).map(normalize_lookup_key) == do_key].copy()
         if do_detail.empty:
             continue
         shortage_items = int((do_detail["Status"] == "Shortage").sum())
         not_found_items = int((do_detail["Status"] == "Not Found").sum())
         enough_items = int((do_detail["Status"] == "Enough").sum())
+        covered_items = int((do_detail["Status"] == "Already Covered").sum())
         if shortage_items > 0:
             status = "Shortage"
         elif not_found_items > 0:
             status = "Not Found"
-        else:
+        elif enough_items > 0:
             status = "Enough"
+        else:
+            status = "Already Covered"
+        existing_do_info = existing_do_lookup.get(do_key, {})
         overview_rows.append(
             {
                 "DO #": do_row["DO #"],
+                "Report DO Status": "Existing DO" if do_key in existing_do_keys else "New DO",
                 "Status": status,
                 "Item Count": len(do_detail),
                 "Total Requested Qty": pd.to_numeric(do_detail["Requested Qty"], errors="coerce").fillna(0).sum(),
+                "Existing Report Qty Out": pd.to_numeric(do_detail["Existing Report Qty Out"], errors="coerce").fillna(0).sum(),
+                "Qty To Check": pd.to_numeric(do_detail["Qty To Check"], errors="coerce").fillna(0).sum(),
                 "Enough Items": enough_items,
+                "Already Covered Items": covered_items,
                 "Shortage Items": shortage_items,
                 "Not Found Items": not_found_items,
+                "Report Activity Date": existing_do_info.get("Activity Date", pd.NaT),
             }
         )
 
@@ -1825,6 +1960,7 @@ def stock_status_badge(value: str) -> str:
         "Shortage": "⚠️ Shortage",
         "Not Found": "Missing SKU",
         "Invalid Qty": "Invalid Qty",
+        "Already Covered": "Already in Report",
     }.get(str(value), str(value))
 
 
@@ -1832,14 +1968,26 @@ def prepare_stock_check_display(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     if "Status" in out.columns:
         out["Status"] = out["Status"].map(stock_status_badge)
-    numeric_cols = ["Current Stock", "Available Before", "Requested Qty", "Remaining After This DO", "Shortage Qty", "Total Requested Qty"]
+    numeric_cols = [
+        "Current Stock",
+        "Available Before",
+        "Requested Qty",
+        "Existing Report Qty Out",
+        "Qty To Check",
+        "Remaining After This Check",
+        "Remaining After This DO",
+        "Shortage Qty",
+        "Total Requested Qty",
+    ]
     for col in numeric_cols:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce").round(0).astype("Int64")
-    count_cols = ["Item Count", "Enough Items", "Shortage Items", "Not Found Items"]
+    count_cols = ["Item Count", "Enough Items", "Already Covered Items", "Shortage Items", "Not Found Items"]
     for col in count_cols:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).round(0).astype("Int64")
+    if "Report Activity Date" in out.columns:
+        out["Report Activity Date"] = pd.to_datetime(out["Report Activity Date"], errors="coerce").dt.strftime("%m/%d/%Y").replace("NaT", "")
     return out
 
 def transaction_download_filename(format_name: str, report_end) -> str:
@@ -3065,7 +3213,7 @@ with stock_check_tab:
             <div class="tx-filter-top">
                 <div>
                     <div class="tx-filter-title">Stock Check</div>
-                    <div class="tx-filter-subtitle">Paste new DO demand to check if current ending balance can cover it. Multiple DOs are calculated in the same order entered.</div>
+                    <div class="tx-filter-subtitle">Paste DO demand to check current ending balance. Existing DOs found in the report are recognized so stock is not double-counted.</div>
                 </div>
             </div>
         </div>
@@ -3073,64 +3221,118 @@ with stock_check_tab:
         unsafe_allow_html=True,
     )
 
-    stock_input_col, stock_help_col = st.columns([1.55, 1])
-    stock_check_key = f"stock_check_input_{site_key}"
-    with stock_input_col:
-        stock_input_text = st.text_area(
-            "New DO Input",
-            height=186,
-            placeholder="DO #\tItem Code / SKU\tQty\nAXIA_2801\tSBED-00051\t10\nAXIA_2801\tSBED-00061\t5\nAXIA_2802\tSBED-00051\t8",
-            key=stock_check_key,
-            help="Paste three columns from Excel: DO #, Item Code / SKU, Qty.",
+    st.markdown(
+        """
+        <div class="stock-input-example">
+            <div class="tx-filter-card-title">Ready paste columns</div>
+            <div class="tx-filter-card-subtitle">Paste values only. Row 1 in each box must belong together. Existing DOs in the report are compared before new stock is deducted.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    do_input_col, sku_input_col, qty_input_col = st.columns([1.15, 1.3, .75])
+    stock_do_key = f"stock_check_do_input_{site_key}"
+    stock_sku_key = f"stock_check_sku_input_{site_key}"
+    stock_qty_key = f"stock_check_qty_input_{site_key}"
+    with do_input_col:
+        stock_do_text = st.text_area(
+            "DO #",
+            height=176,
+            placeholder="AXIA_2801\nAXIA_2801\nAXIA_2802",
+            key=stock_do_key,
+            help="Paste DO numbers only.",
         )
-    with stock_help_col:
-        st.markdown(
-            """
-            <div class="stock-input-example">
-                <div class="tx-filter-card-title">Required input</div>
-                <div class="tx-filter-card-subtitle">Paste from Excel using three columns. Header row is optional.</div>
-                <div class="stock-input-code">DO #    Item Code / SKU    Qty
-AXIA_2801    SBED-00051    10
-AXIA_2801    SBED-00061    5
-AXIA_2802    SBED-00051    8</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    with sku_input_col:
+        stock_sku_text = st.text_area(
+            "Item Code / SKU",
+            height=176,
+            placeholder="SBED-00051\nSBED-00061\nSBED-00051",
+            key=stock_sku_key,
+            help="Paste item codes/SKUs only.",
+        )
+    with qty_input_col:
+        stock_qty_text = st.text_area(
+            "Qty",
+            height=176,
+            placeholder="10\n5\n8",
+            key=stock_qty_key,
+            help="Paste requested quantities only.",
         )
 
-    input_df = parse_stock_check_input(stock_input_text)
-    detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df)
+    input_df, input_counts = parse_stock_check_columns(stock_do_text, stock_sku_text, stock_qty_text)
+    input_has_values = any(value > 0 for value in input_counts.values())
+    row_count_mismatch = input_has_values and len(set(input_counts.values())) > 1
+
+    if input_has_values:
+        count_col_1, count_col_2, count_col_3 = st.columns(3)
+        with count_col_1:
+            st.caption(f"DO # rows: {input_counts['DO #']:,}")
+        with count_col_2:
+            st.caption(f"SKU rows: {input_counts['SKU']:,}")
+        with count_col_3:
+            st.caption(f"Qty rows: {input_counts['Qty']:,}")
+
+    if row_count_mismatch:
+        st.error("Input row count mismatch. Please make sure DO #, Item Code / SKU, and Qty have the same number of rows.")
+
+    if input_has_values and not input_df.empty:
+        with st.expander("Parsed Input Preview", expanded=row_count_mismatch):
+            preview_df = input_df.rename(columns={"Requested Qty": "Qty"}).copy()
+            preview_display = prepare_stock_check_display(preview_df.drop(columns=["Input Order"], errors="ignore"))
+            preview_height = min(280, max(122, 74 + (len(preview_display) * 32)))
+            show_limited_dataframe(preview_display, height=preview_height, limit=1000, show_count=False)
+
+    if row_count_mismatch:
+        detail_df, overview_df, issues_df = pd.DataFrame(), pd.DataFrame(), input_df.copy()
+    else:
+        detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, tx_df)
 
     if input_df.empty:
-        st.info("Paste new DO lines above to check stock availability.")
+        st.info("Paste values under DO #, Item Code / SKU, and Qty to check stock availability.")
+    elif row_count_mismatch:
+        pass
     else:
         valid_line_count = len(input_df[input_df["Issue"].astype(str) == ""])
         do_checked_count = overview_df["DO #"].nunique() if not overview_df.empty and "DO #" in overview_df.columns else 0
-        enough_count = int((detail_df["Status"] == "Enough").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
+        existing_do_count = int((overview_df["Report DO Status"] == "Existing DO").sum()) if not overview_df.empty and "Report DO Status" in overview_df.columns else 0
+        new_do_count = int((overview_df["Report DO Status"] == "New DO").sum()) if not overview_df.empty and "Report DO Status" in overview_df.columns else 0
         shortage_count = int((detail_df["Status"] == "Shortage").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
         not_found_count = int((detail_df["Status"] == "Not Found").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
+        already_covered_count = int((detail_df["Status"] == "Already Covered").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
+        qty_to_check_total = pd.to_numeric(detail_df["Qty To Check"], errors="coerce").fillna(0).sum() if not detail_df.empty and "Qty To Check" in detail_df.columns else 0
         total_requested_qty = pd.to_numeric(detail_df["Requested Qty"], errors="coerce").fillna(0).sum() if not detail_df.empty and "Requested Qty" in detail_df.columns else 0
 
         st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            metric_card("DOs Checked", fmt_num(do_checked_count), "Unique DO # in input")
+            metric_card("DOs Checked", fmt_num(do_checked_count), f"Input items: {fmt_num(valid_line_count)}")
         with c2:
-            metric_card("Input Items", fmt_num(valid_line_count), f"Requested Qty: {fmt_num(total_requested_qty)}")
+            metric_card("Existing / New", f"{fmt_num(existing_do_count)} / {fmt_num(new_do_count)}", "Found in report / new demand")
         with c3:
-            metric_card("Enough Items", fmt_num(enough_count), "Can be covered by current stock")
+            metric_card("Qty To Check", fmt_num(qty_to_check_total), f"Requested: {fmt_num(total_requested_qty)} | Covered: {fmt_num(already_covered_count)}")
         with c4:
-            metric_card("Shortage / Missing", f"{fmt_num(shortage_count)} / {fmt_num(not_found_count)}", "Shortage items / SKU not found")
+            metric_card("Shortage / Missing", f"{fmt_num(shortage_count)} / {fmt_num(not_found_count)}", "After existing DO comparison")
 
         if not overview_df.empty:
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
             st.markdown("<div class='section-title'>DO Stock Check Overview</div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-subtitle'>Each DO # is shown in the same order pasted. Status reflects the item-level result inside that DO.</div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-subtitle'>Each DO # is shown in pasted order. Existing Report Qty Out is treated as already deducted; only Qty To Check is tested against remaining stock.</div>", unsafe_allow_html=True)
             overview_display = prepare_stock_check_display(overview_df)
             overview_height = min(310, max(132, 74 + (len(overview_display) * 32)))
             show_limited_dataframe(overview_display, height=overview_height, limit=1000, show_count=False)
 
         if not detail_df.empty:
+            existing_detail = detail_df[detail_df["Report DO Status"] == "Existing DO"].copy() if "Report DO Status" in detail_df.columns else pd.DataFrame()
+            if not existing_detail.empty:
+                st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-title'>Existing DO Found in Report</div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-subtitle'>These lines already exist in the report. Only Qty To Check above the existing report quantity is deducted from available stock.</div>", unsafe_allow_html=True)
+                existing_cols = ["DO #", "SKU", "Description", "Requested Qty", "Existing Report Qty Out", "Qty To Check", "Status"]
+                existing_display = prepare_stock_check_display(existing_detail[existing_cols])
+                existing_height = min(320, max(132, 74 + (len(existing_display) * 32)))
+                show_limited_dataframe(existing_display, height=existing_height, limit=1000, show_count=False)
+
             shortage_detail = detail_df[detail_df["Status"].isin(["Shortage", "Not Found"])].copy()
             if not shortage_detail.empty:
                 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
@@ -3142,7 +3344,7 @@ AXIA_2802    SBED-00051    8</div>
 
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
             st.markdown("<div class='section-title'>Item Availability by DO #</div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-subtitle'>Current stock is the official Ending Balance. Available Before is reduced sequentially by previously pasted DO lines.</div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-subtitle'>Current stock is the official Ending Balance. New DOs reduce stock sequentially. Existing DOs only deduct incremental Qty To Check.</div>", unsafe_allow_html=True)
 
             for do_no in overview_df["DO #"].astype(str).tolist() if not overview_df.empty else []:
                 do_items = detail_df[detail_df["DO #"].astype(str) == do_no].copy()
@@ -3150,18 +3352,27 @@ AXIA_2802    SBED-00051    8</div>
                     continue
                 do_status = overview_df.loc[overview_df["DO #"].astype(str) == do_no, "Status"].iloc[0]
                 do_requested = pd.to_numeric(do_items["Requested Qty"], errors="coerce").fillna(0).sum()
+                do_qty_to_check = pd.to_numeric(do_items["Qty To Check"], errors="coerce").fillna(0).sum()
                 do_shortage = pd.to_numeric(do_items["Shortage Qty"], errors="coerce").fillna(0).sum()
-                expander_label = f"{do_no} | {stock_status_badge(do_status)} | Items {len(do_items):,} | Requested {fmt_num(do_requested)} | Shortage {fmt_num(do_shortage)}"
-                with st.expander(expander_label, expanded=(len(overview_df) <= 4 or do_status != "Enough")):
-                    st.markdown(f"<div class='stock-do-subtitle'>Result calculated for <b>{html.escape(do_no)}</b> after all prior pasted DO demand.</div>", unsafe_allow_html=True)
+                do_report_status = overview_df.loc[overview_df["DO #"].astype(str) == do_no, "Report DO Status"].iloc[0] if "Report DO Status" in overview_df.columns else "New DO"
+                expander_label = f"{do_no} | {do_report_status} | {stock_status_badge(do_status)} | Items {len(do_items):,} | To Check {fmt_num(do_qty_to_check)} | Shortage {fmt_num(do_shortage)}"
+                with st.expander(expander_label, expanded=(len(overview_df) <= 4 or do_status not in ["Enough", "Already Covered"])):
+                    if do_report_status == "Existing DO":
+                        st.markdown(f"<div class='stock-do-subtitle'><b>{html.escape(do_no)}</b> already exists in the report. Existing report qty is not deducted again; only Qty To Check affects remaining stock.</div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<div class='stock-do-subtitle'><b>{html.escape(do_no)}</b> is treated as new demand and deducted sequentially after prior pasted DO lines.</div>", unsafe_allow_html=True)
                     display_cols = [
                         "DO #",
                         "SKU",
                         "Description",
+                        "Report DO Status",
+                        "Report Item Status",
                         "Current Stock",
                         "Available Before",
                         "Requested Qty",
-                        "Remaining After This DO",
+                        "Existing Report Qty Out",
+                        "Qty To Check",
+                        "Remaining After This Check",
                         "Shortage Qty",
                         "Status",
                     ]
