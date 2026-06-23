@@ -401,6 +401,169 @@ st.markdown(
         }
         .dots span:nth-child(2) { animation-delay: .15s; }
         .dots span:nth-child(3) { animation-delay: .30s; }
+
+        .tx-filter-shell {
+            border: 1px solid rgba(17,24,39,.085);
+            border-radius: 24px;
+            background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(245,245,247,.88));
+            box-shadow: 0 12px 36px rgba(16,24,40,.085);
+            padding: 18px 20px 16px 20px;
+            margin: .22rem 0 .85rem 0;
+            animation: cardEnter .32s ease-out;
+        }
+        .tx-filter-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+        .tx-filter-title {
+            font-size: 1.12rem;
+            font-weight: 880;
+            color: #111827;
+            line-height: 1.18;
+            letter-spacing: -.025em;
+        }
+        .tx-filter-subtitle {
+            font-size: .84rem;
+            color: #6B7280;
+            line-height: 1.36;
+            margin-top: 3px;
+        }
+        .tx-filter-card {
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 18px;
+            background: rgba(255,255,255,.82);
+            padding: 12px 14px 13px 14px;
+            min-height: 236px;
+            box-shadow: 0 7px 22px rgba(16,24,40,.045);
+        }
+        .tx-filter-card-title {
+            font-size: .78rem;
+            font-weight: 860;
+            color: #111827;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin-bottom: 7px;
+        }
+        .tx-filter-card-subtitle {
+            font-size: .79rem;
+            color: #6B7280;
+            line-height: 1.35;
+            margin-bottom: 9px;
+        }
+        .tx-example-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: -1px 0 9px 0;
+        }
+        .tx-example-pill, .tx-pill, .tx-pill-ok, .tx-pill-missing, .tx-pill-muted {
+            display: inline-flex;
+            align-items: center;
+            max-width: 100%;
+            border-radius: 999px;
+            padding: 4px 8px;
+            font-size: .76rem;
+            font-weight: 760;
+            line-height: 1.15;
+            white-space: nowrap;
+        }
+        .tx-example-pill {
+            color: #374151;
+            background: rgba(17,24,39,.055);
+            border: 1px solid rgba(17,24,39,.06);
+        }
+        .tx-pill-ok {
+            color: #067647;
+            background: #DFF3E3;
+            border: 1px solid rgba(6,118,71,.14);
+        }
+        .tx-pill-missing {
+            color: #B42318;
+            background: #FDE2E1;
+            border: 1px solid rgba(180,35,24,.14);
+        }
+        .tx-pill-muted {
+            color: #4B5563;
+            background: #F3F4F6;
+            border: 1px solid rgba(75,85,99,.12);
+        }
+        .tx-status-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin: 12px 0 8px 0;
+        }
+        .tx-status-card {
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 16px;
+            background: rgba(255,255,255,.84);
+            padding: 10px 12px;
+            min-height: 76px;
+            box-shadow: 0 5px 18px rgba(16,24,40,.04);
+        }
+        .tx-status-label {
+            font-size: .73rem;
+            font-weight: 830;
+            color: #6B7280;
+            text-transform: uppercase;
+            letter-spacing: .055em;
+            margin-bottom: 4px;
+        }
+        .tx-status-value {
+            font-size: 1.24rem;
+            font-weight: 880;
+            color: #111827;
+            letter-spacing: -.03em;
+            line-height: 1.1;
+        }
+        .tx-status-help {
+            font-size: .75rem;
+            color: #9CA3AF;
+            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .tx-result-box {
+            border-radius: 16px;
+            padding: 11px 13px;
+            margin: 10px 0 6px 0;
+            border: 1px solid rgba(17,24,39,.075);
+            background: rgba(255,255,255,.82);
+        }
+        .tx-result-box-ok {
+            background: rgba(223,243,227,.62);
+            border-color: rgba(6,118,71,.14);
+        }
+        .tx-result-box-missing {
+            background: rgba(253,226,225,.62);
+            border-color: rgba(180,35,24,.14);
+        }
+        .tx-result-title {
+            font-size: .84rem;
+            font-weight: 850;
+            color: #111827;
+            margin-bottom: 7px;
+        }
+        .tx-pill-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        div[data-testid="stTextArea"] textarea {
+            border-radius: 14px !important;
+            min-height: 150px !important;
+        }
+        div[data-testid="stDateInput"] input {
+            border-radius: 12px !important;
+        }
+        @media (max-width: 900px) {
+            .tx-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .tx-filter-top { flex-direction: column; }
+        }
     </style>
     """,
     unsafe_allow_html=True,
@@ -1007,6 +1170,17 @@ def risk_badge_text(level: str) -> str:
         "Watch": "🟡 Watch",
         "Healthy": "🟢 Healthy",
     }.get(level, level)
+
+
+def html_pills(values, class_name, limit=36):
+    cleaned = [str(v).strip() for v in values if str(v).strip()]
+    if not cleaned:
+        return "<span class='tx-pill-muted'>None</span>"
+    shown = cleaned[:limit]
+    pills = "".join(f"<span class='{class_name}'>{html.escape(value)}</span>" for value in shown)
+    if len(cleaned) > limit:
+        pills += f"<span class='tx-pill-muted'>+{len(cleaned) - limit:,} more</span>"
+    return pills
 
 
 def metric_card(label, value, help_text=""):
@@ -1916,11 +2090,25 @@ with sku_tab:
                     tx_min_date = None
                     tx_max_date = None
 
-                filter_header_left, filter_header_right = st.columns([5, 1.1])
-                with filter_header_left:
+                st.markdown(
+                    """
+                    <div class="tx-filter-shell">
+                        <div class="tx-filter-top">
+                            <div>
+                                <div class="tx-filter-title">Transaction Search Workspace</div>
+                                <div class="tx-filter-subtitle">Paste multiple Ref # / Trans. # values, select a date mode, and review matched or missing values before checking the table.</div>
+                            </div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                header_left, header_right = st.columns([5, 1.15])
+                with header_left:
                     st.markdown("<div class='section-title'>Transaction Filters</div>", unsafe_allow_html=True)
-                    st.markdown("<div class='section-subtitle'>Paste one or multiple Ref # / Trans. # values, then narrow by date if needed.</div>", unsafe_allow_html=True)
-                with filter_header_right:
+                    st.markdown("<div class='section-subtitle'>Use line breaks, commas, or semicolons for multiple search values.</div>", unsafe_allow_html=True)
+                with header_right:
                     st.button(
                         "Clear Filters",
                         use_container_width=True,
@@ -1929,20 +2117,41 @@ with sku_tab:
                         args=(tx_search_key, tx_mode_key, tx_date_key, tx_range_key),
                     )
 
-                search_col, date_col = st.columns([2.25, 1])
+                search_col, date_col = st.columns([1.55, 1], gap="medium")
                 with search_col:
+                    st.markdown(
+                        """
+                        <div class="tx-filter-card-title">Search Ref # / Trans. #</div>
+                        <div class="tx-filter-card-subtitle">Paste one value per line for the cleanest result. Matching is not case-sensitive.</div>
+                        <div class="tx-example-row">
+                            <span class="tx-example-pill">PO_0090</span>
+                            <span class="tx-example-pill">PO_0086</span>
+                            <span class="tx-example-pill">AXIA_2484</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
                     tx_search = st.text_area(
                         "Search Ref # / Trans. #",
-                        placeholder="Paste one per line:\nPO_0090\nPO_0086\nAXIA_2484",
+                        placeholder="PO_0090\nPO_0086\nAXIA_2484",
                         key=tx_search_key,
-                        height=132,
+                        height=154,
+                        label_visibility="collapsed",
                     )
                 with date_col:
+                    st.markdown(
+                        """
+                        <div class="tx-filter-card-title">Activity Date Filter</div>
+                        <div class="tx-filter-card-subtitle">Choose all dates, one exact date, or a date range.</div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
                     activity_date_mode = st.radio(
                         "Activity Date Filter",
                         options=["All Dates", "Single Date", "Date Range"],
                         horizontal=True,
                         key=tx_mode_key,
+                        label_visibility="collapsed",
                     )
                     selected_tx_date = None
                     selected_tx_date_range = None
@@ -1965,7 +2174,19 @@ with sku_tab:
                         )
                     else:
                         if tx_min_date is not None and tx_max_date is not None:
-                            st.caption(f"Available dates: {tx_min_date.strftime('%m/%d/%Y')} - {tx_max_date.strftime('%m/%d/%Y')}")
+                            st.markdown(
+                                f"""
+                                <div class="tx-result-box">
+                                    <div class="tx-result-title">Available Activity Dates</div>
+                                    <div class="tx-pill-wrap">
+                                        <span class="tx-pill-muted">{tx_min_date.strftime('%m/%d/%Y')}</span>
+                                        <span class="tx-pill-muted">to</span>
+                                        <span class="tx-pill-muted">{tx_max_date.strftime('%m/%d/%Y')}</span>
+                                    </div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
 
                 tx_terms = []
                 if tx_search.strip():
@@ -1976,8 +2197,12 @@ with sku_tab:
                         | tx_filtered["Trans. #"].astype(str).str.lower().str.contains(tx_pattern, na=False, regex=True)
                     ]
 
+                date_filter_label = "All Dates"
+                date_filter_help = "No date filter"
                 if activity_date_mode == "Single Date" and selected_tx_date is not None:
                     selected_date_value = pd.to_datetime(selected_tx_date).normalize()
+                    date_filter_label = selected_date_value.strftime("%m/%d/%Y")
+                    date_filter_help = "Single date"
                     tx_activity_dates = pd.to_datetime(tx_filtered["Activity Date"], errors="coerce").dt.normalize()
                     tx_filtered = tx_filtered[tx_activity_dates == selected_date_value]
                 elif activity_date_mode == "Date Range" and selected_tx_date_range is not None:
@@ -1986,11 +2211,17 @@ with sku_tab:
                         range_end = pd.to_datetime(selected_tx_date_range[1]).normalize()
                         if range_start > range_end:
                             range_start, range_end = range_end, range_start
+                        date_filter_label = f"{range_start.strftime('%m/%d/%Y')} - {range_end.strftime('%m/%d/%Y')}"
+                        date_filter_help = "Date range"
                         tx_activity_dates = pd.to_datetime(tx_filtered["Activity Date"], errors="coerce").dt.normalize()
                         tx_filtered = tx_filtered[(tx_activity_dates >= range_start) & (tx_activity_dates <= range_end)]
                     else:
                         st.warning("Please select both start and end date for Activity Date Range.")
+                        date_filter_label = "Range incomplete"
+                        date_filter_help = "Select 2 dates"
 
+                tx_missing_terms = []
+                tx_found_terms = []
                 if tx_terms:
                     tx_result_text = (
                         tx_filtered["Ref #"].astype(str).str.lower()
@@ -2001,20 +2232,81 @@ with sku_tab:
                         term for term in tx_terms
                         if not tx_result_text.str.contains(re.escape(term.lower()), na=False, regex=True).any()
                     ]
-                    tx_found_count = len(tx_terms) - len(tx_missing_terms)
-                    status_left, status_right = st.columns([1.35, 2.65])
-                    with status_left:
-                        if tx_missing_terms:
-                            st.error(f"Found {tx_found_count:,} of {len(tx_terms):,} searched values.")
-                        else:
-                            st.success(f"Found all {len(tx_terms):,} searched values.")
-                    with status_right:
-                        if tx_missing_terms:
-                            st.error("Not found in results: " + ", ".join(tx_missing_terms))
-                        else:
-                            st.success("No missing Ref # / Trans. # values.")
+                    tx_found_terms = [term for term in tx_terms if term not in tx_missing_terms]
+
+                search_value_count = len(tx_terms)
+                missing_value_count = len(tx_missing_terms)
+                matching_row_count = len(tx_filtered)
+                found_value_count = search_value_count - missing_value_count
+                search_status_text = f"{found_value_count:,} / {search_value_count:,}" if search_value_count else "0"
+                search_status_help = "found searched values" if search_value_count else "no search values pasted"
+                missing_status_help = "needs review" if missing_value_count else "all clear"
+
+                st.markdown(
+                    f"""
+                    <div class="tx-status-grid">
+                        <div class="tx-status-card">
+                            <div class="tx-status-label">Search Values</div>
+                            <div class="tx-status-value">{search_value_count:,}</div>
+                            <div class="tx-status-help">Ref # / Trans. # entered</div>
+                        </div>
+                        <div class="tx-status-card">
+                            <div class="tx-status-label">Matched Values</div>
+                            <div class="tx-status-value">{html.escape(search_status_text)}</div>
+                            <div class="tx-status-help">{html.escape(search_status_help)}</div>
+                        </div>
+                        <div class="tx-status-card">
+                            <div class="tx-status-label">Matching Rows</div>
+                            <div class="tx-status-value">{matching_row_count:,}</div>
+                            <div class="tx-status-help">after all filters</div>
+                        </div>
+                        <div class="tx-status-card">
+                            <div class="tx-status-label">Date Filter</div>
+                            <div class="tx-status-value" style="font-size:.98rem; line-height:1.2; word-break:break-word;">{html.escape(date_filter_label)}</div>
+                            <div class="tx-status-help">{html.escape(date_filter_help)}</div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                if tx_terms:
+                    if tx_missing_terms:
+                        st.markdown(
+                            f"""
+                            <div class="tx-result-box tx-result-box-missing">
+                                <div class="tx-result-title">Not found in filtered results</div>
+                                <div class="tx-pill-wrap">{html_pills(tx_missing_terms, 'tx-pill-missing')}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            f"""
+                            <div class="tx-result-box tx-result-box-ok">
+                                <div class="tx-result-title">All searched values were found</div>
+                                <div class="tx-pill-wrap">{html_pills(tx_found_terms, 'tx-pill-ok')}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                    with st.expander("Matched search values", expanded=False):
+                        st.markdown(
+                            f"<div class='tx-pill-wrap'>{html_pills(tx_found_terms, 'tx-pill-ok')}</div>",
+                            unsafe_allow_html=True,
+                        )
                 else:
-                    st.caption(f"Showing {len(tx_filtered):,} transaction rows for the selected SKU and date filter.")
+                    st.markdown(
+                        f"""
+                        <div class="tx-result-box">
+                            <div class="tx-result-title">Current view</div>
+                            <div class="tx-pill-wrap"><span class="tx-pill-muted">Showing {matching_row_count:,} transaction rows for the selected SKU and date filter</span></div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
                 st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
 
