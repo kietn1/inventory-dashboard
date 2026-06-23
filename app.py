@@ -1909,10 +1909,11 @@ with sku_tab:
                 tx_filtered = tx_sku.copy()
 
                 f1, f2 = st.columns([2, 1])
-                tx_search = f1.text_input(
+                tx_search = f1.text_area(
                     "Search Ref # / Trans. #",
-                    placeholder="Example: AXIA, PO, DO...",
+                    placeholder="Example:\nPO_0090\nPO_0086\nAXIA_2484",
                     key=f"tx_search_{sku_filter_key}",
+                    height=110,
                 )
 
                 tx_dates = pd.to_datetime(tx_sku["Activity Date"], errors="coerce").dropna()
@@ -1932,17 +1933,34 @@ with sku_tab:
                     help="Pick one specific activity date from the calendar, or leave blank to show all dates.",
                 )
 
+                tx_terms = []
                 if tx_search.strip():
-                    tx_q = tx_search.strip().lower()
+                    tx_terms = [x.strip() for x in re.split(r"[\n,;]+", tx_search) if x.strip()]
+                    tx_pattern = "|".join(re.escape(x.lower()) for x in tx_terms)
                     tx_filtered = tx_filtered[
-                        tx_filtered["Ref #"].astype(str).str.lower().str.contains(tx_q, na=False)
-                        | tx_filtered["Trans. #"].astype(str).str.lower().str.contains(tx_q, na=False)
+                        tx_filtered["Ref #"].astype(str).str.lower().str.contains(tx_pattern, na=False, regex=True)
+                        | tx_filtered["Trans. #"].astype(str).str.lower().str.contains(tx_pattern, na=False, regex=True)
                     ]
 
                 if selected_tx_date is not None:
                     selected_date_value = pd.to_datetime(selected_tx_date).normalize()
                     tx_activity_dates = pd.to_datetime(tx_filtered["Activity Date"], errors="coerce").dt.normalize()
                     tx_filtered = tx_filtered[tx_activity_dates == selected_date_value]
+
+                if tx_terms:
+                    tx_result_text = (
+                        tx_filtered["Ref #"].astype(str).str.lower()
+                        + " "
+                        + tx_filtered["Trans. #"].astype(str).str.lower()
+                    )
+                    tx_missing_terms = [
+                        term for term in tx_terms
+                        if not tx_result_text.str.contains(re.escape(term.lower()), na=False, regex=True).any()
+                    ]
+                    if tx_missing_terms:
+                        st.error("Not found in results: " + ", ".join(tx_missing_terms))
+                    else:
+                        st.success("All searched Ref # / Trans. # were found.")
 
                 st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
 
