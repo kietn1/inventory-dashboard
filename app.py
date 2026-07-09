@@ -13,7 +13,7 @@ import streamlit as st
 
 CUSTOMER_EXPORT_VERSION = "Customer export v8"
 FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v24-site-persist-compare"
+APP_CACHE_VERSION = "full-transactions-v25-carson-newark-logic-match"
 
 
 st.set_page_config(
@@ -1081,14 +1081,23 @@ def extract_report_range(raw: pd.DataFrame):
 
     for r in range(min(15, len(raw))):
         row = raw.iloc[r].tolist()
-        row_text_original = " | ".join(clean_text(x) for x in row)
+        row_text_original = " | ".join(clean_text(x) for x in row if clean_text(x))
         row_text = row_text_original.lower()
         if "item activity from" not in row_text:
             continue
 
+        date_matches = re.findall(
+            r"\d{1,2}/\d{1,2}/\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)?",
+            row_text_original,
+            flags=re.IGNORECASE,
+        )
+        if len(date_matches) >= 2:
+            start_dt = parse_excel_or_text_date(date_matches[0])
+            end_dt = parse_excel_or_text_date(date_matches[1])
+            break
 
         match = re.search(
-            r"item\s+activity\s+from:\s*(.*?)\s+to\s+(.*)$",
+            r"item\s+activity\s+from:\s*(.*?)\s+to\s+([^|]+)",
             row_text_original,
             flags=re.IGNORECASE,
         )
@@ -1096,7 +1105,6 @@ def extract_report_range(raw: pd.DataFrame):
             start_dt = parse_excel_or_text_date(match.group(1))
             end_dt = parse_excel_or_text_date(match.group(2))
             break
-
 
         to_index = None
         for i, value in enumerate(row):
@@ -1212,30 +1220,9 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
         activity_lower = activity_text.lower()
         ref_lower = ref_text.lower()
 
-        if config["total_rule"] == "sku_totals" and sku_lower == "totals:":
-            if current_sku:
-                ensure_sku_record(current_sku, current_desc)
-                sku_records[current_sku]["Official Total Inbound"] = qty_in
-                sku_records[current_sku]["Official Total Outbound"] = qty_out
-                sku_records[current_sku]["Ending Balance"] = balance
-                sku_records[current_sku]["Ctn Balance"] = ctn_balance
-                sku_records[current_sku]["Official Total Row"] = excel_row_num + 1
-                official_total_rows.append(
-                    {
-                        "Excel Row": excel_row_num + 1,
-                        "SKU": current_sku,
-                        "Description": sku_records[current_sku]["Description"],
-                        "Source": config["total_source"],
-                        "Official Total Inbound": qty_in,
-                        "Official Total Outbound": qty_out,
-                        "Balance": balance,
-                        "Ctn Balance": ctn_balance,
-                    }
-                )
-            continue
+        is_total_row = (config["total_rule"] == "sku_totals" and sku_lower == "totals:") or (config["total_rule"] == "ref_total" and ref_lower == "total")
 
-
-        if sku_cell and sku_lower != "sku" and not (config["total_rule"] == "ref_total" and ref_lower == "total"):
+        if sku_cell and sku_lower != "sku" and not is_total_row:
             current_sku = sku_cell
             if desc_cell:
                 current_desc = desc_cell
@@ -1277,7 +1264,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
             )
             continue
 
-        if config["total_rule"] == "ref_total" and ref_lower == "total":
+        if is_total_row:
             sku_records[current_sku]["Official Total Inbound"] = qty_in
             sku_records[current_sku]["Official Total Outbound"] = qty_out
             sku_records[current_sku]["Official Total Row"] = excel_row_num + 1
@@ -1296,8 +1283,8 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
             continue
 
         activity_dt = parse_excel_or_text_date(activity_raw)
-        is_cancelled = "cancel" in ref_lower
-        is_not_shipped = "not shipped" in activity_lower
+        is_cancelled = "cancel" in ref_lower or "cancel" in activity_lower
+        is_not_shipped = "not shipped" in activity_lower or "not shipped" in ref_lower
 
         if is_cancelled:
             cancelled_rows.append(
