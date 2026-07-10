@@ -10,10 +10,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
+from pandas.tseries.holiday import USFederalHolidayCalendar
+from pandas.tseries.offsets import CustomBusinessDay
 
-CUSTOMER_EXPORT_VERSION = "Customer export v8"
-FIXED_REPORT_START_DATE = "09/01/2025"
-APP_CACHE_VERSION = "full-transactions-v25-carson-newark-logic-match"
+CUSTOMER_EXPORT_VERSION = "Customer export v9"
+APP_CACHE_VERSION = "inventory-logic-v26-accurate-windows-risk-audit"
+WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
 st.set_page_config(
@@ -950,14 +952,14 @@ def get_cell(row, col_idx):
     return row.iloc[col_idx] if len(row) > col_idx else None
 
 
-def first_qty_number(value) -> float:
+def first_qty_number(value, default=0.0) -> float:
     text = clean_text(value)
     if not text:
-        return 0.0
+        return default
     text = text.replace(",", "")
     before_slash = text.split("/")[0]
     match = re.search(r"-?\d+(?:\.\d+)?", before_slash)
-    return float(match.group()) if match else 0.0
+    return float(match.group()) if match else default
 
 
 def parse_excel_or_text_date(value):
@@ -1145,26 +1147,34 @@ def process_excel_file(file_bytes: bytes, format_name: str, cache_version: str =
     return build_inventory_model(raw_df, config, format_name)
 
 
-def last_data_activity_dates(tx_df: pd.DataFrame, end_date, count: int) -> list:
-    if tx_df.empty:
-        return []
+def last_data_activity_dates(tx_df: pd.DataFrame, end_date, count: int, start_date=None) -> list:
     end_date = pd.to_datetime(end_date).normalize()
-    valid_dates = (
-        pd.to_datetime(tx_df.loc[tx_df["Activity Date"].notna(), "Activity Date"])
-        .dt.normalize()
-        .drop_duplicates()
-        .sort_values()
-    )
+    if tx_df is None or tx_df.empty or "Activity Date" not in tx_df.columns:
+        valid_dates = pd.DatetimeIndex([])
+    else:
+        valid_dates = pd.DatetimeIndex(
+            pd.to_datetime(tx_df.loc[tx_df["Activity Date"].notna(), "Activity Date"], errors="coerce")
+            .dropna()
+            .dt.normalize()
+            .drop_duplicates()
+            .sort_values()
+        )
     valid_dates = valid_dates[valid_dates <= end_date]
-    return valid_dates.tail(count).tolist()
+    if start_date is not None and not pd.isna(start_date):
+        valid_dates = valid_dates[valid_dates >= pd.to_datetime(start_date).normalize()]
+    if end_date not in valid_dates:
+        valid_dates = valid_dates.append(pd.DatetimeIndex([end_date]))
+    return valid_dates.sort_values().unique()[-count:].tolist()
 
 
-def add_calendar_days(start_date, days):
+def add_business_days(start_date, days):
     if pd.isna(days) or not np.isfinite(days):
         return pd.NaT
-    if days > 365:
-        return pd.NaT
-    return pd.to_datetime(start_date).normalize() + pd.Timedelta(days=int(np.floor(days)))
+    whole_days = max(int(np.ceil(float(days))), 0)
+    start = pd.to_datetime(start_date).normalize()
+    if whole_days == 0:
+        return start
+    return start + (whole_days * WAREHOUSE_BUSINESS_DAY)
 
 
 def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> dict:
@@ -1189,14 +1199,16 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
             {
                 "SKU": sku,
                 "Description": desc,
-                "Official Total Inbound": 0.0,
-                "Official Total Outbound": 0.0,
-                "Ending Balance": 0.0,
-                "Ctn Balance": 0.0,
-                "Beginning Balance": 0.0,
-                "Official Ending Row": None,
-                "Official Total Row": None,
+                "Official Total Inbound": np.nan,
+                "Official Total Outbound": np.nan,
+                "Ending Balance": np.nan,
+                "Ctn Balance": np.nan,
+                "Beginning Balance": np.nan,
+                "Official Ending Row": np.nan,
+                "Official Total Row": np.nan,
                 "Last Activity Date": pd.NaT,
+                "Last Inbound Date": pd.NaT,
+                "Last Outbound Date": pd.NaT,
             },
         )
         if desc:
@@ -1211,21 +1223,22 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
         trans_no = clean_text(get_cell(row, cols["trans_no"]))
         qty_in_raw = clean_text(get_cell(row, cols["qty_in"]))
         qty_out_raw = clean_text(get_cell(row, cols["qty_out"]))
-        qty_in = first_qty_number(get_cell(row, cols["qty_in"]))
-        qty_out = first_qty_number(get_cell(row, cols["qty_out"]))
-        balance = first_qty_number(get_cell(row, cols["balance"]))
-        ctn_balance = first_qty_number(get_cell(row, cols["ctn_balance"])) if cols.get("ctn_balance") is not None else 0.0
+        qty_in_value = first_qty_number(get_cell(row, cols["qty_in"]), np.nan)
+        qty_out_value = first_qty_number(get_cell(row, cols["qty_out"]), np.nan)
+        balance_value = first_qty_number(get_cell(row, cols["balance"]), np.nan)
+        ctn_balance_value = first_qty_number(get_cell(row, cols["ctn_balance"]), np.nan) if cols.get("ctn_balance") is not None else np.nan
+        qty_in = 0.0 if pd.isna(qty_in_value) else float(qty_in_value)
+        qty_out = 0.0 if pd.isna(qty_out_value) else float(qty_out_value)
 
         sku_lower = sku_cell.lower()
         activity_lower = activity_text.lower()
         ref_lower = ref_text.lower()
-
-        is_total_row = (config["total_rule"] == "sku_totals" and sku_lower == "totals:") or (config["total_rule"] == "ref_total" and ref_lower == "total")
+        activity_key = activity_lower.rstrip(":")
+        is_total_row = (config["total_rule"] == "sku_totals" and sku_lower.rstrip(":") == "totals") or (config["total_rule"] == "ref_total" and ref_lower.rstrip(":") == "total")
 
         if sku_cell and sku_lower != "sku" and not is_total_row:
             current_sku = sku_cell
-            if desc_cell:
-                current_desc = desc_cell
+            current_desc = desc_cell
             ensure_sku_record(current_sku, current_desc)
             continue
 
@@ -1234,23 +1247,23 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
 
         ensure_sku_record(current_sku, current_desc)
 
-        if activity_lower == "beginning balance":
-            sku_records[current_sku]["Beginning Balance"] = balance
+        if activity_key == "beginning balance":
+            sku_records[current_sku]["Beginning Balance"] = balance_value
             beginning_balance_rows.append(
                 {
                     "Excel Row": excel_row_num + 1,
                     "SKU": current_sku,
                     "Description": sku_records[current_sku]["Description"],
                     "Activity Date": activity_text,
-                    "Balance": balance,
-                    "Ctn Balance": ctn_balance,
+                    "Balance": balance_value,
+                    "Ctn Balance": ctn_balance_value,
                 }
             )
             continue
 
-        if activity_lower == "ending balance":
-            sku_records[current_sku]["Ending Balance"] = balance
-            sku_records[current_sku]["Ctn Balance"] = ctn_balance
+        if activity_key == "ending balance":
+            sku_records[current_sku]["Ending Balance"] = balance_value
+            sku_records[current_sku]["Ctn Balance"] = ctn_balance_value
             sku_records[current_sku]["Official Ending Row"] = excel_row_num + 1
             official_ending_rows.append(
                 {
@@ -1258,15 +1271,17 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                     "SKU": current_sku,
                     "Description": sku_records[current_sku]["Description"],
                     "Activity Date": activity_text,
-                    "Balance": balance,
-                    "Ctn Balance": ctn_balance,
+                    "Balance": balance_value,
+                    "Ctn Balance": ctn_balance_value,
                 }
             )
             continue
 
         if is_total_row:
-            sku_records[current_sku]["Official Total Inbound"] = qty_in
-            sku_records[current_sku]["Official Total Outbound"] = qty_out
+            official_inbound = 0.0 if pd.isna(qty_in_value) else float(qty_in_value)
+            official_outbound = 0.0 if pd.isna(qty_out_value) else float(qty_out_value)
+            sku_records[current_sku]["Official Total Inbound"] = official_inbound
+            sku_records[current_sku]["Official Total Outbound"] = official_outbound
             sku_records[current_sku]["Official Total Row"] = excel_row_num + 1
             official_total_rows.append(
                 {
@@ -1274,10 +1289,10 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                     "SKU": current_sku,
                     "Description": sku_records[current_sku]["Description"],
                     "Source": config["total_source"],
-                    "Official Total Inbound": qty_in,
-                    "Official Total Outbound": qty_out,
-                    "Balance": balance,
-                    "Ctn Balance": ctn_balance,
+                    "Official Total Inbound": official_inbound,
+                    "Official Total Outbound": official_outbound,
+                    "Balance": balance_value,
+                    "Ctn Balance": ctn_balance_value,
                 }
             )
             continue
@@ -1310,17 +1325,17 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                 }
             )
 
-
         if not pd.isna(activity_dt):
-            has_inbound = qty_in > 0
-            has_outbound = qty_out > 0
-
-            if has_inbound and has_outbound:
+            has_inbound = qty_in != 0
+            has_outbound = qty_out != 0
+            if qty_in > 0 and qty_out > 0:
                 transaction_type = "Inbound / Outbound"
-            elif has_inbound:
+            elif qty_in > 0:
                 transaction_type = "Inbound"
-            elif has_outbound:
+            elif qty_out > 0:
                 transaction_type = "Outbound"
+            elif qty_in < 0 or qty_out < 0:
+                transaction_type = "Adjustment"
             elif is_cancelled:
                 transaction_type = "Cancelled / No Qty"
             else:
@@ -1339,26 +1354,45 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
                     "Qty Out / Ctn Raw": qty_out_raw,
                     "Qty In": qty_in,
                     "Qty Out": qty_out,
-                    "Balance After Transaction": balance,
-                    "Ctn Balance After Transaction": ctn_balance,
+                    "Balance After Transaction": balance_value,
+                    "Ctn Balance After Transaction": ctn_balance_value,
                     "Is Not Shipped": is_not_shipped,
                     "Is Cancelled": is_cancelled,
                 }
             )
 
-
             if has_inbound or has_outbound:
                 existing_last = sku_records[current_sku]["Last Activity Date"]
                 if pd.isna(existing_last) or activity_dt > existing_last:
                     sku_records[current_sku]["Last Activity Date"] = activity_dt
+            if qty_in > 0:
+                existing_inbound = sku_records[current_sku]["Last Inbound Date"]
+                if pd.isna(existing_inbound) or activity_dt > existing_inbound:
+                    sku_records[current_sku]["Last Inbound Date"] = activity_dt
+            if qty_out > 0:
+                existing_outbound = sku_records[current_sku]["Last Outbound Date"]
+                if pd.isna(existing_outbound) or activity_dt > existing_outbound:
+                    sku_records[current_sku]["Last Outbound Date"] = activity_dt
 
+    tx_columns = [
+        "Excel Row",
+        "SKU",
+        "Description",
+        "Activity Date",
+        "Transaction Type",
+        "Trans. #",
+        "Ref #",
+        "Qty In / Ctn Raw",
+        "Qty Out / Ctn Raw",
+        "Qty In",
+        "Qty Out",
+        "Balance After Transaction",
+        "Ctn Balance After Transaction",
+        "Is Not Shipped",
+        "Is Cancelled",
+    ]
     sku_df = pd.DataFrame(sku_records.values())
-    tx_df = pd.DataFrame(transactions)
-    outbound_tx_df = (
-        tx_df[tx_df["Qty Out"] > 0].copy()
-        if not tx_df.empty and "Qty Out" in tx_df.columns
-        else pd.DataFrame(columns=tx_df.columns)
-    )
+    tx_df = pd.DataFrame(transactions, columns=tx_columns)
     official_total_df = pd.DataFrame(official_total_rows)
     official_ending_df = pd.DataFrame(official_ending_rows)
     beginning_balance_df = pd.DataFrame(beginning_balance_rows)
@@ -1368,19 +1402,52 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
     if sku_df.empty:
         raise ValueError(f"No SKU sections were found in the {format_name} file.")
 
+    tx_dates = pd.to_datetime(tx_df["Activity Date"], errors="coerce").dropna() if not tx_df.empty else pd.Series(dtype="datetime64[ns]")
+    report_date_source = "File Header"
     if pd.isna(report_end):
-        report_end = tx_df["Activity Date"].max() if not tx_df.empty else pd.Timestamp.today().normalize()
+        if tx_dates.empty:
+            raise ValueError("Cannot determine the report end date from the file header or transaction rows.")
+        report_end = tx_dates.max()
+        report_date_source = "Latest Transaction Date"
     if pd.isna(report_start):
-        report_start = tx_df["Activity Date"].min() if not tx_df.empty else report_end
+        report_start = tx_dates.min() if not tx_dates.empty else report_end
 
     report_end = pd.to_datetime(report_end).normalize()
     report_start = pd.to_datetime(report_start).normalize()
+    if report_start > report_end:
+        raise ValueError("The report start date is later than the report end date.")
 
+    total_counts = official_total_df.groupby("SKU").size().to_dict() if not official_total_df.empty else {}
+    ending_counts = official_ending_df.groupby("SKU").size().to_dict() if not official_ending_df.empty else {}
 
+    data_quality_issues = []
+    for _, sku_row in sku_df.iterrows():
+        sku = sku_row["SKU"]
+        issues = []
+        total_count = int(total_counts.get(sku, 0))
+        ending_count = int(ending_counts.get(sku, 0))
+        if total_count == 0:
+            issues.append("Missing Total Row")
+        elif total_count > 1:
+            issues.append("Duplicate Total Rows")
+        if ending_count == 0:
+            issues.append("Missing Ending Balance Row")
+        elif ending_count > 1:
+            issues.append("Duplicate Ending Balance Rows")
+        if ending_count > 0 and pd.isna(sku_row["Ending Balance"]):
+            issues.append("Missing Ending Balance Value")
+        data_quality_issues.append("; ".join(issues))
+
+    sku_df["Data Quality Issue"] = data_quality_issues
+    sku_df["Data Quality Status"] = np.where(sku_df["Data Quality Issue"] == "", "OK", "Review")
+    sku_df["Official Total Row Count"] = sku_df["SKU"].map(total_counts).fillna(0).astype(int)
+    sku_df["Official Ending Row Count"] = sku_df["SKU"].map(ending_counts).fillna(0).astype(int)
+
+    positive_outbound_df = tx_df[tx_df["Qty Out"] > 0].copy() if not tx_df.empty else tx_df.copy()
     window_dates = {
-        "Outbound Last 30 Days": last_data_activity_dates(outbound_tx_df, report_end, 30),
-        "Outbound Last 14 Days": last_data_activity_dates(outbound_tx_df, report_end, 14),
-        "Outbound Last 7 Days": last_data_activity_dates(outbound_tx_df, report_end, 7),
+        "Outbound Last 30 Days": last_data_activity_dates(tx_df, report_end, 30, report_start),
+        "Outbound Last 14 Days": last_data_activity_dates(tx_df, report_end, 14, report_start),
+        "Outbound Last 7 Days": last_data_activity_dates(tx_df, report_end, 7, report_start),
     }
     windows = {
         label: (dates[0], dates[-1]) if dates else (pd.NaT, pd.NaT)
@@ -1388,60 +1455,135 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
     }
 
     for label, dates in window_dates.items():
-        if outbound_tx_df.empty or not dates:
+        if positive_outbound_df.empty or not dates:
             sku_df[label] = 0.0
         else:
-            mask = outbound_tx_df["Activity Date"].isin(dates)
-            agg = outbound_tx_df.loc[mask].groupby("SKU", as_index=True)["Qty Out"].sum()
+            mask = positive_outbound_df["Activity Date"].isin(dates)
+            agg = positive_outbound_df.loc[mask].groupby("SKU")["Qty Out"].sum()
             sku_df[label] = sku_df["SKU"].map(agg).fillna(0.0)
 
-    valid_30d_count = max(len(window_dates["Outbound Last 30 Days"]), 1)
-    sku_df["Avg Daily Usage 30D"] = sku_df["Outbound Last 30 Days"] / valid_30d_count
-    sku_df["Days Remaining"] = np.where(
-        sku_df["Avg Daily Usage 30D"] > 0,
-        sku_df["Ending Balance"] / sku_df["Avg Daily Usage 30D"],
-        np.inf,
+    valid_30d_count = len(window_dates["Outbound Last 30 Days"])
+    sku_df["Avg Daily Usage 30D"] = np.where(
+        valid_30d_count > 0,
+        sku_df["Outbound Last 30 Days"] / valid_30d_count,
+        0.0,
     )
+    sku_df["Days Remaining"] = np.nan
+    usable_mask = (sku_df["Data Quality Status"] == "OK") & (sku_df["Avg Daily Usage 30D"] > 0)
+    positive_balance_mask = usable_mask & (sku_df["Ending Balance"] > 0)
+    zero_balance_mask = (sku_df["Data Quality Status"] == "OK") & (sku_df["Ending Balance"] <= 0)
+    sku_df.loc[positive_balance_mask, "Days Remaining"] = (
+        sku_df.loc[positive_balance_mask, "Ending Balance"] / sku_df.loc[positive_balance_mask, "Avg Daily Usage 30D"]
+    )
+    sku_df.loc[zero_balance_mask, "Days Remaining"] = 0.0
 
-    demand_exists = (
-        (sku_df["Outbound Last 30 Days"] > 0)
-        | (sku_df["Outbound Last 14 Days"] > 0)
-        | (sku_df["Outbound Last 7 Days"] > 0)
-    )
-    conditions = [
-        (sku_df["Ending Balance"] <= 0) & demand_exists,
-        (sku_df["Outbound Last 7 Days"] > 0) & (sku_df["Days Remaining"] <= 7),
-        (sku_df["Outbound Last 14 Days"] > 0) & (sku_df["Days Remaining"] <= 14),
-        (sku_df["Outbound Last 30 Days"] > 0) & (sku_df["Days Remaining"] <= 30),
-    ]
-    sku_df["Risk Level"] = np.select(conditions, ["Critical", "Critical", "Warning", "Watch"], default="Healthy")
+    def assign_risk(row):
+        if row["Data Quality Status"] != "OK":
+            return "Data Issue"
+        if row["Ending Balance"] <= 0:
+            return "Critical"
+        if row["Outbound Last 30 Days"] <= 0:
+            return "No Recent Demand"
+        if row["Days Remaining"] <= 7:
+            return "Critical"
+        if row["Days Remaining"] <= 14:
+            return "Warning"
+        if row["Days Remaining"] <= 30:
+            return "Watch"
+        return "Healthy"
+
+    sku_df["Risk Level"] = sku_df.apply(assign_risk, axis=1)
     sku_df["Recommended Action"] = sku_df["Risk Level"].map(
         {
-            "Critical": "Prepare inbound / allocate stock immediately",
-            "Warning": "Review inbound ETA and reserve inventory",
-            "Watch": "Monitor weekly usage and upcoming orders",
+            "Data Issue": "Review source rows before using this SKU",
+            "Critical": "Prepare inbound or reserve stock immediately",
+            "Warning": "Confirm inbound ETA and reserve inventory",
+            "Watch": "Monitor usage and upcoming orders",
             "Healthy": "No immediate action",
+            "No Recent Demand": "No recent outbound demand",
         }
     )
-    sku_df["Forecast Stockout Date"] = sku_df["Days Remaining"].map(lambda x: add_calendar_days(report_end, x))
+    sku_df["Forecast Stockout Date"] = sku_df["Days Remaining"].map(lambda value: add_business_days(report_end, value))
 
-    risk_order = {"Critical": 0, "Warning": 1, "Watch": 2, "Healthy": 3}
+    transaction_totals = (
+        tx_df.groupby("SKU", as_index=True).agg(
+            **{
+                "Transaction Total Inbound": ("Qty In", "sum"),
+                "Transaction Total Outbound": ("Qty Out", "sum"),
+            }
+        )
+        if not tx_df.empty
+        else pd.DataFrame(columns=["Transaction Total Inbound", "Transaction Total Outbound"])
+    )
+    sku_df["Transaction Total Inbound"] = sku_df["SKU"].map(transaction_totals.get("Transaction Total Inbound", pd.Series(dtype=float))).fillna(0.0)
+    sku_df["Transaction Total Outbound"] = sku_df["SKU"].map(transaction_totals.get("Transaction Total Outbound", pd.Series(dtype=float))).fillna(0.0)
+    sku_df["Calculated Ending Balance"] = sku_df["Beginning Balance"] + sku_df["Official Total Inbound"] - sku_df["Official Total Outbound"]
+    sku_df["Balance Difference"] = sku_df["Ending Balance"] - sku_df["Calculated Ending Balance"]
+    sku_df["Inbound Difference"] = sku_df["Official Total Inbound"] - sku_df["Transaction Total Inbound"]
+    sku_df["Outbound Difference"] = sku_df["Official Total Outbound"] - sku_df["Transaction Total Outbound"]
+
+    def assign_audit_status(row):
+        if row["Data Quality Status"] != "OK":
+            return "Review"
+        checks = []
+        for field in ["Balance Difference", "Inbound Difference", "Outbound Difference"]:
+            value = row[field]
+            if not pd.isna(value):
+                checks.append(abs(float(value)) < 0.01)
+        if not checks:
+            return "Not Available"
+        if not all(checks):
+            return "Review"
+        return "Pass" if len(checks) == 3 else "Partial"
+
+    sku_df["Audit Status"] = sku_df.apply(assign_audit_status, axis=1)
+    audit_cols = [
+        "SKU",
+        "Description",
+        "Data Quality Status",
+        "Data Quality Issue",
+        "Beginning Balance",
+        "Official Total Inbound",
+        "Official Total Outbound",
+        "Calculated Ending Balance",
+        "Ending Balance",
+        "Balance Difference",
+        "Transaction Total Inbound",
+        "Inbound Difference",
+        "Transaction Total Outbound",
+        "Outbound Difference",
+        "Official Total Row Count",
+        "Official Ending Row Count",
+        "Audit Status",
+    ]
+    audit_df = sku_df[audit_cols].copy()
+
+    risk_order = {
+        "Data Issue": 0,
+        "Critical": 1,
+        "Warning": 2,
+        "Watch": 3,
+        "Healthy": 4,
+        "No Recent Demand": 5,
+    }
     sku_df["Risk Sort"] = sku_df["Risk Level"].map(risk_order).fillna(9)
     sku_df = sku_df.sort_values(
-        by=["Risk Sort", "Days Remaining", "Outbound Last 14 Days", "Outbound Last 30 Days"],
-        ascending=[True, True, False, False],
+        by=["Risk Sort", "Days Remaining", "Outbound Last 14 Days", "Outbound Last 30 Days", "SKU"],
+        ascending=[True, True, False, False, True],
+        na_position="last",
     ).reset_index(drop=True)
 
-    if outbound_tx_df.empty:
+    if positive_outbound_df.empty:
         trend_df = pd.DataFrame(columns=["Activity Date", "Qty Out"])
     else:
-        trend_df = outbound_tx_df.groupby("Activity Date", as_index=False)["Qty Out"].sum().sort_values("Activity Date")
+        trend_df = positive_outbound_df.groupby("Activity Date", as_index=False)["Qty Out"].sum().sort_values("Activity Date")
 
     return {
         "format_name": format_name,
         "sku_df": sku_df,
         "tx_df": tx_df,
         "trend_df": trend_df,
+        "audit_df": audit_df,
         "official_total_df": official_total_df,
         "official_ending_df": official_ending_df,
         "beginning_balance_df": beginning_balance_df,
@@ -1449,6 +1591,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
         "cancelled_df": cancelled_df,
         "report_start": report_start,
         "report_end": report_end,
+        "report_date_source": report_date_source,
         "windows": windows,
         "window_dates": window_dates,
         "header_idx": header_idx,
@@ -1472,10 +1615,12 @@ def fmt_date(value):
 
 def risk_badge_text(level: str) -> str:
     return {
+        "Data Issue": "⚫ Data Issue",
         "Critical": "🔴 Critical",
         "Warning": "🟠 Warning",
         "Watch": "🟡 Watch",
         "Healthy": "🟢 Healthy",
+        "No Recent Demand": "⚪ No Recent Demand",
     }.get(level, level)
 
 
@@ -1543,18 +1688,21 @@ def prepare_display(df: pd.DataFrame) -> pd.DataFrame:
         "Outbound Last 30 Days",
         "Outbound Last 14 Days",
         "Outbound Last 7 Days",
-        "Days Remaining",
         "Official Total Row",
         "Official Ending Row",
+        "Official Total Row Count",
+        "Official Ending Row Count",
     ]
-    for c in integer_metric_cols:
-        if c in out.columns:
-            out[c] = out[c].replace(np.inf, np.nan).round(0).astype("Int64")
+    for col in integer_metric_cols:
+        if col in out.columns:
+            out[col] = pd.to_numeric(out[col], errors="coerce").round(0).astype("Int64")
     if "Avg Daily Usage 30D" in out.columns:
-        out["Avg Daily Usage 30D"] = out["Avg Daily Usage 30D"].round(2)
-    for c in ["Forecast Stockout Date", "Last Activity Date"]:
-        if c in out.columns:
-            out[c] = pd.to_datetime(out[c], errors="coerce").dt.strftime("%m/%d/%Y").replace("NaT", "")
+        out["Avg Daily Usage 30D"] = pd.to_numeric(out["Avg Daily Usage 30D"], errors="coerce").round(2)
+    if "Days Remaining" in out.columns:
+        out["Days Remaining"] = pd.to_numeric(out["Days Remaining"], errors="coerce").round(1)
+    for col in ["Forecast Stockout Date", "Last Activity Date", "Last Inbound Date", "Last Outbound Date"]:
+        if col in out.columns:
+            out[col] = pd.to_datetime(out[col], errors="coerce").dt.strftime("%m/%d/%Y").replace("NaT", "")
     return out
 
 
@@ -1564,7 +1712,9 @@ def prepare_customer_export(df: pd.DataFrame) -> pd.DataFrame:
         "Description",
         "Risk Level",
         "Recommended Action",
+        "Data Quality Issue",
         "Ending Balance",
+        "Last Outbound Date",
         "Last Activity Date",
         "Official Total Outbound",
         "Outbound Last 30 Days",
@@ -1575,26 +1725,19 @@ def prepare_customer_export(df: pd.DataFrame) -> pd.DataFrame:
         "Forecast Stockout Date",
     ]
     out = df[customer_cols].copy()
-
     integer_cols = [
         "Ending Balance",
         "Official Total Outbound",
         "Outbound Last 30 Days",
         "Outbound Last 14 Days",
         "Outbound Last 7 Days",
-        "Days Remaining",
     ]
     for col in integer_cols:
-        if col in out.columns:
-            out[col] = out[col].replace(np.inf, np.nan).round(0)
-
-    if "Avg Daily Usage 30D" in out.columns:
-        out["Avg Daily Usage 30D"] = out["Avg Daily Usage 30D"].replace(np.inf, np.nan).round(2)
-
-    for col in ["Forecast Stockout Date", "Last Activity Date"]:
-        if col in out.columns:
-            out[col] = pd.to_datetime(out[col], errors="coerce")
-
+        out[col] = pd.to_numeric(out[col], errors="coerce").round(0)
+    out["Avg Daily Usage 30D"] = pd.to_numeric(out["Avg Daily Usage 30D"], errors="coerce").round(2)
+    out["Days Remaining"] = pd.to_numeric(out["Days Remaining"], errors="coerce").round(1)
+    for col in ["Forecast Stockout Date", "Last Activity Date", "Last Outbound Date"]:
+        out[col] = pd.to_datetime(out[col], errors="coerce")
     return out
 
 
@@ -1896,7 +2039,28 @@ def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame, tx_df
             )
             continue
 
-        current_stock = float(pd.to_numeric(pd.Series([stock_info.get("Ending Balance", 0)]), errors="coerce").fillna(0).iloc[0])
+        current_stock_value = pd.to_numeric(pd.Series([stock_info.get("Ending Balance", np.nan)]), errors="coerce").iloc[0]
+        if pd.isna(current_stock_value):
+            detail_rows.append(
+                {
+                    "Input Order": int(row["Input Order"]),
+                    "DO #": row["DO #"],
+                    "SKU": stock_info.get("SKU", row["SKU"]),
+                    "Description": stock_info.get("Description", existing_item.get("Description", "")),
+                    "Report DO Status": report_do_status,
+                    "Report Item Status": report_item_status,
+                    "Current Stock": np.nan,
+                    "Available Before": np.nan,
+                    "Requested Qty": requested_qty,
+                    "Existing Report Qty Out": existing_report_qty,
+                    "Qty To Check": qty_to_check,
+                    "Remaining After This Check": np.nan,
+                    "Shortage Qty": np.nan,
+                    "Status": "Data Issue",
+                }
+            )
+            continue
+        current_stock = float(current_stock_value)
         if sku_key not in remaining:
             remaining[sku_key] = current_stock
         available_before = remaining[sku_key]
@@ -1940,9 +2104,12 @@ def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame, tx_df
             continue
         shortage_items = int((do_detail["Status"] == "Shortage").sum())
         not_found_items = int((do_detail["Status"] == "Not Found").sum())
+        data_issue_items = int((do_detail["Status"] == "Data Issue").sum())
         enough_items = int((do_detail["Status"] == "Enough").sum())
         covered_items = int((do_detail["Status"] == "Already Covered").sum())
-        if shortage_items > 0:
+        if data_issue_items > 0:
+            status = "Data Issue"
+        elif shortage_items > 0:
             status = "Shortage"
         elif not_found_items > 0:
             status = "Not Found"
@@ -1964,6 +2131,7 @@ def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame, tx_df
                 "Already Covered Items": covered_items,
                 "Shortage Items": shortage_items,
                 "Not Found Items": not_found_items,
+                "Data Issue Items": data_issue_items,
                 "Report Activity Date": existing_do_info.get("Activity Date", pd.NaT),
             }
         )
@@ -1980,6 +2148,7 @@ def stock_status_badge(value: str) -> str:
         "Invalid Qty": "Invalid Qty",
         "Already Covered": "Already in Report",
         "No Change": "No Change",
+        "Data Issue": "Data Issue",
     }.get(str(value), str(value))
 
 
@@ -2006,7 +2175,7 @@ def prepare_stock_check_display(df: pd.DataFrame) -> pd.DataFrame:
     for col in numeric_cols:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce").round(0).astype("Int64")
-    count_cols = ["Item Count", "Enough Items", "Already Covered Items", "Shortage Items", "Not Found Items"]
+    count_cols = ["Item Count", "Enough Items", "Already Covered Items", "Shortage Items", "Not Found Items", "Data Issue Items"]
     for col in count_cols:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).round(0).astype("Int64")
@@ -2028,7 +2197,7 @@ def build_temporary_balance_table(sku_df: pd.DataFrame, detail_df: pd.DataFrame)
 
     balance_df = base[base_cols].copy()
     balance_df["SKU Key"] = balance_df["SKU"].astype(str).map(normalize_lookup_key)
-    balance_df["Current Ending Balance"] = pd.to_numeric(balance_df["Ending Balance"], errors="coerce").fillna(0)
+    balance_df["Current Ending Balance"] = pd.to_numeric(balance_df["Ending Balance"], errors="coerce")
 
     if detail_df.empty or "Qty To Check" not in detail_df.columns:
         impact_df = pd.DataFrame(columns=["SKU Key", "Total Qty To Check", "Affected DO #"])
@@ -2055,16 +2224,21 @@ def build_temporary_balance_table(sku_df: pd.DataFrame, detail_df: pd.DataFrame)
     balance_df["Total Qty To Check"] = pd.to_numeric(balance_df["Total Qty To Check"], errors="coerce").fillna(0)
     balance_df["Affected DO #"] = balance_df["Affected DO #"].fillna("")
     balance_df["Temporary Balance"] = balance_df["Current Ending Balance"] - balance_df["Total Qty To Check"]
-    balance_df["Shortage Qty"] = np.where(balance_df["Temporary Balance"] < 0, balance_df["Temporary Balance"].abs(), 0)
+    balance_df["Shortage Qty"] = np.where(
+        balance_df["Current Ending Balance"].isna(),
+        np.nan,
+        np.where(balance_df["Temporary Balance"] < 0, balance_df["Temporary Balance"].abs(), 0),
+    )
     balance_df["Temporary Status"] = np.select(
         [
+            balance_df["Current Ending Balance"].isna(),
             balance_df["Total Qty To Check"] <= 0,
             balance_df["Temporary Balance"] >= 0,
         ],
-        ["No Change", "Enough"],
+        ["Data Issue", "No Change", "Enough"],
         default="Shortage",
     )
-    status_sort = {"Shortage": 0, "Enough": 1, "No Change": 2}
+    status_sort = {"Data Issue": 0, "Shortage": 1, "Enough": 2, "No Change": 3}
     balance_df["Impact Sort"] = np.where(balance_df["Total Qty To Check"] > 0, 0, 1)
     balance_df["Status Sort"] = balance_df["Temporary Status"].map(status_sort).fillna(9)
     balance_df = balance_df.sort_values(
@@ -2149,8 +2323,7 @@ def to_transaction_excel_bytes(model: dict, format_name: str, cache_version: str
             "Inbound": {"fill": "DFF3E3", "font": "067647"},
             "Outbound": {"fill": "FDE2E1", "font": "B42318"},
             "Inbound / Outbound": {"fill": "E0F2FE", "font": "026AA2"},
-            "Adjustment / No Qty": {"fill": "F3F4F6", "font": "4B5563"},
-            "No Qty / Adjustment": {"fill": "F3F4F6", "font": "4B5563"},
+            "Adjustment": {"fill": "F3F4F6", "font": "4B5563"},
             "Cancelled / No Qty": {"fill": "F3F4F6", "font": "4B5563"},
             "No Qty": {"fill": "F3F4F6", "font": "4B5563"},
         }
@@ -2237,13 +2410,13 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
 
         worksheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_col)
         range_cell = worksheet.cell(row=2, column=1)
-        range_cell.value = f"Report Range: {FIXED_REPORT_START_DATE} - {fmt_date(report_end)}"
+        range_cell.value = f"Report Range: {fmt_date(report_start)} - {fmt_date(report_end)}"
         range_cell.font = Font(size=10, color="4B5563")
         range_cell.alignment = Alignment(horizontal="left", vertical="center")
 
         worksheet.merge_cells(start_row=3, start_column=1, end_row=3, end_column=last_col)
         note_cell = worksheet.cell(row=3, column=1)
-        note_cell.value = ""
+        note_cell.value = "Forecast Stockout Date excludes weekends and U.S. federal holidays."
         note_cell.font = Font(size=10, italic=True, color="6B7280")
         note_cell.alignment = Alignment(horizontal="left", vertical="center")
 
@@ -2260,6 +2433,8 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
             "Warning": {"fill": "FFE7C2", "font": "B54708"},
             "Watch": {"fill": "FEF7C3", "font": "854D0E"},
             "Healthy": {"fill": "DFF3E3", "font": "067647"},
+            "No Recent Demand": {"fill": "F3F4F6", "font": "4B5563"},
+            "Data Issue": {"fill": "E5E7EB", "font": "111827"},
         }
 
 
@@ -2272,17 +2447,16 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
 
 
         risk_col_idx = list(export_df.columns).index("Risk Level") + 1
-        date_columns = {"Forecast Stockout Date", "Last Activity Date"}
-        decimal_columns = {"Avg Daily Usage 30D"}
+        date_columns = {"Forecast Stockout Date", "Last Activity Date", "Last Outbound Date"}
+        decimal_columns = {"Avg Daily Usage 30D", "Days Remaining"}
         integer_columns = {
             "Ending Balance",
             "Official Total Outbound",
             "Outbound Last 30 Days",
             "Outbound Last 14 Days",
             "Outbound Last 7 Days",
-            "Days Remaining",
         }
-        text_columns = {"SKU", "Description", "Risk Level", "Recommended Action"}
+        text_columns = {"SKU", "Description", "Risk Level", "Recommended Action", "Data Quality Issue"}
 
         for row in worksheet.iter_rows(min_row=header_row + 1, max_row=last_row, min_col=1, max_col=last_col):
             worksheet.row_dimensions[row[0].row].height = 22
@@ -2293,7 +2467,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
                 if header in integer_columns:
                     cell.number_format = "#,##0"
                 elif header in decimal_columns:
-                    cell.number_format = "#,##0.00"
+                    cell.number_format = "#,##0.0" if header == "Days Remaining" else "#,##0.00"
                 elif header in date_columns:
                     cell.number_format = "mm/dd/yyyy"
 
@@ -2310,7 +2484,9 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
             "Description": 42,
             "Risk Level": 16,
             "Recommended Action": 42,
+            "Data Quality Issue": 34,
             "Ending Balance": 16,
+            "Last Outbound Date": 18,
             "Last Activity Date": 18,
             "Official Total Outbound": 22,
             "Outbound Last 30 Days": 22,
@@ -2457,7 +2633,7 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
 
 
 def reset_sidebar_filters(site_key):
-    st.session_state[f"{site_key}_filter_risk_levels"] = ["Critical", "Warning", "Watch", "Healthy"]
+    st.session_state[f"{site_key}_filter_risk_levels"] = ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"]
     st.session_state[f"{site_key}_filter_min_usage"] = 0
     st.session_state[f"{site_key}_sku_select_combined"] = ""
 
@@ -2488,8 +2664,8 @@ st.sidebar.divider()
 st.sidebar.markdown('<div class="sidebar-section-title">Filters</div>', unsafe_allow_html=True)
 show_risks = st.sidebar.multiselect(
     "Risk Level",
-    options=["Critical", "Warning", "Watch", "Healthy"],
-    default=["Critical", "Warning", "Watch", "Healthy"],
+    options=["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
+    default=["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
     key=risk_filter_key,
 )
 min_usage = st.sidebar.number_input(
@@ -2508,10 +2684,12 @@ st.sidebar.markdown(
     """
     <div class="sidebar-note">
     <b>Risk Level Notes</b><br>
-    🔴 <b>Critical:</b> 0–7 days remaining<br>
-    🟠 <b>Warning:</b> 8–14 days remaining<br>
-    🟡 <b>Watch:</b> 15–30 days remaining<br>
-    🟢 <b>Healthy:</b> More than 30 days remaining
+    ⚫ <b>Data Issue:</b> Missing or duplicate source rows<br>
+    🔴 <b>Critical:</b> 0–7 business days remaining<br>
+    🟠 <b>Warning:</b> 8–14 business days remaining<br>
+    🟡 <b>Watch:</b> 15–30 business days remaining<br>
+    🟢 <b>Healthy:</b> More than 30 business days remaining<br>
+    ⚪ <b>No Recent Demand:</b> No outbound in the 30-day data window
     </div>
     """,
     unsafe_allow_html=True,
@@ -2666,23 +2844,25 @@ report_end = model["report_end"]
 windows = model["windows"]
 
 st.markdown(
-    f"<div class='small-note'>Report Range: <b>{FIXED_REPORT_START_DATE}</b> to <b>{fmt_date(report_end)}</b></div>",
+    f"<div class='small-note'>Report Range: <b>{fmt_date(report_start)}</b> to <b>{fmt_date(report_end)}</b></div>",
     unsafe_allow_html=True,
 )
 
+data_issue_count = int((sku_df["Risk Level"] == "Data Issue").sum())
 critical_count = int((sku_df["Risk Level"] == "Critical").sum())
 warning_count = int((sku_df["Risk Level"] == "Warning").sum())
 watch_count = int((sku_df["Risk Level"] == "Watch").sum())
 healthy_count = int((sku_df["Risk Level"] == "Healthy").sum())
+no_demand_count = int((sku_df["Risk Level"] == "No Recent Demand").sum())
 
-review_count = critical_count + warning_count + watch_count
+review_count = data_issue_count + critical_count + warning_count + watch_count
 if review_count > 0:
     health_summary_detail = (
-        f"{critical_count:,} Critical SKUs, "
-        f"{warning_count:,} Warning SKUs, and {watch_count:,} Watch SKUs need review."
+        f"{data_issue_count:,} Data Issue, {critical_count:,} Critical, "
+        f"{warning_count:,} Warning, and {watch_count:,} Watch SKUs need review."
     )
 else:
-    health_summary_detail = "no Critical, Warning, or Watch SKUs need review."
+    health_summary_detail = "no Data Issue, Critical, Warning, or Watch SKUs need review."
 
 st.markdown(
     f"""
@@ -2696,9 +2876,9 @@ st.markdown(
 
 k1, k2, k3, k4 = st.columns(4)
 with k1:
-    metric_card("Total SKUs", fmt_num(len(sku_df)), f"Healthy: {healthy_count:,}")
+    metric_card("Total SKUs", fmt_num(len(sku_df)), f"Healthy: {healthy_count:,} | No demand: {no_demand_count:,}")
 with k2:
-    metric_card("Critical SKUs", fmt_num(critical_count), "Need immediate inventory action")
+    metric_card("Critical SKUs", fmt_num(critical_count), f"Data issues: {data_issue_count:,}")
 with k3:
     metric_card("Warning SKUs", fmt_num(warning_count), "Need ETA / reserve review")
 with k4:
@@ -2726,6 +2906,7 @@ priority_cols = [
     "Risk Level",
     "Recommended Action",
     "Ending Balance",
+    "Last Outbound Date",
     "Last Activity Date",
     "Official Total Outbound",
     "Outbound Last 30 Days",
@@ -2786,8 +2967,10 @@ with sku_tab:
             unsafe_allow_html=True,
         )
 
-        ending_balance_value = pd.to_numeric(pd.Series([selected["Ending Balance"]]), errors="coerce").fillna(0).iloc[0]
-        if ending_balance_value <= 0:
+        ending_balance_value = pd.to_numeric(pd.Series([selected["Ending Balance"]]), errors="coerce").iloc[0]
+        if pd.isna(ending_balance_value):
+            st.warning("This SKU is missing a valid Ending Balance value.")
+        elif ending_balance_value <= 0:
             st.warning("This SKU has zero or negative ending balance. Please review inbound allocation.")
 
         d1, d2, d3, d4 = st.columns(4)
@@ -2796,9 +2979,9 @@ with sku_tab:
         with d2:
             metric_card("Ending Balance", fmt_num(selected["Ending Balance"]), "Official ending balance")
         with d3:
-            metric_card("Days Remaining", fmt_num(selected["Days Remaining"]), "Based on Avg Daily Usage 30D")
+            metric_card("Days Remaining", fmt_num(selected["Days Remaining"], 1), "Based on Avg Daily Usage 30D")
         with d4:
-            metric_card("Forecast Stockout", fmt_date(selected["Forecast Stockout Date"]), "Calendar date estimate")
+            metric_card("Forecast Stockout", fmt_date(selected["Forecast Stockout Date"]), "Business day estimate")
 
         st.markdown("<div class='section-block'></div>", unsafe_allow_html=True)
         st.subheader("SKU metrics")
@@ -2809,6 +2992,8 @@ with sku_tab:
             "Outbound Last 14 Days",
             "Outbound Last 7 Days",
             "Avg Daily Usage 30D",
+            "Last Outbound Date",
+            "Last Inbound Date",
             "Last Activity Date",
             "Official Total Row",
             "Official Ending Row",
@@ -3445,6 +3630,7 @@ with stock_check_tab:
         shortage_count = int((detail_df["Status"] == "Shortage").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
         not_found_count = int((detail_df["Status"] == "Not Found").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
         already_covered_count = int((detail_df["Status"] == "Already Covered").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
+        data_issue_item_count = int((detail_df["Status"] == "Data Issue").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
         qty_to_check_total = pd.to_numeric(detail_df["Qty To Check"], errors="coerce").fillna(0).sum() if not detail_df.empty and "Qty To Check" in detail_df.columns else 0
         total_requested_qty = pd.to_numeric(detail_df["Requested Qty"], errors="coerce").fillna(0).sum() if not detail_df.empty and "Requested Qty" in detail_df.columns else 0
 
@@ -3457,7 +3643,7 @@ with stock_check_tab:
         with c3:
             metric_card("Qty To Check", fmt_num(qty_to_check_total), f"Requested: {fmt_num(total_requested_qty)} | Covered: {fmt_num(already_covered_count)}")
         with c4:
-            metric_card("Shortage / Missing", f"{fmt_num(shortage_count)} / {fmt_num(not_found_count)}", "After existing DO comparison")
+            metric_card("Shortage / Missing", f"{fmt_num(shortage_count)} / {fmt_num(not_found_count)}", f"Data issues: {fmt_num(data_issue_item_count)}")
 
         if not overview_df.empty:
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
@@ -3587,7 +3773,18 @@ with stock_check_tab:
 
 with audit_tab:
     st.subheader("Audit Checks")
-    st.caption("Verify recent outbound calculations and official source rows.")
+    st.caption("Review source completeness, balance reconciliation, and recent outbound windows.")
+
+    audit_df = model["audit_df"].copy()
+    audit_review_df = audit_df[audit_df["Audit Status"] != "Pass"].copy()
+    if audit_review_df.empty:
+        st.success("All available audit checks passed.")
+    else:
+        st.markdown("**Items Requiring Review**")
+        show_limited_dataframe(audit_review_df, height=320, limit=500)
+
+    with st.expander("Full SKU Reconciliation", expanded=False):
+        show_limited_dataframe(audit_df, height=360, limit=1000)
 
     st.markdown("**Recent Outbound Audit**")
     r1, r2, r3 = st.columns(3)
@@ -3625,5 +3822,6 @@ with guide_tab:
         4. Use **SKU Detail** to drill into one SKU and review transaction history.
         5. Use **DO Lookup** to search one DO # and see every item tied to that DO # / Trans. # across all SKUs.
         6. Use **Stock Check** to paste new DO demand and verify remaining stock before creating outbound orders.
-        7. Use **Audit** to verify official total rows, ending balance rows, Not Shipped rows, and Cancelled rows.        """
+        7. Use **Audit** to review missing source rows, duplicate rows, balance differences, Not Shipped rows, and Cancelled rows.
+        8. Forecast dates exclude weekends and U.S. federal holidays.        """
     )
