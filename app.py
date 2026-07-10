@@ -1734,35 +1734,17 @@ def prepare_customer_export(df: pd.DataFrame) -> pd.DataFrame:
         "SKU",
         "Description",
         "Risk Level",
-        "Recommended Action",
-        "Demand Status",
-        "Data Quality Issue",
         "Ending Balance",
         "Last Outbound Date",
-        "Last Activity Date",
-        "Official Total Outbound",
-        "Outbound Last 90 Days",
-        "Outbound Last 30 Days",
-        "Outbound Last 14 Days",
-        "Outbound Last 7 Days",
         "Avg Daily Usage 30D",
         "Days Remaining",
         "Forecast Stockout Date",
     ]
     out = df[customer_cols].copy()
-    integer_cols = [
-        "Ending Balance",
-        "Official Total Outbound",
-        "Outbound Last 90 Days",
-        "Outbound Last 30 Days",
-        "Outbound Last 14 Days",
-        "Outbound Last 7 Days",
-    ]
-    for col in integer_cols:
-        out[col] = pd.to_numeric(out[col], errors="coerce").round(0)
+    out["Ending Balance"] = pd.to_numeric(out["Ending Balance"], errors="coerce").round(0)
     out["Avg Daily Usage 30D"] = pd.to_numeric(out["Avg Daily Usage 30D"], errors="coerce").round(2)
     out["Days Remaining"] = pd.to_numeric(out["Days Remaining"], errors="coerce").round(1)
-    for col in ["Forecast Stockout Date", "Last Activity Date", "Last Outbound Date"]:
+    for col in ["Forecast Stockout Date", "Last Outbound Date"]:
         out[col] = pd.to_datetime(out[col], errors="coerce")
     return out
 
