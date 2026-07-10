@@ -13,8 +13,8 @@ import streamlit as st
 from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
-CUSTOMER_EXPORT_VERSION = "Customer export v9"
-APP_CACHE_VERSION = "inventory-logic-v26-accurate-windows-risk-audit"
+CUSTOMER_EXPORT_VERSION = "Customer export v10"
+APP_CACHE_VERSION = "inventory-logic-v28-active-dormant-inactive-risk"
 WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
@@ -1445,6 +1445,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
 
     positive_outbound_df = tx_df[tx_df["Qty Out"] > 0].copy() if not tx_df.empty else tx_df.copy()
     window_dates = {
+        "Outbound Last 90 Days": last_data_activity_dates(tx_df, report_end, 90, report_start),
         "Outbound Last 30 Days": last_data_activity_dates(tx_df, report_end, 30, report_start),
         "Outbound Last 14 Days": last_data_activity_dates(tx_df, report_end, 14, report_start),
         "Outbound Last 7 Days": last_data_activity_dates(tx_df, report_end, 7, report_start),
@@ -1468,10 +1469,26 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
         sku_df["Outbound Last 30 Days"] / valid_30d_count,
         0.0,
     )
+    sku_df["Demand Status"] = np.select(
+        [
+            sku_df["Outbound Last 30 Days"] > 0,
+            sku_df["Outbound Last 90 Days"] > 0,
+        ],
+        ["Active", "Dormant"],
+        default="Inactive",
+    )
     sku_df["Days Remaining"] = np.nan
-    usable_mask = (sku_df["Data Quality Status"] == "OK") & (sku_df["Avg Daily Usage 30D"] > 0)
+    usable_mask = (
+        (sku_df["Data Quality Status"] == "OK")
+        & (sku_df["Demand Status"] == "Active")
+        & (sku_df["Avg Daily Usage 30D"] > 0)
+    )
     positive_balance_mask = usable_mask & (sku_df["Ending Balance"] > 0)
-    zero_balance_mask = (sku_df["Data Quality Status"] == "OK") & (sku_df["Ending Balance"] <= 0)
+    zero_balance_mask = (
+        (sku_df["Data Quality Status"] == "OK")
+        & (sku_df["Demand Status"] == "Active")
+        & (sku_df["Ending Balance"] <= 0)
+    )
     sku_df.loc[positive_balance_mask, "Days Remaining"] = (
         sku_df.loc[positive_balance_mask, "Ending Balance"] / sku_df.loc[positive_balance_mask, "Avg Daily Usage 30D"]
     )
@@ -1480,10 +1497,12 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
     def assign_risk(row):
         if row["Data Quality Status"] != "OK":
             return "Data Issue"
+        if row["Demand Status"] == "Inactive":
+            return "Inactive / No Demand"
+        if row["Demand Status"] == "Dormant":
+            return "No Recent Demand"
         if row["Ending Balance"] <= 0:
             return "Critical"
-        if row["Outbound Last 30 Days"] <= 0:
-            return "No Recent Demand"
         if row["Days Remaining"] <= 7:
             return "Critical"
         if row["Days Remaining"] <= 14:
@@ -1500,7 +1519,8 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
             "Warning": "Confirm inbound ETA and reserve inventory",
             "Watch": "Monitor usage and upcoming orders",
             "Healthy": "No immediate action",
-            "No Recent Demand": "No recent outbound demand",
+            "No Recent Demand": "Review before replenishment",
+            "Inactive / No Demand": "No replenishment required",
         }
     )
     sku_df["Forecast Stockout Date"] = sku_df["Days Remaining"].map(lambda value: add_business_days(report_end, value))
@@ -1565,6 +1585,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
         "Watch": 3,
         "Healthy": 4,
         "No Recent Demand": 5,
+        "Inactive / No Demand": 6,
     }
     sku_df["Risk Sort"] = sku_df["Risk Level"].map(risk_order).fillna(9)
     sku_df = sku_df.sort_values(
@@ -1621,6 +1642,7 @@ def risk_badge_text(level: str) -> str:
         "Watch": "🟡 Watch",
         "Healthy": "🟢 Healthy",
         "No Recent Demand": "⚪ No Recent Demand",
+        "Inactive / No Demand": "⚪ Inactive / No Demand",
     }.get(level, level)
 
 
@@ -1685,6 +1707,7 @@ def prepare_display(df: pd.DataFrame) -> pd.DataFrame:
         "Ctn Balance",
         "Official Total Inbound",
         "Official Total Outbound",
+        "Outbound Last 90 Days",
         "Outbound Last 30 Days",
         "Outbound Last 14 Days",
         "Outbound Last 7 Days",
@@ -1712,11 +1735,13 @@ def prepare_customer_export(df: pd.DataFrame) -> pd.DataFrame:
         "Description",
         "Risk Level",
         "Recommended Action",
+        "Demand Status",
         "Data Quality Issue",
         "Ending Balance",
         "Last Outbound Date",
         "Last Activity Date",
         "Official Total Outbound",
+        "Outbound Last 90 Days",
         "Outbound Last 30 Days",
         "Outbound Last 14 Days",
         "Outbound Last 7 Days",
@@ -1728,6 +1753,7 @@ def prepare_customer_export(df: pd.DataFrame) -> pd.DataFrame:
     integer_cols = [
         "Ending Balance",
         "Official Total Outbound",
+        "Outbound Last 90 Days",
         "Outbound Last 30 Days",
         "Outbound Last 14 Days",
         "Outbound Last 7 Days",
@@ -2434,6 +2460,7 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
             "Watch": {"fill": "FEF7C3", "font": "854D0E"},
             "Healthy": {"fill": "DFF3E3", "font": "067647"},
             "No Recent Demand": {"fill": "F3F4F6", "font": "4B5563"},
+            "Inactive / No Demand": {"fill": "F3F4F6", "font": "6B7280"},
             "Data Issue": {"fill": "E5E7EB", "font": "111827"},
         }
 
@@ -2452,11 +2479,12 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
         integer_columns = {
             "Ending Balance",
             "Official Total Outbound",
+            "Outbound Last 90 Days",
             "Outbound Last 30 Days",
             "Outbound Last 14 Days",
             "Outbound Last 7 Days",
         }
-        text_columns = {"SKU", "Description", "Risk Level", "Recommended Action", "Data Quality Issue"}
+        text_columns = {"SKU", "Description", "Risk Level", "Recommended Action", "Demand Status", "Data Quality Issue"}
 
         for row in worksheet.iter_rows(min_row=header_row + 1, max_row=last_row, min_col=1, max_col=last_col):
             worksheet.row_dimensions[row[0].row].height = 22
@@ -2484,11 +2512,13 @@ def to_excel_bytes(model: dict, format_name: str) -> bytes:
             "Description": 42,
             "Risk Level": 16,
             "Recommended Action": 42,
+            "Demand Status": 16,
             "Data Quality Issue": 34,
             "Ending Balance": 16,
             "Last Outbound Date": 18,
             "Last Activity Date": 18,
             "Official Total Outbound": 22,
+            "Outbound Last 90 Days": 22,
             "Outbound Last 30 Days": 22,
             "Outbound Last 14 Days": 22,
             "Outbound Last 7 Days": 20,
@@ -2664,7 +2694,7 @@ st.sidebar.divider()
 st.sidebar.markdown('<div class="sidebar-section-title">Filters</div>', unsafe_allow_html=True)
 show_risks = st.sidebar.multiselect(
     "Risk Level",
-    options=["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
+    options=["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand", "Inactive / No Demand"],
     default=["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
     key=risk_filter_key,
 )
@@ -2685,11 +2715,12 @@ st.sidebar.markdown(
     <div class="sidebar-note">
     <b>Risk Level Notes</b><br>
     ⚫ <b>Data Issue:</b> Missing or duplicate source rows<br>
-    🔴 <b>Critical:</b> 0–7 business days remaining<br>
+    🔴 <b>Critical:</b> Active 30D demand with no stock, or 0–7 business days remaining<br>
     🟠 <b>Warning:</b> 8–14 business days remaining<br>
     🟡 <b>Watch:</b> 15–30 business days remaining<br>
     🟢 <b>Healthy:</b> More than 30 business days remaining<br>
-    ⚪ <b>No Recent Demand:</b> No outbound in the 30-day data window
+    ⚪ <b>No Recent Demand:</b> Active in 90D but no outbound in 30D<br>
+    ⚪ <b>Inactive / No Demand:</b> No outbound in the 90-day data window
     </div>
     """,
     unsafe_allow_html=True,
@@ -2854,6 +2885,9 @@ warning_count = int((sku_df["Risk Level"] == "Warning").sum())
 watch_count = int((sku_df["Risk Level"] == "Watch").sum())
 healthy_count = int((sku_df["Risk Level"] == "Healthy").sum())
 no_demand_count = int((sku_df["Risk Level"] == "No Recent Demand").sum())
+inactive_count = int((sku_df["Risk Level"] == "Inactive / No Demand").sum())
+active_count = int((sku_df["Demand Status"] == "Active").sum())
+dormant_count = int((sku_df["Demand Status"] == "Dormant").sum())
 
 review_count = data_issue_count + critical_count + warning_count + watch_count
 if review_count > 0:
@@ -2876,7 +2910,7 @@ st.markdown(
 
 k1, k2, k3, k4 = st.columns(4)
 with k1:
-    metric_card("Total SKUs", fmt_num(len(sku_df)), f"Healthy: {healthy_count:,} | No demand: {no_demand_count:,}")
+    metric_card("Total SKUs", fmt_num(len(sku_df)), f"Active: {active_count:,} | Dormant: {dormant_count:,} | Inactive: {inactive_count:,}")
 with k2:
     metric_card("Critical SKUs", fmt_num(critical_count), f"Data issues: {data_issue_count:,}")
 with k3:
@@ -2898,17 +2932,19 @@ with k8:
 
 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
-st.markdown("<div class='section-subtitle'>Sorted by risk level, lowest days remaining, and recent outbound demand.</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-subtitle'>Critical applies only to SKUs with outbound demand in the 30-day data window. Inactive SKUs are hidden by default.</div>", unsafe_allow_html=True)
 
 priority_cols = [
     "SKU",
     "Description",
     "Risk Level",
     "Recommended Action",
+    "Demand Status",
     "Ending Balance",
     "Last Outbound Date",
     "Last Activity Date",
     "Official Total Outbound",
+    "Outbound Last 90 Days",
     "Outbound Last 30 Days",
     "Outbound Last 14 Days",
     "Outbound Last 7 Days",
@@ -2970,8 +3006,12 @@ with sku_tab:
         ending_balance_value = pd.to_numeric(pd.Series([selected["Ending Balance"]]), errors="coerce").iloc[0]
         if pd.isna(ending_balance_value):
             st.warning("This SKU is missing a valid Ending Balance value.")
-        elif ending_balance_value <= 0:
-            st.warning("This SKU has zero or negative ending balance. Please review inbound allocation.")
+        elif ending_balance_value <= 0 and selected["Risk Level"] == "Critical":
+            st.warning("This SKU has active demand and zero or negative ending balance.")
+        elif selected["Risk Level"] == "No Recent Demand":
+            st.info("This SKU had outbound demand in the 90-day data window but none in the 30-day data window.")
+        elif selected["Risk Level"] == "Inactive / No Demand":
+            st.info("This SKU has no outbound demand in the 90-day data window.")
 
         d1, d2, d3, d4 = st.columns(4)
         with d1:
@@ -2986,8 +3026,10 @@ with sku_tab:
         st.markdown("<div class='section-block'></div>", unsafe_allow_html=True)
         st.subheader("SKU metrics")
         detail_cols = [
+            "Demand Status",
             "Official Total Inbound",
             "Official Total Outbound",
+            "Outbound Last 90 Days",
             "Outbound Last 30 Days",
             "Outbound Last 14 Days",
             "Outbound Last 7 Days",
@@ -3773,7 +3815,7 @@ with stock_check_tab:
 
 with audit_tab:
     st.subheader("Audit Checks")
-    st.caption("Review source completeness, balance reconciliation, and recent outbound windows.")
+    st.caption("Review source completeness, balance reconciliation, and demand windows.")
 
     audit_df = model["audit_df"].copy()
     audit_review_df = audit_df[audit_df["Audit Status"] != "Pass"].copy()
@@ -3787,10 +3829,10 @@ with audit_tab:
         show_limited_dataframe(audit_df, height=360, limit=1000)
 
     st.markdown("**Recent Outbound Audit**")
-    r1, r2, r3 = st.columns(3)
-    recent_labels = ["Outbound Last 30 Days", "Outbound Last 14 Days", "Outbound Last 7 Days"]
-    recent_card_labels = ["Recent Outbound 30D", "Recent Outbound 14D", "Recent Outbound 7D"]
-    for col, label, card_label in zip([r1, r2, r3], recent_labels, recent_card_labels):
+    r1, r2, r3, r4 = st.columns(4)
+    recent_labels = ["Outbound Last 90 Days", "Outbound Last 30 Days", "Outbound Last 14 Days", "Outbound Last 7 Days"]
+    recent_card_labels = ["Recent Outbound 90D", "Recent Outbound 30D", "Recent Outbound 14D", "Recent Outbound 7D"]
+    for col, label, card_label in zip([r1, r2, r3, r4], recent_labels, recent_card_labels):
         start, end = windows[label]
         valid_dates = model["window_dates"][label]
         with col:
@@ -3818,7 +3860,7 @@ with guide_tab:
         f"""
         1. Select the matching **Report Format** in the sidebar.
         2. Upload the matching **Item Activity Report** Excel file.
-        3. Review **Critical**, **Warning**, and **Watch** SKUs first.
+        3. Review **Critical**, **Warning**, and **Watch** SKUs first. **Inactive / No Demand** SKUs are excluded from the default list.
         4. Use **SKU Detail** to drill into one SKU and review transaction history.
         5. Use **DO Lookup** to search one DO # and see every item tied to that DO # / Trans. # across all SKUs.
         6. Use **Stock Check** to paste new DO demand and verify remaining stock before creating outbound orders.
