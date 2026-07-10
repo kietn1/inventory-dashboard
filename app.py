@@ -13,8 +13,8 @@ import streamlit as st
 from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
-CUSTOMER_EXPORT_VERSION = "Customer export v11"
-APP_CACHE_VERSION = "inventory-logic-v29-report-columns-hidden"
+CUSTOMER_EXPORT_VERSION = "Customer export v12"
+APP_CACHE_VERSION = "inventory-logic-v28-active-dormant-inactive-risk"
 WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
@@ -2391,7 +2391,7 @@ def to_transaction_excel_bytes(model: dict, format_name: str, cache_version: str
 
 
 @st.cache_data(show_spinner=False)
-def to_excel_bytes(model: dict, format_name: str) -> bytes:
+def to_excel_bytes(model: dict, format_name: str, export_version: str) -> bytes:
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
@@ -2920,8 +2920,16 @@ priority_cols = [
     "SKU",
     "Description",
     "Risk Level",
+    "Recommended Action",
+    "Demand Status",
     "Ending Balance",
     "Last Outbound Date",
+    "Last Activity Date",
+    "Official Total Outbound",
+    "Outbound Last 90 Days",
+    "Outbound Last 30 Days",
+    "Outbound Last 14 Days",
+    "Outbound Last 7 Days",
     "Avg Daily Usage 30D",
     "Days Remaining",
     "Forecast Stockout Date",
@@ -2937,7 +2945,7 @@ export_col_1, export_col_2 = st.columns(2)
 with export_col_1:
     st.download_button(
         "⬇️ Download Inventory Status Report",
-        data=to_excel_bytes(model, format_name),
+        data=to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION),
         file_name=export_file_name,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
