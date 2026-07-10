@@ -13,8 +13,8 @@ import streamlit as st
 from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
-CUSTOMER_EXPORT_VERSION = "Customer export v10"
-APP_CACHE_VERSION = "inventory-logic-v28-active-dormant-inactive-risk"
+CUSTOMER_EXPORT_VERSION = "Customer export v11"
+APP_CACHE_VERSION = "inventory-logic-v29-report-columns-hidden"
 WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
@@ -2920,16 +2920,8 @@ priority_cols = [
     "SKU",
     "Description",
     "Risk Level",
-    "Recommended Action",
-    "Demand Status",
     "Ending Balance",
     "Last Outbound Date",
-    "Last Activity Date",
-    "Official Total Outbound",
-    "Outbound Last 90 Days",
-    "Outbound Last 30 Days",
-    "Outbound Last 14 Days",
-    "Outbound Last 7 Days",
     "Avg Daily Usage 30D",
     "Days Remaining",
     "Forecast Stockout Date",
