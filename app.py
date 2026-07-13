@@ -2282,7 +2282,11 @@ def show_minimal_stock_check_dataframe(df: pd.DataFrame, height: int):
             return "background-color: #DFF3E3; color: #067647; font-weight: 850;"
         return ""
 
-    styled_df = display_df.style.applymap(style_status, subset=["Status"])
+    styler = display_df.style
+    if hasattr(styler, "map"):
+        styled_df = styler.map(style_status, subset=["Status"])
+    else:
+        styled_df = styler.applymap(style_status, subset=["Status"])
     st.dataframe(
         styled_df,
         use_container_width=True,
