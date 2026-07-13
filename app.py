@@ -1950,8 +1950,13 @@ def build_existing_do_tables(tx_df: pd.DataFrame) -> tuple[set, dict, dict]:
         return set(), {}, {}
 
     all_do_df = pd.concat(source_rows, ignore_index=True).drop_duplicates(subset=["DO Key", "SKU", "Excel Row"])
+    if "Is Cancelled" in all_do_df.columns:
+        cancelled_mask = all_do_df["Is Cancelled"].astype(str).str.strip().str.lower().isin(["true", "1", "yes", "y"])
+        all_do_df = all_do_df[~cancelled_mask].copy()
+    if all_do_df.empty:
+        return set(), {}, {}
     all_do_df["SKU Key"] = all_do_df["SKU"].astype(str).map(normalize_lookup_key)
-    all_do_df["Qty Out"] = pd.to_numeric(all_do_df.get("Qty Out", 0), errors="coerce").fillna(0)
+    all_do_df["Qty Out"] = pd.to_numeric(all_do_df.get("Qty Out", 0), errors="coerce").fillna(0).clip(lower=0)
     all_do_df["Qty In"] = pd.to_numeric(all_do_df.get("Qty In", 0), errors="coerce").fillna(0)
     all_do_df["Activity Date"] = pd.to_datetime(all_do_df.get("Activity Date", pd.NaT), errors="coerce")
 
@@ -2571,6 +2576,340 @@ def to_replenishment_excel_bytes(plan_df: pd.DataFrame, demand_detail_df: pd.Dat
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
         for sheet in [plan_sheet, detail_sheet]:
+            for column_cells in sheet.columns:
+                column_letter = get_column_letter(column_cells[0].column)
+                max_length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in column_cells)
+                sheet.column_dimensions[column_letter].width = min(max(max_length + 2, 11), 42)
+            for row in sheet.iter_rows():
+                for cell in row:
+                    cell.alignment = Alignment(vertical="top", wrap_text=False)
+
+    return output.getvalue()
+
+
+def build_do_qty_reports(detail_df: pd.DataFrame, overview_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    do_summary_columns = [
+        "DO #",
+        "Report Presence",
+        "SKU Count",
+        "Input Qty",
+        "Report Qty",
+        "Additional Qty",
+        "Review Sort",
+        "Input Order",
+    ]
+    do_detail_columns = [
+        "Input Order",
+        "DO #",
+        "Report Presence",
+        "SKU",
+        "Description",
+        "Requested Qty",
+        "Report Qty",
+        "Additional Qty",
+        "Qty Result",
+        "Review Sort",
+    ]
+    stock_columns = [
+        "Input Order",
+        "SKU",
+        "Description",
+        "Current Stock",
+        "Input Qty",
+        "Report Qty",
+        "Additional Qty",
+        "Remaining Stock",
+        "Shortage Qty",
+        "DOs to Deduct",
+        "Balance Sort",
+    ]
+
+    if detail_df is None or detail_df.empty:
+        return (
+            pd.DataFrame(columns=do_summary_columns),
+            pd.DataFrame(columns=do_detail_columns),
+            pd.DataFrame(columns=stock_columns),
+        )
+
+    detail = detail_df.copy()
+    for column in ["Requested Qty", "Existing Report Qty Out", "Qty To Check", "Current Stock"]:
+        detail[column] = pd.to_numeric(detail.get(column, 0), errors="coerce")
+    detail["Report Presence"] = np.where(detail["Report DO Status"].astype(str) == "Existing DO", "In Report", "Not in Report")
+    detail["Report Qty"] = detail["Existing Report Qty Out"].fillna(0)
+    detail["Additional Qty"] = detail["Qty To Check"].fillna(0)
+    detail["Qty Result"] = np.select(
+        [
+            detail["Report Presence"].eq("Not in Report"),
+            detail["Additional Qty"].le(0),
+            detail["Report Qty"].gt(0),
+        ],
+        ["Not in Report", "Already Reflected", "Partially Reflected"],
+        default="Not Reflected",
+    )
+    detail["Review Sort"] = np.select(
+        [
+            detail["Report Presence"].eq("Not in Report"),
+            detail["Additional Qty"].gt(0),
+        ],
+        [0, 1],
+        default=2,
+    )
+
+    do_detail = detail[
+        [
+            "Input Order",
+            "DO #",
+            "Report Presence",
+            "SKU",
+            "Description",
+            "Requested Qty",
+            "Report Qty",
+            "Additional Qty",
+            "Qty Result",
+            "Review Sort",
+        ]
+    ].copy()
+    do_detail = do_detail.sort_values(["Review Sort", "Input Order", "SKU"], ascending=[True, True, True]).reset_index(drop=True)
+
+    if overview_df is None or overview_df.empty:
+        do_summary = pd.DataFrame(columns=do_summary_columns)
+    else:
+        overview = overview_df.copy()
+        overview["Report Presence"] = np.where(overview["Report DO Status"].astype(str) == "Existing DO", "In Report", "Not in Report")
+        overview["SKU Count"] = pd.to_numeric(overview.get("Item Count", 0), errors="coerce").fillna(0)
+        overview["Input Qty"] = pd.to_numeric(overview.get("Total Requested Qty", 0), errors="coerce").fillna(0)
+        overview["Report Qty"] = pd.to_numeric(overview.get("Existing Report Qty Out", 0), errors="coerce").fillna(0)
+        overview["Additional Qty"] = pd.to_numeric(overview.get("Qty To Check", 0), errors="coerce").fillna(0)
+        first_order = detail.groupby("DO #", sort=False)["Input Order"].min().to_dict()
+        overview["Input Order"] = overview["DO #"].map(first_order).fillna(999999)
+        overview["Review Sort"] = np.select(
+            [
+                overview["Report Presence"].eq("Not in Report"),
+                overview["Additional Qty"].gt(0),
+            ],
+            [0, 1],
+            default=2,
+        )
+        do_summary = overview[
+            ["DO #", "Report Presence", "SKU Count", "Input Qty", "Report Qty", "Additional Qty", "Review Sort", "Input Order"]
+        ].sort_values(["Review Sort", "Input Order"], ascending=[True, True]).reset_index(drop=True)
+
+    stock_rows = []
+    for sku, group in detail.groupby("SKU", sort=False):
+        input_order = int(pd.to_numeric(group["Input Order"], errors="coerce").min())
+        current_values = pd.to_numeric(group["Current Stock"], errors="coerce").dropna()
+        current_stock = float(current_values.iloc[0]) if not current_values.empty else np.nan
+        input_qty = float(pd.to_numeric(group["Requested Qty"], errors="coerce").fillna(0).sum())
+        report_qty = float(pd.to_numeric(group["Report Qty"], errors="coerce").fillna(0).sum())
+        additional_qty = float(pd.to_numeric(group["Additional Qty"], errors="coerce").fillna(0).sum())
+        remaining_stock = current_stock - additional_qty if not pd.isna(current_stock) else np.nan
+        shortage_qty = max(-remaining_stock, 0.0) if not pd.isna(remaining_stock) else np.nan
+        affected = group[pd.to_numeric(group["Additional Qty"], errors="coerce").fillna(0) > 0]
+        do_values = [clean_text(value) for value in affected["DO #"].tolist() if clean_text(value)]
+        do_list = ", ".join(dict.fromkeys(do_values))
+        description_values = [clean_text(value) for value in group["Description"].tolist() if clean_text(value)]
+        description = description_values[0] if description_values else ""
+        if pd.isna(current_stock):
+            balance_sort = 0
+        elif shortage_qty > 0:
+            balance_sort = 1
+        elif remaining_stock == 0 and additional_qty > 0:
+            balance_sort = 2
+        elif additional_qty > 0:
+            balance_sort = 3
+        else:
+            balance_sort = 4
+        stock_rows.append(
+            {
+                "Input Order": input_order,
+                "SKU": sku,
+                "Description": description,
+                "Current Stock": current_stock,
+                "Input Qty": input_qty,
+                "Report Qty": report_qty,
+                "Additional Qty": additional_qty,
+                "Remaining Stock": remaining_stock,
+                "Shortage Qty": shortage_qty,
+                "DOs to Deduct": do_list,
+                "Balance Sort": balance_sort,
+            }
+        )
+
+    stock_balance = pd.DataFrame(stock_rows, columns=stock_columns)
+    stock_balance = stock_balance.sort_values(
+        ["Balance Sort", "Shortage Qty", "Additional Qty", "Input Order"],
+        ascending=[True, False, False, True],
+        na_position="first",
+    ).reset_index(drop=True)
+    return do_summary, do_detail, stock_balance
+
+
+def prepare_do_qty_display(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    out = df[columns].copy()
+    numeric_columns = ["SKU Count", "Input Qty", "Requested Qty", "Report Qty", "Additional Qty"]
+    for column in numeric_columns:
+        if column in out.columns:
+            out[column] = pd.to_numeric(out[column], errors="coerce").round(0).astype("Int64")
+    return out
+
+
+def prepare_stock_balance_display(df: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "SKU",
+        "Description",
+        "Current Stock",
+        "Input Qty",
+        "Report Qty",
+        "Additional Qty",
+        "Remaining Stock",
+        "Shortage Qty",
+        "DOs to Deduct",
+    ]
+    out = df[columns].copy()
+    for column in ["Current Stock", "Input Qty", "Report Qty", "Additional Qty", "Remaining Stock", "Shortage Qty"]:
+        out[column] = pd.to_numeric(out[column], errors="coerce").round(0).astype("Int64")
+    return out
+
+
+def show_do_summary_dataframe(df: pd.DataFrame, height: int):
+    display_df = prepare_do_qty_display(
+        df,
+        ["DO #", "Report Presence", "SKU Count", "Input Qty", "Report Qty", "Additional Qty"],
+    )
+
+    def style_row(row):
+        presence = str(row.get("Report Presence", ""))
+        additional = pd.to_numeric(pd.Series([row.get("Additional Qty", 0)]), errors="coerce").fillna(0).iloc[0]
+        if presence == "Not in Report":
+            style = "background-color: #FDE2E1; color: #991B1B; font-weight: 700;"
+        elif additional > 0:
+            style = "background-color: #FFF4CC; color: #7C5700; font-weight: 700;"
+        else:
+            style = "background-color: #E7F6EC; color: #166534; font-weight: 700;"
+        return [style] * len(row)
+
+    styled = display_df.style.apply(style_row, axis=1)
+    st.dataframe(
+        styled,
+        use_container_width=True,
+        hide_index=True,
+        height=height,
+        column_config={
+            "DO #": st.column_config.TextColumn("DO #", width="medium"),
+            "Report Presence": st.column_config.TextColumn("Report Presence", width="medium"),
+            "SKU Count": st.column_config.NumberColumn("SKUs", format="%.0f", width="small"),
+            "Input Qty": st.column_config.NumberColumn("Input Qty", format="%.0f", width="small"),
+            "Report Qty": st.column_config.NumberColumn("Report Qty", format="%.0f", width="small"),
+            "Additional Qty": st.column_config.NumberColumn("Additional Qty", format="%.0f", width="small"),
+        },
+    )
+
+
+def show_stock_balance_dataframe(df: pd.DataFrame, height: int):
+    display_df = prepare_stock_balance_display(df)
+
+    def style_row(row):
+        current = pd.to_numeric(pd.Series([row.get("Current Stock", np.nan)]), errors="coerce").iloc[0]
+        remaining = pd.to_numeric(pd.Series([row.get("Remaining Stock", np.nan)]), errors="coerce").iloc[0]
+        shortage = pd.to_numeric(pd.Series([row.get("Shortage Qty", 0)]), errors="coerce").fillna(0).iloc[0]
+        additional = pd.to_numeric(pd.Series([row.get("Additional Qty", 0)]), errors="coerce").fillna(0).iloc[0]
+        if pd.isna(current):
+            style = "background-color: #F3F4F6; color: #4B5563; font-weight: 700;"
+        elif shortage > 0:
+            style = "background-color: #FDE2E1; color: #991B1B; font-weight: 700;"
+        elif additional > 0 and remaining == 0:
+            style = "background-color: #FFF4CC; color: #7C5700; font-weight: 700;"
+        else:
+            style = ""
+        return [style] * len(row)
+
+    styled = display_df.style.apply(style_row, axis=1)
+    st.dataframe(
+        styled,
+        use_container_width=True,
+        hide_index=True,
+        height=height,
+        column_config={
+            "SKU": st.column_config.TextColumn("SKU", width="large"),
+            "Description": st.column_config.TextColumn("Description", width="large"),
+            "Current Stock": st.column_config.NumberColumn("Current Stock", format="%.0f", width="small"),
+            "Input Qty": st.column_config.NumberColumn("Input Qty", format="%.0f", width="small"),
+            "Report Qty": st.column_config.NumberColumn("Report Qty", format="%.0f", width="small"),
+            "Additional Qty": st.column_config.NumberColumn("Additional Qty", format="%.0f", width="small"),
+            "Remaining Stock": st.column_config.NumberColumn("Remaining Stock", format="%.0f", width="small"),
+            "Shortage Qty": st.column_config.NumberColumn("Shortage Qty", format="%.0f", width="small"),
+            "DOs to Deduct": st.column_config.TextColumn("DOs to Deduct", width="large"),
+        },
+    )
+
+
+def to_do_stock_excel_bytes(do_detail_df: pd.DataFrame, stock_balance_df: pd.DataFrame, format_name: str, report_end) -> bytes:
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    output = BytesIO()
+    do_export = prepare_do_qty_display(
+        do_detail_df,
+        ["DO #", "Report Presence", "SKU", "Description", "Requested Qty", "Report Qty", "Additional Qty", "Qty Result"],
+    )
+    stock_export = prepare_stock_balance_display(stock_balance_df)
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        do_export.to_excel(writer, sheet_name="DO Check", startrow=3, index=False)
+        stock_export.to_excel(writer, sheet_name="Stock Balance", startrow=3, index=False)
+
+        workbook = writer.book
+        header_fill = PatternFill("solid", fgColor="E5E7EB")
+        red_fill = PatternFill("solid", fgColor="FDE2E1")
+        yellow_fill = PatternFill("solid", fgColor="FFF4CC")
+        green_fill = PatternFill("solid", fgColor="E7F6EC")
+        gray_fill = PatternFill("solid", fgColor="F3F4F6")
+
+        for sheet_name, title in [
+            ("DO Check", f"{format_name} DO Check"),
+            ("Stock Balance", f"{format_name} Stock Balance"),
+        ]:
+            sheet = writer.sheets[sheet_name]
+            sheet["A1"] = title
+            sheet["A1"].font = Font(size=16, bold=True, color="111827")
+            sheet["A2"] = "Report Date"
+            sheet["B2"] = fmt_date(report_end)
+            sheet.freeze_panes = "A5"
+            sheet.auto_filter.ref = sheet.dimensions
+            for cell in sheet[4]:
+                cell.font = Font(bold=True, color="111827")
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        do_sheet = writer.sheets["DO Check"]
+        do_headers = {cell.value: cell.column for cell in do_sheet[4]}
+        for row_idx in range(5, do_sheet.max_row + 1):
+            presence = do_sheet.cell(row=row_idx, column=do_headers["Report Presence"]).value
+            additional = do_sheet.cell(row=row_idx, column=do_headers["Additional Qty"]).value or 0
+            fill = red_fill if presence == "Not in Report" else yellow_fill if float(additional) > 0 else green_fill
+            for cell in do_sheet[row_idx]:
+                cell.fill = fill
+
+        stock_sheet = writer.sheets["Stock Balance"]
+        stock_headers = {cell.value: cell.column for cell in stock_sheet[4]}
+        for row_idx in range(5, stock_sheet.max_row + 1):
+            current = stock_sheet.cell(row=row_idx, column=stock_headers["Current Stock"]).value
+            remaining = stock_sheet.cell(row=row_idx, column=stock_headers["Remaining Stock"]).value
+            shortage = stock_sheet.cell(row=row_idx, column=stock_headers["Shortage Qty"]).value or 0
+            additional = stock_sheet.cell(row=row_idx, column=stock_headers["Additional Qty"]).value or 0
+            if current is None:
+                fill = gray_fill
+            elif float(shortage) > 0:
+                fill = red_fill
+            elif float(additional) > 0 and float(remaining or 0) == 0:
+                fill = yellow_fill
+            else:
+                fill = None
+            if fill is not None:
+                for cell in stock_sheet[row_idx]:
+                    cell.fill = fill
+
+        for sheet in [do_sheet, stock_sheet]:
             for column_cells in sheet.columns:
                 column_letter = get_column_letter(column_cells[0].column)
                 max_length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in column_cells)
@@ -3374,7 +3713,7 @@ with export_col_2:
 
 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 
-sku_tab, do_lookup_tab, stock_check_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "DO Lookup", "Stock & Replenishment", "Audit", "Guide"])
+sku_tab, do_lookup_tab, stock_check_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "DO Lookup", "Stock Check", "Audit", "Guide"])
 
 with sku_tab:
     if not selected_sku:
@@ -3960,14 +4299,15 @@ with do_lookup_tab:
 
 
 
+
 with stock_check_tab:
     st.markdown(
         """
         <div class="tx-filter-shell">
             <div class="tx-filter-top">
                 <div>
-                    <div class="tx-filter-title">Stock & Replenishment</div>
-                    <div class="tx-filter-subtitle">Enter SKU and Qty. DO is optional and is used only for demand audit.</div>
+                    <div class="tx-filter-title">Stock Check</div>
+                    <div class="tx-filter-subtitle">Enter DO, SKU, and Qty. Not Shipped is counted; Cancelled is excluded.</div>
                 </div>
             </div>
         </div>
@@ -3975,36 +4315,32 @@ with stock_check_tab:
         unsafe_allow_html=True,
     )
 
-    stock_table_version_key = f"replenishment_table_version_{site_key}"
-    stock_result_signature_key = f"replenishment_result_signature_{site_key}"
-    stock_detail_result_key = f"replenishment_detail_result_{site_key}"
-    stock_issues_result_key = f"replenishment_issues_result_{site_key}"
+    stock_table_version_key = f"do_stock_table_version_{site_key}"
+    stock_result_signature_key = f"do_stock_result_signature_{site_key}"
+    stock_detail_result_key = f"do_stock_detail_result_{site_key}"
+    stock_overview_result_key = f"do_stock_overview_result_{site_key}"
+    stock_issues_result_key = f"do_stock_issues_result_{site_key}"
     st.session_state.setdefault(stock_table_version_key, 0)
 
-    control_col, reset_col = st.columns([3, 1])
-    with control_col:
-        target_days = st.number_input(
-            "Target stock days",
-            min_value=7,
-            max_value=180,
-            value=30,
-            step=1,
-            key=f"replenishment_target_days_{site_key}",
-        )
+    reset_col, spacer_col = st.columns([1, 5])
     with reset_col:
-        st.markdown("<div style='height:1.62rem'></div>", unsafe_allow_html=True)
-        if st.button("Reset", use_container_width=True, key=f"replenishment_reset_{site_key}"):
+        if st.button("Reset", use_container_width=True, key=f"do_stock_reset_{site_key}"):
             st.session_state[stock_table_version_key] += 1
-            for key in [stock_result_signature_key, stock_detail_result_key, stock_issues_result_key]:
+            for key in [
+                stock_result_signature_key,
+                stock_detail_result_key,
+                stock_overview_result_key,
+                stock_issues_result_key,
+            ]:
                 st.session_state.pop(key, None)
             st.rerun()
 
-    stock_table_key = f"replenishment_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
+    stock_table_key = f"do_stock_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
     stock_template_df = pd.DataFrame(
         {
+            "DO #": [""] * 30,
             "Item Code / SKU": [""] * 30,
             "Qty": [""] * 30,
-            "DO # (Optional)": [""] * 30,
         }
     )
     stock_table_df = st.data_editor(
@@ -4015,129 +4351,126 @@ with stock_check_tab:
         num_rows="dynamic",
         key=stock_table_key,
         column_config={
+            "DO #": st.column_config.TextColumn("DO #", width="medium"),
             "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU", width="large"),
             "Qty": st.column_config.TextColumn("Qty", width="small"),
-            "DO # (Optional)": st.column_config.TextColumn("DO # (Optional)", width="medium"),
         },
     )
 
-    input_df = parse_replenishment_table(stock_table_df)
+    input_df = parse_stock_check_table(stock_table_df)
     input_signature_source = input_df.fillna("").astype(str).to_json(orient="records") if not input_df.empty else ""
     stock_current_signature = hashlib.sha256(
-        f"{uploaded_key}|{int(target_days)}|{input_signature_source}".encode("utf-8")
+        f"{uploaded_key}|{input_signature_source}".encode("utf-8")
     ).hexdigest()
 
     if input_df.empty:
         detail_df = pd.DataFrame()
+        overview_df = pd.DataFrame()
         issues_df = pd.DataFrame()
-        for key in [stock_result_signature_key, stock_detail_result_key, stock_issues_result_key]:
+        for key in [
+            stock_result_signature_key,
+            stock_detail_result_key,
+            stock_overview_result_key,
+            stock_issues_result_key,
+        ]:
             st.session_state.pop(key, None)
     elif st.session_state.get(stock_result_signature_key) == stock_current_signature:
         detail_df = st.session_state.get(stock_detail_result_key, pd.DataFrame())
+        overview_df = st.session_state.get(stock_overview_result_key, pd.DataFrame())
         issues_df = st.session_state.get(stock_issues_result_key, pd.DataFrame())
     else:
-        detail_df, _, issues_df = build_stock_check_tables(
+        detail_df, overview_df, issues_df = build_stock_check_tables(
             input_df,
             sku_df,
             model.get("tx_df", pd.DataFrame()),
         )
         st.session_state[stock_result_signature_key] = stock_current_signature
         st.session_state[stock_detail_result_key] = detail_df
+        st.session_state[stock_overview_result_key] = overview_df
         st.session_state[stock_issues_result_key] = issues_df
 
     if input_df.empty:
-        st.info("Enter SKU and Qty to calculate replenishment needs.")
-    else:
-        plan_df, demand_detail_df = build_replenishment_plan(detail_df, sku_df, int(target_days))
+        st.info("Enter DO, SKU, and Qty to check which quantities are already reflected in the report.")
+    elif not detail_df.empty:
+        do_summary_df, do_detail_df, stock_balance_df = build_do_qty_reports(detail_df, overview_df)
 
-        if not plan_df.empty:
-            sku_count = len(plan_df)
-            suggested_qty = pd.to_numeric(plan_df["Suggested Inbound"], errors="coerce").fillna(0)
-            need_inbound_count = int((suggested_qty > 0).sum())
-            critical_count = int((plan_df["Status"] == "Buy Now").sum())
-            suggested_total = int(np.ceil(suggested_qty.sum()))
+        do_count = len(do_summary_df)
+        in_report_count = int((do_summary_df["Report Presence"] == "In Report").sum()) if not do_summary_df.empty else 0
+        not_in_report_count = int((do_summary_df["Report Presence"] == "Not in Report").sum()) if not do_summary_df.empty else 0
+        additional_total = int(np.ceil(pd.to_numeric(do_summary_df.get("Additional Qty", 0), errors="coerce").fillna(0).sum())) if not do_summary_df.empty else 0
+        shortage_skus = int((pd.to_numeric(stock_balance_df.get("Shortage Qty", 0), errors="coerce").fillna(0) > 0).sum()) if not stock_balance_df.empty else 0
 
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                metric_card("SKUs", fmt_num(sku_count), "Checked")
-            with c2:
-                metric_card("Need Inbound", fmt_num(need_inbound_count), "Below target")
-            with c3:
-                metric_card("Critical", fmt_num(critical_count), "Buy now")
-            with c4:
-                metric_card("Inbound Qty", fmt_num(suggested_total), f"Target {int(target_days)} days")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            metric_card("DOs", fmt_num(do_count), "Entered")
+        with c2:
+            metric_card("In Report", fmt_num(in_report_count), "DO found")
+        with c3:
+            metric_card("Not in Report", fmt_num(not_in_report_count), "New DO")
+        with c4:
+            metric_card("Additional Qty", fmt_num(additional_total), f"{shortage_skus:,} shortage SKUs")
 
-            st.caption(f"Inbound Qty restores each SKU to {int(target_days)} days of average usage after the entered demand.")
-            st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>DO Check</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='section-subtitle'>Green: fully reflected. Yellow: DO exists but additional quantity remains. Red: DO is not in the report.</div>",
+            unsafe_allow_html=True,
+        )
+        do_height = min(520, max(150, 74 + (len(do_summary_df) * 35)))
+        show_do_summary_dataframe(do_summary_df, do_height)
 
-            plan_display = prepare_replenishment_display(plan_df)
-            table_height = min(620, max(180, 74 + (len(plan_display) * 35)))
+        st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Stock Balance</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='section-subtitle'>Only Additional Qty is deducted from current stock. Red indicates a shortage; yellow indicates zero remaining stock.</div>",
+            unsafe_allow_html=True,
+        )
+        stock_height = min(620, max(180, 74 + (len(stock_balance_df) * 35)))
+        show_stock_balance_dataframe(stock_balance_df, stock_height)
+
+        with st.expander("DO + SKU Detail", expanded=False):
+            detail_display = prepare_do_qty_display(
+                do_detail_df,
+                ["DO #", "Report Presence", "SKU", "Description", "Requested Qty", "Report Qty", "Additional Qty", "Qty Result"],
+            )
+            detail_height = min(480, max(150, 74 + (len(detail_display) * 32)))
             st.dataframe(
-                plan_display,
+                detail_display,
                 use_container_width=True,
                 hide_index=True,
-                height=table_height,
+                height=detail_height,
                 column_config={
+                    "DO #": st.column_config.TextColumn("DO #", width="medium"),
+                    "Report Presence": st.column_config.TextColumn("Report Presence", width="medium"),
                     "SKU": st.column_config.TextColumn("SKU", width="large"),
-                    "Stock": st.column_config.NumberColumn("Stock", format="%.0f", width="small"),
-                    "Demand": st.column_config.NumberColumn("Demand", format="%.0f", width="small"),
-                    "Available": st.column_config.NumberColumn("Available", format="%.0f", width="small"),
-                    "Days Left": st.column_config.NumberColumn("Days Left", format="%.1f", width="small"),
-                    "Inbound Qty": st.column_config.NumberColumn("Inbound Qty", format="%.0f", width="small"),
-                    "Status": st.column_config.TextColumn("Status", width="medium"),
+                    "Description": st.column_config.TextColumn("Description", width="large"),
+                    "Requested Qty": st.column_config.NumberColumn("Input Qty", format="%.0f", width="small"),
+                    "Report Qty": st.column_config.NumberColumn("Report Qty", format="%.0f", width="small"),
+                    "Additional Qty": st.column_config.NumberColumn("Additional Qty", format="%.0f", width="small"),
+                    "Qty Result": st.column_config.TextColumn("Qty Result", width="medium"),
                 },
             )
 
-            if critical_count > 0:
-                st.error(f"{critical_count:,} SKUs require immediate inbound. Suggested total: {suggested_total:,} units.")
-            elif need_inbound_count > 0:
-                st.warning(f"{need_inbound_count:,} SKUs need replenishment. Suggested total: {suggested_total:,} units.")
-            else:
-                st.success("No inbound is required for the selected target coverage.")
+        st.download_button(
+            "Download Stock Check Report",
+            data=to_do_stock_excel_bytes(
+                do_detail_df,
+                stock_balance_df,
+                format_name,
+                report_end,
+            ),
+            file_name=f"{safe_format_slug(format_name)}_Stock_Check_{pd.to_datetime(report_end).strftime('%m%d%Y')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
 
-            with st.expander("Demand Detail", expanded=False):
-                detail_display = demand_detail_df.drop(columns=["Input Order"], errors="ignore").copy()
-                for column in ["Requested Qty", "Already Reflected", "Additional Demand"]:
-                    detail_display[column] = pd.to_numeric(detail_display[column], errors="coerce").round(0).astype("Int64")
-                detail_display["Status"] = detail_display["Status"].map(replenishment_status_badge)
-                detail_height = min(440, max(150, 74 + (len(detail_display) * 32)))
-                st.dataframe(
-                    detail_display,
-                    use_container_width=True,
-                    hide_index=True,
-                    height=detail_height,
-                    column_config={
-                        "SKU": st.column_config.TextColumn("SKU", width="large"),
-                        "DO #": st.column_config.TextColumn("DO #", width="medium"),
-                        "Requested Qty": st.column_config.NumberColumn("Requested", format="%.0f"),
-                        "Already Reflected": st.column_config.NumberColumn("In Report", format="%.0f"),
-                        "Additional Demand": st.column_config.NumberColumn("New Demand", format="%.0f"),
-                        "Demand Type": st.column_config.TextColumn("Type", width="medium"),
-                        "Status": st.column_config.TextColumn("SKU Status", width="medium"),
-                    },
-                )
-
-            st.download_button(
-                "Download Replenishment Report",
-                data=to_replenishment_excel_bytes(
-                    plan_df,
-                    demand_detail_df,
-                    int(target_days),
-                    format_name,
-                    report_end,
-                ),
-                file_name=f"{safe_format_slug(format_name)}_Replenishment_Plan_{pd.to_datetime(report_end).strftime('%m%d%Y')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
-
-        if not issues_df.empty:
-            st.error(f"{len(issues_df):,} input rows need correction.")
-            issues_display = issues_df.drop(columns=["Input Order", "DO #"], errors="ignore").copy()
-            if "Requested Qty" in issues_display.columns:
-                issues_display["Requested Qty"] = pd.to_numeric(issues_display["Requested Qty"], errors="coerce")
-            issue_height = min(280, max(120, 74 + (len(issues_display) * 32)))
-            show_limited_dataframe(issues_display, height=issue_height, limit=1000, show_count=False)
+    if not issues_df.empty:
+        st.error(f"{len(issues_df):,} input rows need correction.")
+        issues_display = issues_df.drop(columns=["Input Order"], errors="ignore").copy()
+        if "Requested Qty" in issues_display.columns:
+            issues_display["Requested Qty"] = pd.to_numeric(issues_display["Requested Qty"], errors="coerce")
+        issue_height = min(280, max(120, 74 + (len(issues_display) * 32)))
+        show_limited_dataframe(issues_display, height=issue_height, limit=1000, show_count=False)
 
 with audit_tab:
     st.subheader("Audit Checks")
@@ -4189,7 +4522,7 @@ with guide_tab:
         3. Review **Critical**, **Warning**, and **Watch** SKUs first. **Inactive / No Demand** SKUs are excluded from the default list.
         4. Use **SKU Detail** to drill into one SKU and review transaction history.
         5. Use **DO Lookup** to search one DO # and see every item tied to that DO # / Trans. # across all SKUs.
-        6. Use **Stock & Replenishment** to enter SKU demand, review available stock, and calculate suggested inbound quantity.
+        6. Use **Stock Check** to enter DO, SKU, and Qty, identify what is already in the report, and calculate the remaining stock after only unreflected quantities are deducted.
         7. Use **Audit** to review missing source rows, duplicate rows, balance differences, Not Shipped rows, and Cancelled rows.
         8. Forecast dates exclude weekends and U.S. federal holidays.        """
     )
