@@ -1998,6 +1998,8 @@ def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame, tx_df
 
     valid_df["SKU Key"] = valid_df["SKU"].astype(str).map(normalize_lookup_key)
     valid_df["DO Key"] = valid_df["DO #"].astype(str).map(normalize_lookup_key)
+    blank_do_mask = valid_df["DO Key"] == ""
+    valid_df.loc[blank_do_mask, "DO Key"] = valid_df.loc[blank_do_mask, "Input Order"].map(lambda value: f"__MANUAL_{int(value)}")
     request_df = (
         valid_df.groupby(["DO Key", "DO #", "SKU Key", "SKU"], sort=False, as_index=False)
         .agg({"Input Order": "min", "Requested Qty": "sum"})
@@ -2268,6 +2270,316 @@ def prepare_minimal_stock_check_export(df: pd.DataFrame) -> pd.DataFrame:
         out[col] = pd.to_numeric(out[col], errors="coerce").round(0).astype("Int64")
     return out
 
+
+
+def parse_replenishment_table(table_df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    if table_df is None or table_df.empty:
+        return pd.DataFrame(columns=["Input Order", "DO #", "SKU", "Requested Qty", "Issue"])
+
+    for _, row in table_df.reset_index(drop=True).iterrows():
+        sku = clean_text(row.get("Item Code / SKU", row.get("SKU", "")))
+        qty_text = clean_text(row.get("Qty", ""))
+        do_no = clean_text(row.get("DO # (Optional)", row.get("DO #", "")))
+        if not sku and not qty_text and not do_no:
+            continue
+
+        qty_match = re.fullmatch(r"[+-]?(?:\d+(?:\.\d+)?|\.\d+)", qty_text.replace(",", ""))
+        qty = float(qty_match.group()) if qty_match else np.nan
+        issue = ""
+        if not sku:
+            issue = "Missing SKU"
+        elif pd.isna(qty) or qty <= 0:
+            issue = "Invalid Qty"
+
+        rows.append(
+            {
+                "Input Order": len(rows) + 1,
+                "DO #": do_no,
+                "SKU": sku,
+                "Requested Qty": qty,
+                "Issue": issue,
+            }
+        )
+
+    return pd.DataFrame(rows, columns=["Input Order", "DO #", "SKU", "Requested Qty", "Issue"])
+
+
+def build_replenishment_plan(detail_df: pd.DataFrame, sku_df: pd.DataFrame, target_days: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    plan_columns = [
+        "Input Order",
+        "SKU",
+        "Description",
+        "Current Stock",
+        "Requested Qty",
+        "Already Reflected",
+        "Additional Demand",
+        "Available After Orders",
+        "Avg Daily Usage 30D",
+        "Days Left",
+        "Target Stock",
+        "Suggested Inbound",
+        "Affected DOs",
+        "DO List",
+        "Status",
+        "Status Sort",
+    ]
+    detail_columns = [
+        "Input Order",
+        "SKU",
+        "DO #",
+        "Requested Qty",
+        "Already Reflected",
+        "Additional Demand",
+        "Demand Type",
+        "Status",
+    ]
+    if detail_df is None or detail_df.empty:
+        return pd.DataFrame(columns=plan_columns), pd.DataFrame(columns=detail_columns)
+
+    detail = detail_df.copy()
+    detail["SKU Key"] = detail["SKU"].astype(str).map(normalize_lookup_key)
+    detail["Requested Qty"] = pd.to_numeric(detail.get("Requested Qty", 0), errors="coerce").fillna(0)
+    detail["Already Reflected"] = pd.to_numeric(detail.get("Existing Report Qty Out", 0), errors="coerce").fillna(0)
+    detail["Additional Demand"] = pd.to_numeric(detail.get("Qty To Check", 0), errors="coerce").fillna(0)
+    detail["Demand Type"] = np.where(detail.get("Report DO Status", "").astype(str) == "Existing DO", "Existing DO", "New Demand")
+    detail["DO Display"] = detail.get("DO #", "").astype(str).map(clean_text).replace("", "Manual")
+
+    stock_columns = [
+        "SKU",
+        "Description",
+        "Ending Balance",
+        "Avg Daily Usage 30D",
+        "Data Quality Status",
+        "Data Quality Issue",
+    ]
+    stock = sku_df.copy()
+    for column in stock_columns:
+        if column not in stock.columns:
+            stock[column] = np.nan if column in ["Ending Balance", "Avg Daily Usage 30D"] else ""
+    stock = stock[stock_columns].copy()
+    stock["SKU Key"] = stock["SKU"].astype(str).map(normalize_lookup_key)
+    stock = stock.drop_duplicates("SKU Key", keep="first").set_index("SKU Key")
+
+    plan_rows = []
+    grouped = detail.groupby("SKU Key", sort=False)
+    for sku_key, group in grouped:
+        stock_row = stock.loc[sku_key] if sku_key in stock.index else None
+        input_order = int(pd.to_numeric(group["Input Order"], errors="coerce").min())
+        source_sku = clean_text(group["SKU"].iloc[0])
+        description = clean_text(stock_row.get("Description", "")) if stock_row is not None else clean_text(group.get("Description", pd.Series([""])).iloc[0])
+        canonical_sku = clean_text(stock_row.get("SKU", source_sku)) if stock_row is not None else source_sku
+        current_stock = pd.to_numeric(pd.Series([stock_row.get("Ending Balance", np.nan) if stock_row is not None else np.nan]), errors="coerce").iloc[0]
+        avg_usage = pd.to_numeric(pd.Series([stock_row.get("Avg Daily Usage 30D", 0) if stock_row is not None else 0]), errors="coerce").fillna(0).iloc[0]
+        requested_qty = float(group["Requested Qty"].sum())
+        already_reflected = float(group["Already Reflected"].sum())
+        additional_demand = float(group["Additional Demand"].sum())
+        do_values = [clean_text(value) or "Manual" for value in group["DO #"].tolist()]
+        do_values = list(dict.fromkeys(do_values))
+        do_list = ", ".join(do_values)
+        affected_dos = len(do_values)
+        source_statuses = set(group["Status"].astype(str))
+        data_quality_status = clean_text(stock_row.get("Data Quality Status", "")) if stock_row is not None else ""
+
+        if stock_row is None or "Not Found" in source_statuses:
+            available_after = np.nan
+            days_left = np.nan
+            target_stock = np.nan
+            suggested_inbound = np.nan
+            status = "Not Found"
+        elif "Data Issue" in source_statuses or (data_quality_status and data_quality_status != "OK") or pd.isna(current_stock):
+            available_after = np.nan
+            days_left = np.nan
+            target_stock = np.nan
+            suggested_inbound = np.nan
+            status = "Data Issue"
+        else:
+            current_stock = float(current_stock)
+            avg_usage = max(float(avg_usage), 0.0)
+            available_after = current_stock - additional_demand
+            target_stock = avg_usage * max(int(target_days), 0)
+            suggested_inbound = float(np.ceil(max(target_stock - available_after, 0.0)))
+            days_left = max(available_after, 0.0) / avg_usage if avg_usage > 0 else np.nan
+
+            if available_after <= 0:
+                status = "Buy Now"
+            elif avg_usage <= 0:
+                status = "No Recent Demand"
+            elif days_left <= 7:
+                status = "Buy Now"
+            elif days_left <= 14:
+                status = "Plan Inbound"
+            elif days_left <= target_days:
+                status = "Monitor"
+            else:
+                status = "Healthy"
+
+        status_sort = {
+            "Data Issue": 0,
+            "Not Found": 1,
+            "Buy Now": 2,
+            "Plan Inbound": 3,
+            "Monitor": 4,
+            "Healthy": 5,
+            "No Recent Demand": 6,
+        }.get(status, 9)
+
+        plan_rows.append(
+            {
+                "Input Order": input_order,
+                "SKU": canonical_sku,
+                "Description": description,
+                "Current Stock": current_stock,
+                "Requested Qty": requested_qty,
+                "Already Reflected": already_reflected,
+                "Additional Demand": additional_demand,
+                "Available After Orders": available_after,
+                "Avg Daily Usage 30D": avg_usage,
+                "Days Left": days_left,
+                "Target Stock": target_stock,
+                "Suggested Inbound": suggested_inbound,
+                "Affected DOs": affected_dos,
+                "DO List": do_list,
+                "Status": status,
+                "Status Sort": status_sort,
+            }
+        )
+
+    plan_df = pd.DataFrame(plan_rows, columns=plan_columns)
+    plan_df = plan_df.sort_values(
+        ["Status Sort", "Suggested Inbound", "Days Left", "Input Order"],
+        ascending=[True, False, True, True],
+        na_position="last",
+    ).reset_index(drop=True)
+
+    status_lookup = plan_df.set_index(plan_df["SKU"].astype(str).map(normalize_lookup_key))["Status"].to_dict()
+    demand_detail = detail.copy()
+    demand_detail["Status"] = demand_detail["SKU Key"].map(status_lookup).fillna(demand_detail["Status"])
+    demand_detail["DO #"] = demand_detail["DO Display"]
+    if "Demand Type" not in demand_detail.columns:
+        demand_detail["Demand Type"] = "New Demand"
+    demand_detail = demand_detail[detail_columns].sort_values(["SKU", "Input Order"]).reset_index(drop=True)
+    return plan_df, demand_detail
+
+
+def replenishment_status_badge(value: str) -> str:
+    return {
+        "Buy Now": "🔴 Buy Now",
+        "Plan Inbound": "🟠 Plan Inbound",
+        "Monitor": "🟡 Monitor",
+        "Healthy": "🟢 Healthy",
+        "No Recent Demand": "⚪ No Recent Demand",
+        "Not Found": "⚫ Not Found",
+        "Data Issue": "⚠ Data Issue",
+    }.get(str(value), str(value))
+
+
+def prepare_replenishment_display(plan_df: pd.DataFrame) -> pd.DataFrame:
+    if plan_df is None or plan_df.empty:
+        return pd.DataFrame(columns=["SKU", "Stock", "Demand", "Available", "Days Left", "Inbound Qty", "Status"])
+
+    out = plan_df.copy()
+    out = out.rename(
+        columns={
+            "Current Stock": "Stock",
+            "Additional Demand": "Demand",
+            "Available After Orders": "Available",
+            "Suggested Inbound": "Inbound Qty",
+        }
+    )
+    for column in ["Stock", "Demand", "Available", "Inbound Qty"]:
+        out[column] = pd.to_numeric(out[column], errors="coerce").round(0).astype("Int64")
+    out["Days Left"] = pd.to_numeric(out["Days Left"], errors="coerce").round(1)
+    out["Status"] = out["Status"].map(replenishment_status_badge)
+    return out[["SKU", "Stock", "Demand", "Available", "Days Left", "Inbound Qty", "Status"]]
+
+
+def prepare_replenishment_export(plan_df: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "SKU",
+        "Description",
+        "Current Stock",
+        "Requested Qty",
+        "Already Reflected",
+        "Additional Demand",
+        "Available After Orders",
+        "Avg Daily Usage 30D",
+        "Days Left",
+        "Target Stock",
+        "Suggested Inbound",
+        "Affected DOs",
+        "DO List",
+        "Status",
+    ]
+    if plan_df is None or plan_df.empty:
+        return pd.DataFrame(columns=columns)
+    out = plan_df[columns].copy()
+    for column in [
+        "Current Stock",
+        "Requested Qty",
+        "Already Reflected",
+        "Additional Demand",
+        "Available After Orders",
+        "Target Stock",
+        "Suggested Inbound",
+    ]:
+        out[column] = pd.to_numeric(out[column], errors="coerce").round(0).astype("Int64")
+    out["Avg Daily Usage 30D"] = pd.to_numeric(out["Avg Daily Usage 30D"], errors="coerce").round(2)
+    out["Days Left"] = pd.to_numeric(out["Days Left"], errors="coerce").round(1)
+    return out
+
+
+def to_replenishment_excel_bytes(plan_df: pd.DataFrame, demand_detail_df: pd.DataFrame, target_days: int, format_name: str, report_end) -> bytes:
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    output = BytesIO()
+    plan_export = prepare_replenishment_export(plan_df)
+    detail_export = demand_detail_df.copy()
+    if not detail_export.empty:
+        for column in ["Requested Qty", "Already Reflected", "Additional Demand"]:
+            detail_export[column] = pd.to_numeric(detail_export[column], errors="coerce").round(0).astype("Int64")
+        detail_export = detail_export.drop(columns=["Input Order"], errors="ignore")
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        plan_export.to_excel(writer, sheet_name="Replenishment Plan", startrow=3, index=False)
+        detail_export.to_excel(writer, sheet_name="Demand Detail", index=False)
+
+        workbook = writer.book
+        plan_sheet = writer.sheets["Replenishment Plan"]
+        plan_sheet["A1"] = f"{format_name} Stock & Replenishment"
+        plan_sheet["A1"].font = Font(size=16, bold=True, color="111827")
+        plan_sheet["A2"] = "Report Date"
+        plan_sheet["B2"] = fmt_date(report_end)
+        plan_sheet["D2"] = "Target Coverage"
+        plan_sheet["E2"] = f"{int(target_days)} days"
+        plan_sheet.freeze_panes = "A5"
+        plan_sheet.auto_filter.ref = plan_sheet.dimensions
+
+        header_fill = PatternFill("solid", fgColor="E5E7EB")
+        for cell in plan_sheet[4]:
+            cell.font = Font(bold=True, color="111827")
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        detail_sheet = writer.sheets["Demand Detail"]
+        detail_sheet.freeze_panes = "A2"
+        detail_sheet.auto_filter.ref = detail_sheet.dimensions
+        for cell in detail_sheet[1]:
+            cell.font = Font(bold=True, color="111827")
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for sheet in [plan_sheet, detail_sheet]:
+            for column_cells in sheet.columns:
+                column_letter = get_column_letter(column_cells[0].column)
+                max_length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in column_cells)
+                sheet.column_dimensions[column_letter].width = min(max(max_length + 2, 11), 42)
+            for row in sheet.iter_rows():
+                for cell in row:
+                    cell.alignment = Alignment(vertical="top", wrap_text=False)
+
+    return output.getvalue()
 
 def show_minimal_stock_check_dataframe(df: pd.DataFrame, height: int):
     display_df = df[["SKU", "Available / Need", "Status"]].copy()
@@ -3062,7 +3374,7 @@ with export_col_2:
 
 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 
-sku_tab, do_lookup_tab, stock_check_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "DO Lookup", "Stock Check", "Audit", "Guide"])
+sku_tab, do_lookup_tab, stock_check_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "DO Lookup", "Stock & Replenishment", "Audit", "Guide"])
 
 with sku_tab:
     if not selected_sku:
@@ -3654,8 +3966,8 @@ with stock_check_tab:
         <div class="tx-filter-shell">
             <div class="tx-filter-top">
                 <div>
-                    <div class="tx-filter-title">Stock Check</div>
-                    <div class="tx-filter-subtitle">Paste DO, SKU, and Qty. Results are checked in pasted order without double-counting existing DOs.</div>
+                    <div class="tx-filter-title">Stock & Replenishment</div>
+                    <div class="tx-filter-subtitle">Enter SKU and Qty. DO is optional and is used only for demand audit.</div>
                 </div>
             </div>
         </div>
@@ -3663,32 +3975,36 @@ with stock_check_tab:
         unsafe_allow_html=True,
     )
 
-    stock_table_version_key = f"stock_check_table_version_{site_key}"
-    stock_result_signature_key = f"stock_check_result_signature_{site_key}"
-    stock_detail_result_key = f"stock_check_detail_result_{site_key}"
-    stock_overview_result_key = f"stock_check_overview_result_{site_key}"
-    stock_issues_result_key = f"stock_check_issues_result_{site_key}"
+    stock_table_version_key = f"replenishment_table_version_{site_key}"
+    stock_result_signature_key = f"replenishment_result_signature_{site_key}"
+    stock_detail_result_key = f"replenishment_detail_result_{site_key}"
+    stock_issues_result_key = f"replenishment_issues_result_{site_key}"
     st.session_state.setdefault(stock_table_version_key, 0)
 
-    reset_col, _ = st.columns([1, 5])
+    control_col, reset_col = st.columns([3, 1])
+    with control_col:
+        target_days = st.number_input(
+            "Target stock days",
+            min_value=7,
+            max_value=180,
+            value=30,
+            step=1,
+            key=f"replenishment_target_days_{site_key}",
+        )
     with reset_col:
-        if st.button("Reset", use_container_width=True, key=f"stock_check_reset_{site_key}"):
+        st.markdown("<div style='height:1.62rem'></div>", unsafe_allow_html=True)
+        if st.button("Reset", use_container_width=True, key=f"replenishment_reset_{site_key}"):
             st.session_state[stock_table_version_key] += 1
-            for key in [
-                stock_result_signature_key,
-                stock_detail_result_key,
-                stock_overview_result_key,
-                stock_issues_result_key,
-            ]:
+            for key in [stock_result_signature_key, stock_detail_result_key, stock_issues_result_key]:
                 st.session_state.pop(key, None)
             st.rerun()
 
-    stock_table_key = f"stock_check_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
+    stock_table_key = f"replenishment_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
     stock_template_df = pd.DataFrame(
         {
-            "DO #": [""] * 30,
             "Item Code / SKU": [""] * 30,
             "Qty": [""] * 30,
+            "DO # (Optional)": [""] * 30,
         }
     )
     stock_table_df = st.data_editor(
@@ -3699,139 +4015,125 @@ with stock_check_tab:
         num_rows="dynamic",
         key=stock_table_key,
         column_config={
-            "DO #": st.column_config.TextColumn("DO #"),
-            "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU"),
-            "Qty": st.column_config.TextColumn("Qty"),
+            "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU", width="large"),
+            "Qty": st.column_config.TextColumn("Qty", width="small"),
+            "DO # (Optional)": st.column_config.TextColumn("DO # (Optional)", width="medium"),
         },
     )
 
-    input_df = parse_stock_check_table(stock_table_df)
+    input_df = parse_replenishment_table(stock_table_df)
     input_signature_source = input_df.fillna("").astype(str).to_json(orient="records") if not input_df.empty else ""
-    stock_current_signature = hashlib.sha256(f"{uploaded_key}|{input_signature_source}".encode("utf-8")).hexdigest()
+    stock_current_signature = hashlib.sha256(
+        f"{uploaded_key}|{int(target_days)}|{input_signature_source}".encode("utf-8")
+    ).hexdigest()
 
     if input_df.empty:
         detail_df = pd.DataFrame()
-        overview_df = pd.DataFrame()
         issues_df = pd.DataFrame()
-        for key in [
-            stock_result_signature_key,
-            stock_detail_result_key,
-            stock_overview_result_key,
-            stock_issues_result_key,
-        ]:
+        for key in [stock_result_signature_key, stock_detail_result_key, stock_issues_result_key]:
             st.session_state.pop(key, None)
     elif st.session_state.get(stock_result_signature_key) == stock_current_signature:
         detail_df = st.session_state.get(stock_detail_result_key, pd.DataFrame())
-        overview_df = st.session_state.get(stock_overview_result_key, pd.DataFrame())
         issues_df = st.session_state.get(stock_issues_result_key, pd.DataFrame())
     else:
-        detail_df, overview_df, issues_df = build_stock_check_tables(
+        detail_df, _, issues_df = build_stock_check_tables(
             input_df,
             sku_df,
             model.get("tx_df", pd.DataFrame()),
         )
         st.session_state[stock_result_signature_key] = stock_current_signature
         st.session_state[stock_detail_result_key] = detail_df
-        st.session_state[stock_overview_result_key] = overview_df
         st.session_state[stock_issues_result_key] = issues_df
 
     if input_df.empty:
-        st.info("Paste DO, SKU, and Qty to check stock.")
+        st.info("Enter SKU and Qty to calculate replenishment needs.")
     else:
-        valid_input_df = input_df[input_df["Issue"].astype(str) == ""].copy()
-        duplicate_rows_merged = 0
-        if not valid_input_df.empty:
-            valid_input_df["DO Key"] = valid_input_df["DO #"].astype(str).map(normalize_lookup_key)
-            valid_input_df["SKU Key"] = valid_input_df["SKU"].astype(str).map(normalize_lookup_key)
-            duplicate_rows_merged = len(valid_input_df) - len(valid_input_df.drop_duplicates(["DO Key", "SKU Key"]))
+        plan_df, demand_detail_df = build_replenishment_plan(detail_df, sku_df, int(target_days))
 
-        do_count = overview_df["DO #"].nunique() if not overview_df.empty else 0
-        sku_count = len(detail_df)
-        ready_count = int(detail_df["Status"].isin(["Enough", "Already Covered"]).sum()) if not detail_df.empty else 0
-        shortage_count = int((detail_df["Status"] == "Shortage").sum()) if not detail_df.empty else 0
-        not_found_count = int((detail_df["Status"] == "Not Found").sum()) if not detail_df.empty else 0
-        data_issue_count = int((detail_df["Status"] == "Data Issue").sum()) if not detail_df.empty else 0
-        issue_count = shortage_count + not_found_count + data_issue_count
+        if not plan_df.empty:
+            sku_count = len(plan_df)
+            suggested_qty = pd.to_numeric(plan_df["Suggested Inbound"], errors="coerce").fillna(0)
+            need_inbound_count = int((suggested_qty > 0).sum())
+            critical_count = int((plan_df["Status"] == "Buy Now").sum())
+            suggested_total = int(np.ceil(suggested_qty.sum()))
 
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            metric_card("DO", fmt_num(do_count), "Orders checked")
-        with c2:
-            metric_card("SKU", fmt_num(sku_count), "Unique DO / SKU lines")
-        with c3:
-            metric_card("Ready", fmt_num(ready_count), "Available or reserved")
-        with c4:
-            metric_card("Issues", fmt_num(issue_count), "Shortage, missing, or data")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                metric_card("SKUs", fmt_num(sku_count), "Checked")
+            with c2:
+                metric_card("Need Inbound", fmt_num(need_inbound_count), "Below target")
+            with c3:
+                metric_card("Critical", fmt_num(critical_count), "Buy now")
+            with c4:
+                metric_card("Inbound Qty", fmt_num(suggested_total), f"Target {int(target_days)} days")
 
-        if duplicate_rows_merged > 0:
-            st.caption(f"Merged {duplicate_rows_merged:,} duplicate DO / SKU rows.")
-
-        if not detail_df.empty and not overview_df.empty:
-            do_input_order = (
-                detail_df.assign(DO_Key=detail_df["DO #"].astype(str).map(normalize_lookup_key))
-                .groupby("DO_Key")["Input Order"]
-                .min()
-                .to_dict()
-            )
-            overview_render = overview_df.copy()
-            overview_render["DO Key"] = overview_render["DO #"].astype(str).map(normalize_lookup_key)
-            overview_render["Input Sort"] = overview_render["DO Key"].map(do_input_order).fillna(999999)
-            overview_render["Status Sort"] = overview_render["Status"].map(
-                {
-                    "Data Issue": 0,
-                    "Shortage": 1,
-                    "Not Found": 2,
-                    "Enough": 3,
-                    "Already Covered": 4,
-                }
-            ).fillna(9)
-            overview_render = overview_render.sort_values(["Status Sort", "Input Sort"])
-
+            st.caption(f"Inbound Qty restores each SKU to {int(target_days)} days of average usage after the entered demand.")
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 
-            for _, overview_row in overview_render.iterrows():
-                do_no = clean_text(overview_row.get("DO #", ""))
-                do_key = normalize_lookup_key(do_no)
-                do_items = detail_df[detail_df["DO #"].astype(str).map(normalize_lookup_key) == do_key].copy()
-                if do_items.empty:
-                    continue
+            plan_display = prepare_replenishment_display(plan_df)
+            table_height = min(620, max(180, 74 + (len(plan_display) * 35)))
+            st.dataframe(
+                plan_display,
+                use_container_width=True,
+                hide_index=True,
+                height=table_height,
+                column_config={
+                    "SKU": st.column_config.TextColumn("SKU", width="large"),
+                    "Stock": st.column_config.NumberColumn("Stock", format="%.0f", width="small"),
+                    "Demand": st.column_config.NumberColumn("Demand", format="%.0f", width="small"),
+                    "Available": st.column_config.NumberColumn("Available", format="%.0f", width="small"),
+                    "Days Left": st.column_config.NumberColumn("Days Left", format="%.1f", width="small"),
+                    "Inbound Qty": st.column_config.NumberColumn("Inbound Qty", format="%.0f", width="small"),
+                    "Status": st.column_config.TextColumn("Status", width="medium"),
+                },
+            )
 
-                minimal_display = prepare_minimal_stock_check_display(do_items)
-                minimal_display = minimal_display.sort_values(["Status Sort", "Input Order"], ascending=[True, True])
-                do_ready = int(do_items["Status"].isin(["Enough", "Already Covered"]).sum())
-                do_issues = int(do_items["Status"].isin(["Shortage", "Not Found", "Data Issue"]).sum())
-                report_label = "Existing" if clean_text(overview_row.get("Report DO Status", "")) == "Existing DO" else "New"
-                issue_label = "Issue" if do_issues == 1 else "Issues"
-                expander_label = f"{do_no} · {report_label} · {do_ready:,} Ready · {do_issues:,} {issue_label}"
-
-                with st.expander(expander_label, expanded=(do_issues > 0 or len(overview_render) <= 3)):
-                    table_height = min(360, max(128, 72 + (len(minimal_display) * 32)))
-                    show_minimal_stock_check_dataframe(minimal_display, height=table_height)
-
-            affected_do_count = 0
-            if issue_count > 0:
-                affected_do_count = int(
-                    detail_df.loc[
-                        detail_df["Status"].isin(["Shortage", "Not Found", "Data Issue"]),
-                        "DO #",
-                    ].nunique()
-                )
-                st.error(f"{issue_count:,} items need review across {affected_do_count:,} DOs.")
+            if critical_count > 0:
+                st.error(f"{critical_count:,} SKUs require immediate inbound. Suggested total: {suggested_total:,} units.")
+            elif need_inbound_count > 0:
+                st.warning(f"{need_inbound_count:,} SKUs need replenishment. Suggested total: {suggested_total:,} units.")
             else:
-                st.success("All requested inventory is available.")
+                st.success("No inbound is required for the selected target coverage.")
 
-            export_df = prepare_minimal_stock_check_export(detail_df)
+            with st.expander("Demand Detail", expanded=False):
+                detail_display = demand_detail_df.drop(columns=["Input Order"], errors="ignore").copy()
+                for column in ["Requested Qty", "Already Reflected", "Additional Demand"]:
+                    detail_display[column] = pd.to_numeric(detail_display[column], errors="coerce").round(0).astype("Int64")
+                detail_display["Status"] = detail_display["Status"].map(replenishment_status_badge)
+                detail_height = min(440, max(150, 74 + (len(detail_display) * 32)))
+                st.dataframe(
+                    detail_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=detail_height,
+                    column_config={
+                        "SKU": st.column_config.TextColumn("SKU", width="large"),
+                        "DO #": st.column_config.TextColumn("DO #", width="medium"),
+                        "Requested Qty": st.column_config.NumberColumn("Requested", format="%.0f"),
+                        "Already Reflected": st.column_config.NumberColumn("In Report", format="%.0f"),
+                        "Additional Demand": st.column_config.NumberColumn("New Demand", format="%.0f"),
+                        "Demand Type": st.column_config.TextColumn("Type", width="medium"),
+                        "Status": st.column_config.TextColumn("SKU Status", width="medium"),
+                    },
+                )
+
             st.download_button(
-                "Download Stock Check CSV",
-                data=export_df.to_csv(index=False).encode("utf-8-sig"),
-                file_name=f"{safe_format_slug(format_name)}_Stock_Check_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
-                mime="text/csv",
+                "Download Replenishment Report",
+                data=to_replenishment_excel_bytes(
+                    plan_df,
+                    demand_detail_df,
+                    int(target_days),
+                    format_name,
+                    report_end,
+                ),
+                file_name=f"{safe_format_slug(format_name)}_Replenishment_Plan_{pd.to_datetime(report_end).strftime('%m%d%Y')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
             )
 
         if not issues_df.empty:
             st.error(f"{len(issues_df):,} input rows need correction.")
-            issues_display = issues_df.drop(columns=["Input Order"], errors="ignore").copy()
+            issues_display = issues_df.drop(columns=["Input Order", "DO #"], errors="ignore").copy()
             if "Requested Qty" in issues_display.columns:
                 issues_display["Requested Qty"] = pd.to_numeric(issues_display["Requested Qty"], errors="coerce")
             issue_height = min(280, max(120, 74 + (len(issues_display) * 32)))
@@ -3887,7 +4189,7 @@ with guide_tab:
         3. Review **Critical**, **Warning**, and **Watch** SKUs first. **Inactive / No Demand** SKUs are excluded from the default list.
         4. Use **SKU Detail** to drill into one SKU and review transaction history.
         5. Use **DO Lookup** to search one DO # and see every item tied to that DO # / Trans. # across all SKUs.
-        6. Use **Stock Check** to paste new DO demand and verify remaining stock before creating outbound orders.
+        6. Use **Stock & Replenishment** to enter SKU demand, review available stock, and calculate suggested inbound quantity.
         7. Use **Audit** to review missing source rows, duplicate rows, balance differences, Not Shipped rows, and Cancelled rows.
         8. Forecast dates exclude weekends and U.S. federal holidays.        """
     )
