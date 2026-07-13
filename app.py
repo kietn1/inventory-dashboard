@@ -2193,6 +2193,109 @@ def prepare_stock_check_display(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def minimal_stock_status(value: str) -> str:
+    return {
+        "Enough": "✅ Ready",
+        "Already Covered": "✅ Ready",
+        "Shortage": "❌ Shortage",
+        "Not Found": "⚫ Not Found",
+        "Data Issue": "⚠ Data Issue",
+    }.get(str(value), str(value))
+
+
+def plain_stock_status(value: str) -> str:
+    return {
+        "Enough": "Ready",
+        "Already Covered": "Ready",
+        "Shortage": "Shortage",
+        "Not Found": "Not Found",
+        "Data Issue": "Data Issue",
+    }.get(str(value), str(value))
+
+
+def prepare_minimal_stock_check_display(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if out.empty:
+        return pd.DataFrame(columns=["SKU", "Available / Need", "Status", "Status Sort"])
+
+    out["Raw Status"] = out["Status"].astype(str)
+    available = pd.to_numeric(out.get("Available Before", np.nan), errors="coerce")
+    need = pd.to_numeric(out.get("Qty To Check", 0), errors="coerce").fillna(0)
+
+    stock_values = []
+    for raw_status, available_value, need_value in zip(out["Raw Status"], available, need):
+        if raw_status == "Already Covered":
+            stock_values.append("Reserved")
+        elif raw_status in ["Not Found", "Data Issue"] or pd.isna(available_value):
+            stock_values.append("-")
+        else:
+            stock_values.append(f"{fmt_num(available_value)} / {fmt_num(need_value)}")
+
+    out["Available / Need"] = stock_values
+    out["Status"] = out["Raw Status"].map(minimal_stock_status)
+    out["Status Sort"] = out["Raw Status"].map(
+        {
+            "Data Issue": 0,
+            "Shortage": 1,
+            "Not Found": 2,
+            "Enough": 3,
+            "Already Covered": 4,
+        }
+    ).fillna(9)
+    return out
+
+
+def prepare_minimal_stock_check_export(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame(columns=["DO #", "SKU", "Available", "Need", "Remaining", "Status"])
+
+    out = df.copy()
+    out["Available"] = pd.to_numeric(out.get("Available Before", np.nan), errors="coerce")
+    out["Need"] = pd.to_numeric(out.get("Qty To Check", 0), errors="coerce")
+    out["Remaining"] = pd.to_numeric(out.get("Remaining After This Check", np.nan), errors="coerce")
+    out["Status"] = out["Status"].astype(str).map(plain_stock_status)
+    out["Status Sort"] = out["Status"].map(
+        {
+            "Data Issue": 0,
+            "Shortage": 1,
+            "Not Found": 2,
+            "Ready": 3,
+        }
+    ).fillna(9)
+    out = out.sort_values(["Status Sort", "Input Order"], ascending=[True, True])
+    out = out[["DO #", "SKU", "Available", "Need", "Remaining", "Status"]].copy()
+    for col in ["Available", "Need", "Remaining"]:
+        out[col] = pd.to_numeric(out[col], errors="coerce").round(0).astype("Int64")
+    return out
+
+
+def show_minimal_stock_check_dataframe(df: pd.DataFrame, height: int):
+    display_df = df[["SKU", "Available / Need", "Status"]].copy()
+
+    def style_status(value):
+        text = str(value)
+        if "Shortage" in text:
+            return "background-color: #FDE2E1; color: #B42318; font-weight: 850;"
+        if "Not Found" in text or "Data Issue" in text:
+            return "background-color: #F3F4F6; color: #4B5563; font-weight: 850;"
+        if "Ready" in text:
+            return "background-color: #DFF3E3; color: #067647; font-weight: 850;"
+        return ""
+
+    styled_df = display_df.style.applymap(style_status, subset=["Status"])
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True,
+        height=height,
+        column_config={
+            "SKU": st.column_config.TextColumn("SKU", width="large"),
+            "Available / Need": st.column_config.TextColumn("Available / Need", width="medium"),
+            "Status": st.column_config.TextColumn("Status", width="medium"),
+        },
+    )
+
+
 def build_temporary_balance_table(sku_df: pd.DataFrame, detail_df: pd.DataFrame) -> pd.DataFrame:
     if sku_df.empty:
         return pd.DataFrame()
@@ -3548,7 +3651,7 @@ with stock_check_tab:
             <div class="tx-filter-top">
                 <div>
                     <div class="tx-filter-title">Stock Check</div>
-                    <div class="tx-filter-subtitle">Paste DO demand to check current ending balance. Existing DOs found in the report are recognized so stock is not double-counted.</div>
+                    <div class="tx-filter-subtitle">Paste DO, SKU, and Qty. Results are checked in pasted order without double-counting existing DOs.</div>
                 </div>
             </div>
         </div>
@@ -3556,20 +3659,23 @@ with stock_check_tab:
         unsafe_allow_html=True,
     )
 
-
     stock_table_version_key = f"stock_check_table_version_{site_key}"
     stock_result_signature_key = f"stock_check_result_signature_{site_key}"
     stock_detail_result_key = f"stock_check_detail_result_{site_key}"
     stock_overview_result_key = f"stock_check_overview_result_{site_key}"
     stock_issues_result_key = f"stock_check_issues_result_{site_key}"
-    stock_temp_result_key = f"stock_check_temp_balance_result_{site_key}"
-    stock_temp_filter_key = f"temp_balance_sku_select_{site_key}"
     st.session_state.setdefault(stock_table_version_key, 0)
-    reset_col_1, reset_col_2 = st.columns([1, 5])
-    with reset_col_1:
+
+    reset_col, _ = st.columns([1, 5])
+    with reset_col:
         if st.button("Reset", use_container_width=True, key=f"stock_check_reset_{site_key}"):
             st.session_state[stock_table_version_key] += 1
-            for key in [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key]:
+            for key in [
+                stock_result_signature_key,
+                stock_detail_result_key,
+                stock_overview_result_key,
+                stock_issues_result_key,
+            ]:
                 st.session_state.pop(key, None)
             st.rerun()
 
@@ -3589,27 +3695,13 @@ with stock_check_tab:
         num_rows="dynamic",
         key=stock_table_key,
         column_config={
-            "DO #": st.column_config.TextColumn("DO #", help="Paste or enter the DO number."),
-            "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU", help="Paste or enter the item code/SKU."),
-            "Qty": st.column_config.TextColumn("Qty", help="Paste or enter the requested quantity."),
+            "DO #": st.column_config.TextColumn("DO #"),
+            "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU"),
+            "Qty": st.column_config.TextColumn("Qty"),
         },
     )
 
     input_df = parse_stock_check_table(stock_table_df)
-    input_has_values = not input_df.empty
-    row_count_mismatch = False
-
-    if input_has_values:
-        valid_rows = input_df[input_df["Issue"].astype(str) == ""]
-        issue_rows = input_df[input_df["Issue"].astype(str) != ""]
-        input_count_col_1, input_count_col_2, input_count_col_3 = st.columns(3)
-        with input_count_col_1:
-            st.caption(f"Rows entered: {len(input_df):,}")
-        with input_count_col_2:
-            st.caption(f"Valid rows: {len(valid_rows):,}")
-        with input_count_col_3:
-            st.caption(f"Input issue rows: {len(issue_rows):,}")
-
     input_signature_source = input_df.fillna("").astype(str).to_json(orient="records") if not input_df.empty else ""
     stock_current_signature = hashlib.sha256(f"{uploaded_key}|{input_signature_source}".encode("utf-8")).hexdigest()
 
@@ -3617,175 +3709,129 @@ with stock_check_tab:
         detail_df = pd.DataFrame()
         overview_df = pd.DataFrame()
         issues_df = pd.DataFrame()
-        temporary_balance_df = pd.DataFrame()
-        for key in [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key]:
+        for key in [
+            stock_result_signature_key,
+            stock_detail_result_key,
+            stock_overview_result_key,
+            stock_issues_result_key,
+        ]:
             st.session_state.pop(key, None)
     elif st.session_state.get(stock_result_signature_key) == stock_current_signature:
         detail_df = st.session_state.get(stock_detail_result_key, pd.DataFrame())
         overview_df = st.session_state.get(stock_overview_result_key, pd.DataFrame())
         issues_df = st.session_state.get(stock_issues_result_key, pd.DataFrame())
-        temporary_balance_df = st.session_state.get(stock_temp_result_key, pd.DataFrame())
     else:
-        detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, model.get("tx_df", pd.DataFrame()))
-        temporary_balance_df = build_temporary_balance_table(sku_df, detail_df) if not detail_df.empty else pd.DataFrame()
+        detail_df, overview_df, issues_df = build_stock_check_tables(
+            input_df,
+            sku_df,
+            model.get("tx_df", pd.DataFrame()),
+        )
         st.session_state[stock_result_signature_key] = stock_current_signature
         st.session_state[stock_detail_result_key] = detail_df
         st.session_state[stock_overview_result_key] = overview_df
         st.session_state[stock_issues_result_key] = issues_df
-        st.session_state[stock_temp_result_key] = temporary_balance_df
 
     if input_df.empty:
-        st.info("Paste values under DO #, Item Code / SKU, and Qty to check stock availability.")
-    elif row_count_mismatch:
-        pass
+        st.info("Paste DO, SKU, and Qty to check stock.")
     else:
-        valid_line_count = len(input_df[input_df["Issue"].astype(str) == ""])
-        do_checked_count = overview_df["DO #"].nunique() if not overview_df.empty and "DO #" in overview_df.columns else 0
-        existing_do_count = int((overview_df["Report DO Status"] == "Existing DO").sum()) if not overview_df.empty and "Report DO Status" in overview_df.columns else 0
-        new_do_count = int((overview_df["Report DO Status"] == "New DO").sum()) if not overview_df.empty and "Report DO Status" in overview_df.columns else 0
-        shortage_count = int((detail_df["Status"] == "Shortage").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
-        not_found_count = int((detail_df["Status"] == "Not Found").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
-        already_covered_count = int((detail_df["Status"] == "Already Covered").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
-        data_issue_item_count = int((detail_df["Status"] == "Data Issue").sum()) if not detail_df.empty and "Status" in detail_df.columns else 0
-        qty_to_check_total = pd.to_numeric(detail_df["Qty To Check"], errors="coerce").fillna(0).sum() if not detail_df.empty and "Qty To Check" in detail_df.columns else 0
-        total_requested_qty = pd.to_numeric(detail_df["Requested Qty"], errors="coerce").fillna(0).sum() if not detail_df.empty and "Requested Qty" in detail_df.columns else 0
+        valid_input_df = input_df[input_df["Issue"].astype(str) == ""].copy()
+        duplicate_rows_merged = 0
+        if not valid_input_df.empty:
+            valid_input_df["DO Key"] = valid_input_df["DO #"].astype(str).map(normalize_lookup_key)
+            valid_input_df["SKU Key"] = valid_input_df["SKU"].astype(str).map(normalize_lookup_key)
+            duplicate_rows_merged = len(valid_input_df) - len(valid_input_df.drop_duplicates(["DO Key", "SKU Key"]))
 
-        st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
+        do_count = overview_df["DO #"].nunique() if not overview_df.empty else 0
+        sku_count = len(detail_df)
+        ready_count = int(detail_df["Status"].isin(["Enough", "Already Covered"]).sum()) if not detail_df.empty else 0
+        shortage_count = int((detail_df["Status"] == "Shortage").sum()) if not detail_df.empty else 0
+        not_found_count = int((detail_df["Status"] == "Not Found").sum()) if not detail_df.empty else 0
+        data_issue_count = int((detail_df["Status"] == "Data Issue").sum()) if not detail_df.empty else 0
+        issue_count = shortage_count + not_found_count + data_issue_count
+
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            metric_card("DOs Checked", fmt_num(do_checked_count), f"Input items: {fmt_num(valid_line_count)}")
+            metric_card("DO", fmt_num(do_count), "Orders checked")
         with c2:
-            metric_card("Existing / New", f"{fmt_num(existing_do_count)} / {fmt_num(new_do_count)}", "Found in report / new demand")
+            metric_card("SKU", fmt_num(sku_count), "Unique DO / SKU lines")
         with c3:
-            metric_card("Qty To Check", fmt_num(qty_to_check_total), f"Requested: {fmt_num(total_requested_qty)} | Covered: {fmt_num(already_covered_count)}")
+            metric_card("Ready", fmt_num(ready_count), "Available or reserved")
         with c4:
-            metric_card("Shortage / Missing", f"{fmt_num(shortage_count)} / {fmt_num(not_found_count)}", f"Data issues: {fmt_num(data_issue_item_count)}")
+            metric_card("Issues", fmt_num(issue_count), "Shortage, missing, or data")
 
-        if not overview_df.empty:
-            st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-title'>DO Stock Check Overview</div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-subtitle'>Each DO # is shown in pasted order. Existing Report Qty Out is treated as already deducted; only Qty To Check is tested against remaining stock.</div>", unsafe_allow_html=True)
-            overview_display = prepare_stock_check_display(overview_df)
-            overview_height = min(310, max(132, 74 + (len(overview_display) * 32)))
-            show_limited_dataframe(overview_display, height=overview_height, limit=1000, show_count=False)
+        if duplicate_rows_merged > 0:
+            st.caption(f"Merged {duplicate_rows_merged:,} duplicate DO / SKU rows.")
 
-        if not detail_df.empty:
-            existing_detail = detail_df[detail_df["Report DO Status"] == "Existing DO"].copy() if "Report DO Status" in detail_df.columns else pd.DataFrame()
-            if not existing_detail.empty:
-                st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-                st.markdown("<div class='section-title'>Existing DO Found in Report</div>", unsafe_allow_html=True)
-                st.markdown("<div class='section-subtitle'>These lines already exist in the report. Only Qty To Check above the existing report quantity is deducted from available stock.</div>", unsafe_allow_html=True)
-                existing_cols = ["DO #", "SKU", "Description", "Requested Qty", "Existing Report Qty Out", "Qty To Check", "Status"]
-                existing_display = prepare_stock_check_display(existing_detail[existing_cols])
-                existing_height = min(320, max(132, 74 + (len(existing_display) * 32)))
-                show_limited_dataframe(existing_display, height=existing_height, limit=1000, show_count=False)
-
-            shortage_detail = detail_df[detail_df["Status"].isin(["Shortage", "Not Found"])].copy()
-            if not shortage_detail.empty:
-                st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-                st.markdown("<div class='section-title'>Items Needing Review</div>", unsafe_allow_html=True)
-                st.markdown("<div class='section-subtitle'>Shortage and missing SKU lines are separated here for faster action.</div>", unsafe_allow_html=True)
-                shortage_display = prepare_stock_check_display(shortage_detail.drop(columns=["Input Order"], errors="ignore"))
-                shortage_height = min(320, max(132, 74 + (len(shortage_display) * 32)))
-                show_limited_dataframe(shortage_display, height=shortage_height, limit=1000, show_count=False)
+        if not detail_df.empty and not overview_df.empty:
+            do_input_order = (
+                detail_df.assign(DO_Key=detail_df["DO #"].astype(str).map(normalize_lookup_key))
+                .groupby("DO_Key")["Input Order"]
+                .min()
+                .to_dict()
+            )
+            overview_render = overview_df.copy()
+            overview_render["DO Key"] = overview_render["DO #"].astype(str).map(normalize_lookup_key)
+            overview_render["Input Sort"] = overview_render["DO Key"].map(do_input_order).fillna(999999)
+            overview_render["Status Sort"] = overview_render["Status"].map(
+                {
+                    "Data Issue": 0,
+                    "Shortage": 1,
+                    "Not Found": 2,
+                    "Enough": 3,
+                    "Already Covered": 4,
+                }
+            ).fillna(9)
+            overview_render = overview_render.sort_values(["Status Sort", "Input Sort"])
 
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-title'>Item Availability by DO #</div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-subtitle'>Current stock is the official Ending Balance. New DOs reduce stock sequentially. Existing DOs only deduct incremental Qty To Check.</div>", unsafe_allow_html=True)
 
-            for do_no in overview_df["DO #"].astype(str).tolist() if not overview_df.empty else []:
-                do_items = detail_df[detail_df["DO #"].astype(str) == do_no].copy()
+            for _, overview_row in overview_render.iterrows():
+                do_no = clean_text(overview_row.get("DO #", ""))
+                do_key = normalize_lookup_key(do_no)
+                do_items = detail_df[detail_df["DO #"].astype(str).map(normalize_lookup_key) == do_key].copy()
                 if do_items.empty:
                     continue
-                do_status = overview_df.loc[overview_df["DO #"].astype(str) == do_no, "Status"].iloc[0]
-                do_requested = pd.to_numeric(do_items["Requested Qty"], errors="coerce").fillna(0).sum()
-                do_qty_to_check = pd.to_numeric(do_items["Qty To Check"], errors="coerce").fillna(0).sum()
-                do_shortage = pd.to_numeric(do_items["Shortage Qty"], errors="coerce").fillna(0).sum()
-                do_report_status = overview_df.loc[overview_df["DO #"].astype(str) == do_no, "Report DO Status"].iloc[0] if "Report DO Status" in overview_df.columns else "New DO"
-                expander_label = f"{do_no} | {do_report_status} | {stock_status_badge(do_status)} | Items {len(do_items):,} | To Check {fmt_num(do_qty_to_check)} | Shortage {fmt_num(do_shortage)}"
-                with st.expander(expander_label, expanded=(len(overview_df) <= 4 or do_status not in ["Enough", "Already Covered"])):
-                    if do_report_status == "Existing DO":
-                        st.markdown(f"<div class='stock-do-subtitle'><b>{html.escape(do_no)}</b> already exists in the report. Existing report qty is not deducted again; only Qty To Check affects remaining stock.</div>", unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"<div class='stock-do-subtitle'><b>{html.escape(do_no)}</b> is treated as new demand and deducted sequentially after prior pasted DO lines.</div>", unsafe_allow_html=True)
-                    display_cols = [
+
+                minimal_display = prepare_minimal_stock_check_display(do_items)
+                minimal_display = minimal_display.sort_values(["Status Sort", "Input Order"], ascending=[True, True])
+                do_ready = int(do_items["Status"].isin(["Enough", "Already Covered"]).sum())
+                do_issues = int(do_items["Status"].isin(["Shortage", "Not Found", "Data Issue"]).sum())
+                report_label = "Existing" if clean_text(overview_row.get("Report DO Status", "")) == "Existing DO" else "New"
+                issue_label = "Issue" if do_issues == 1 else "Issues"
+                expander_label = f"{do_no} · {report_label} · {do_ready:,} Ready · {do_issues:,} {issue_label}"
+
+                with st.expander(expander_label, expanded=(do_issues > 0 or len(overview_render) <= 3)):
+                    table_height = min(360, max(128, 72 + (len(minimal_display) * 32)))
+                    show_minimal_stock_check_dataframe(minimal_display, height=table_height)
+
+            affected_do_count = 0
+            if issue_count > 0:
+                affected_do_count = int(
+                    detail_df.loc[
+                        detail_df["Status"].isin(["Shortage", "Not Found", "Data Issue"]),
                         "DO #",
-                        "SKU",
-                        "Description",
-                        "Report DO Status",
-                        "Report Item Status",
-                        "Current Stock",
-                        "Available Before",
-                        "Requested Qty",
-                        "Existing Report Qty Out",
-                        "Qty To Check",
-                        "Remaining After This Check",
-                        "Shortage Qty",
-                        "Status",
-                    ]
-                    do_display = prepare_stock_check_display(do_items[display_cols])
-                    do_height = min(360, max(142, 76 + (len(do_display) * 31)))
-                    show_limited_dataframe(do_display, height=do_height, limit=500, show_count=False)
+                    ].nunique()
+                )
+                st.error(f"{issue_count:,} items need review across {affected_do_count:,} DOs.")
+            else:
+                st.success("All requested inventory is available.")
 
-            if not temporary_balance_df.empty:
-                affected_sku_count = int((pd.to_numeric(temporary_balance_df["Total Qty To Check"], errors="coerce").fillna(0) > 0).sum())
-                temporary_shortage_count = int((temporary_balance_df["Temporary Status"] == "Shortage").sum()) if "Temporary Status" in temporary_balance_df.columns else 0
-                st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-                st.markdown("<div class='section-title'>Temporary Balance by SKU</div>", unsafe_allow_html=True)
-                st.markdown(f"<div class='section-subtitle'>All SKUs are included. Affected SKUs are shown first based on the pasted DO demand. Affected SKUs: {affected_sku_count:,} | Temporary shortage SKUs: {temporary_shortage_count:,}</div>", unsafe_allow_html=True)
-                temp_sku_options = ["All SKUs"] + temporary_balance_df["SKU"].astype(str).dropna().tolist()
-                if st.session_state.get(stock_temp_filter_key) not in temp_sku_options:
-                    st.session_state[stock_temp_filter_key] = "All SKUs"
-                temp_sku_filter = st.selectbox(
-                    "Choose SKU",
-                    options=temp_sku_options,
-                    index=temp_sku_options.index(st.session_state.get(stock_temp_filter_key, "All SKUs")),
-                    key=stock_temp_filter_key,
-                )
-                filtered_temp_balance_df = temporary_balance_df.copy()
-                if temp_sku_filter != "All SKUs":
-                    filtered_temp_balance_df = filtered_temp_balance_df[filtered_temp_balance_df["SKU"].astype(str) == str(temp_sku_filter)].copy()
-                temp_display = filtered_temp_balance_df.drop(columns=["Impact Sort", "Status Sort"], errors="ignore")
-                temp_height = min(560, max(190, 76 + (min(len(temp_display), 14) * 31)))
-                show_temporary_balance_dataframe(temp_display, height=temp_height, limit=2000, show_count=True)
-
-            export_stock_df = prepare_stock_check_display(detail_df.drop(columns=["Input Order"], errors="ignore"))
-            export_overview_df = prepare_stock_check_display(overview_df)
-            export_temp_df = prepare_stock_check_display(temporary_balance_df.drop(columns=["Impact Sort", "Status Sort"], errors="ignore")) if not temporary_balance_df.empty else pd.DataFrame()
-            download_col_1, download_col_2, download_col_3 = st.columns(3)
-            with download_col_1:
-                st.download_button(
-                    "⬇️ Download Stock Check Detail CSV",
-                    data=export_stock_df.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"{safe_format_slug(format_name)}_Stock_Check_Detail_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                )
-            with download_col_2:
-                st.download_button(
-                    "⬇️ Download Stock Check Overview CSV",
-                    data=export_overview_df.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"{safe_format_slug(format_name)}_Stock_Check_Overview_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                )
-            with download_col_3:
-                if not export_temp_df.empty:
-                    st.download_button(
-                        "⬇️ Download Temporary Balance CSV",
-                        data=export_temp_df.to_csv(index=False).encode("utf-8-sig"),
-                        file_name=f"{safe_format_slug(format_name)}_Temporary_Balance_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
-                        mime="text/csv",
-                        use_container_width=True,
-                    )
+            export_df = prepare_minimal_stock_check_export(detail_df)
+            st.download_button(
+                "Download Stock Check CSV",
+                data=export_df.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"{safe_format_slug(format_name)}_Stock_Check_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
 
         if not issues_df.empty:
-            with st.expander("Input Issues", expanded=detail_df.empty):
-                issues_display = issues_df.drop(columns=["Input Order"], errors="ignore").copy()
-                if "Requested Qty" in issues_display.columns:
-                    issues_display["Requested Qty"] = pd.to_numeric(issues_display["Requested Qty"], errors="coerce")
-                issue_height = min(280, max(120, 74 + (len(issues_display) * 32)))
-                show_limited_dataframe(issues_display, height=issue_height, limit=1000, show_count=False)
+            st.error(f"{len(issues_df):,} input rows need correction.")
+            issues_display = issues_df.drop(columns=["Input Order"], errors="ignore").copy()
+            if "Requested Qty" in issues_display.columns:
+                issues_display["Requested Qty"] = pd.to_numeric(issues_display["Requested Qty"], errors="coerce")
+            issue_height = min(280, max(120, 74 + (len(issues_display) * 32)))
+            show_limited_dataframe(issues_display, height=issue_height, limit=1000, show_count=False)
 
 with audit_tab:
     st.subheader("Audit Checks")
