@@ -2,7 +2,6 @@ import hashlib
 import html
 import json
 import re
-import time
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
@@ -847,7 +846,7 @@ st.markdown(
         }
 
         /* Search/status components */
-        .tx-filter-shell, .lookup-hero, .stock-input-example, .loading-stage-card, .ready-stage-card, .empty-state {
+        .tx-filter-shell, .lookup-hero, .stock-input-example, .loading-stage-card, .ready-stage-card, .error-stage-card, .empty-state {
             background: rgba(255,255,255,.78);
             border: 1px solid var(--win-border);
             border-radius: var(--win-radius-lg);
@@ -907,57 +906,62 @@ st.markdown(
         }
         .empty-state-title { color: var(--win-text); font-size: 17px; font-weight: 650; }
         .empty-state-text { margin-top: 6px; color: var(--win-text-secondary); font-size: 12px; line-height: 1.45; }
-        .loading-stage-card, .ready-stage-card {
+        .loading-stage-card, .ready-stage-card, .error-stage-card {
             position: relative;
+            min-height: 74px;
             padding: 14px 15px;
             overflow: hidden;
-            animation: uploadCardIn .32s var(--win-ease) both;
+            background: rgba(255,255,255,.88);
+            border: 1px solid var(--win-border);
+            border-radius: var(--win-radius-lg);
+            box-shadow: 0 1px 2px rgba(0,0,0,.035), 0 8px 24px rgba(0,0,0,.055);
+            backdrop-filter: blur(20px) saturate(125%);
+            -webkit-backdrop-filter: blur(20px) saturate(125%);
+            animation: uploadCardIn .26s var(--win-ease) both;
         }
-        .loading-stage-card::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            background: linear-gradient(110deg, transparent 22%, rgba(255,255,255,.58) 44%, transparent 66%);
-            transform: translateX(-120%);
-            animation: uploadSweep 1.7s ease-in-out infinite;
-        }
-        .loading-row, .ready-row {
+        .loading-row, .ready-row, .error-row {
             position: relative;
             z-index: 1;
             display: flex;
             align-items: center;
-            gap: 11px;
+            gap: 12px;
         }
         .loader-ring {
-            width: 26px;
-            height: 26px;
+            width: 28px;
+            height: 28px;
             flex: 0 0 auto;
-            border: 3px solid rgba(0,103,192,.14);
+            border: 2.5px solid rgba(0,103,192,.14);
             border-top-color: var(--win-accent);
             border-radius: 50%;
-            animation: uploadSpin .72s linear infinite;
+            animation: uploadSpin .9s linear infinite;
         }
-        .ready-check {
-            width: 27px;
-            height: 27px;
+        .ready-check, .error-mark {
+            width: 28px;
+            height: 28px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex: 0 0 auto;
             color: #fff;
-            font-size: 14px;
-            font-weight: 700;
-            background: #107c10;
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+            font-size: 13px;
+            font-weight: 600;
             border-radius: 50%;
-            box-shadow: 0 4px 12px rgba(16,124,16,.20);
-            animation: readyPop .36s var(--win-ease) both;
+        }
+        .ready-check {
+            background: #107c10;
+            box-shadow: 0 4px 12px rgba(16,124,16,.18);
+            animation: readyPop .3s var(--win-ease) both;
+        }
+        .error-mark {
+            background: #c42b1c;
+            box-shadow: 0 4px 12px rgba(196,43,28,.16);
         }
         .animated-progress {
             position: relative;
             z-index: 1;
-            height: 4px;
-            margin-top: 12px;
+            height: 3px;
+            margin-top: 13px;
             overflow: hidden;
             background: rgba(0,103,192,.10);
             border-radius: 999px;
@@ -966,46 +970,65 @@ st.markdown(
             content: "";
             position: absolute;
             inset: 0;
-            width: 42%;
+            width: 34%;
             border-radius: inherit;
             background: linear-gradient(90deg, transparent, var(--win-accent), transparent);
-            animation: uploadProgress 1.05s ease-in-out infinite;
+            animation: uploadProgress 1.35s var(--win-ease) infinite;
         }
         .ready-stage-card {
-            border-color: rgba(16,124,16,.18);
-            background: rgba(246,255,247,.88);
-            animation: readyCardIn .34s var(--win-ease) both;
+            border-color: rgba(16,124,16,.16);
+            background: rgba(247,253,248,.94);
+            animation: readyCardIn .3s var(--win-ease) both, readyCardOut .34s ease 1.35s forwards;
         }
-        .dots span { display: inline-block; animation: dotPulse 1.15s ease-in-out infinite; }
-        .dots span:nth-child(2) { animation-delay: .14s; }
-        .dots span:nth-child(3) { animation-delay: .28s; }
-        @keyframes dotPulse {
-            0%, 75%, 100% { opacity: .25; transform: translateY(0); }
-            38% { opacity: 1; transform: translateY(-1px); }
+        .error-stage-card {
+            border-color: rgba(196,43,28,.16);
+            background: rgba(255,248,248,.96);
+        }
+        .stage-copy { min-width: 0; }
+        .stage-title {
+            color: var(--win-text);
+            font-size: 12px;
+            font-weight: 650;
+            line-height: 1.25;
+        }
+        .stage-subtitle {
+            margin-top: 3px;
+            color: var(--win-text-secondary);
+            font-size: 11px;
+            line-height: 1.38;
+        }
+        .stage-meta {
+            margin-top: 4px;
+            color: var(--win-text-tertiary);
+            font-size: 10px;
+            line-height: 1.3;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         @keyframes uploadSpin {
             to { transform: rotate(360deg); }
         }
         @keyframes uploadProgress {
-            from { transform: translateX(-120%); }
-            to { transform: translateX(300%); }
-        }
-        @keyframes uploadSweep {
-            0%, 18% { transform: translateX(-120%); opacity: 0; }
-            42% { opacity: .75; }
-            70%, 100% { transform: translateX(120%); opacity: 0; }
+            from { transform: translateX(-130%); }
+            to { transform: translateX(390%); }
         }
         @keyframes uploadCardIn {
-            from { opacity: 0; transform: translateY(6px) scale(.992); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         @keyframes readyCardIn {
-            from { opacity: 0; transform: translateY(4px) scale(.995); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
+            from { opacity: 0; transform: translateY(3px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes readyCardOut {
+            0% { opacity: 1; max-height: 120px; margin-bottom: 0; padding-top: 14px; padding-bottom: 14px; }
+            70% { opacity: 0; max-height: 120px; margin-bottom: 0; padding-top: 14px; padding-bottom: 14px; }
+            100% { opacity: 0; max-height: 0; min-height: 0; margin: 0; padding-top: 0; padding-bottom: 0; border-width: 0; }
         }
         @keyframes readyPop {
-            0% { opacity: 0; transform: scale(.68); }
-            60% { opacity: 1; transform: scale(1.10); }
+            0% { opacity: 0; transform: scale(.82); }
+            65% { opacity: 1; transform: scale(1.06); }
             100% { opacity: 1; transform: scale(1); }
         }
         .tx-filter-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
@@ -3077,7 +3100,6 @@ st.sidebar.button("Clear filters", use_container_width=True, on_click=reset_side
 
 
 status_box = st.empty()
-progress_box = st.empty()
 
 using_saved_report = False
 active_file_name = ""
@@ -3117,69 +3139,79 @@ show_upload_effect = uploaded is not None and st.session_state.get("last_upload_
 
 try:
     if show_upload_effect:
-        with status_box.container():
-            st.markdown(
-                """
-                <div class="loading-stage-card">
-                    <div class="loading-row">
-                        <div class="loader-ring"></div>
-                        <div>
-                            <div class="stage-title">Processing file<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
-                            <div class="stage-subtitle">Reading the upload, validating the report, and preparing the dashboard.</div>
-                        </div>
+        status_box.markdown(
+            f"""
+            <div class="loading-stage-card">
+                <div class="loading-row">
+                    <div class="loader-ring"></div>
+                    <div class="stage-copy">
+                        <div class="stage-title">Loading Item Activity Report</div>
+                        <div class="stage-subtitle">Reading the workbook, validating the {html.escape(format_name)} format, and building the inventory model.</div>
+                        <div class="stage-meta">{html.escape(active_file_name)}</div>
                     </div>
-                    <div class="animated-progress"></div>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        progress_bar = progress_box.progress(8, text="Starting upload check...")
-        time.sleep(0.12)
-        progress_bar.progress(28, text="Reading Excel file...")
-        time.sleep(0.12)
-        progress_bar.progress(52, text="Checking selected report format...")
-        time.sleep(0.12)
+                <div class="animated-progress"></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     model = process_excel_file(file_bytes, format_name, APP_CACHE_VERSION)
 
     if show_upload_effect:
-        progress_bar.progress(76, text="Building shortage dashboard...")
-        time.sleep(0.14)
-        progress_bar.progress(94, text="Finalizing dashboard...")
-        time.sleep(0.12)
-        progress_bar.progress(100, text="Dashboard ready")
-        time.sleep(0.12)
-        progress_box.empty()
-        with status_box.container():
-            st.markdown(
-                """
-                <div class="ready-stage-card">
-                    <div class="ready-row">
-                        <div class="ready-check">✓</div>
-                        <div>
-                            <div class="stage-title">Dashboard ready</div>
-                            <div class="stage-subtitle">The new report has been loaded successfully.</div>
-                        </div>
+        sku_count = len(model["sku_df"])
+        report_end_text = fmt_date(model.get("report_end"))
+        status_box.markdown(
+            f"""
+            <div class="ready-stage-card">
+                <div class="ready-row">
+                    <div class="ready-check">✓</div>
+                    <div class="stage-copy">
+                        <div class="stage-title">Report ready</div>
+                        <div class="stage-subtitle">{sku_count:,} SKUs · {html.escape(format_name)} · Report through {html.escape(report_end_text)}</div>
+                        <div class="stage-meta">{html.escape(active_file_name)}</div>
                     </div>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        time.sleep(0.55)
-        status_box.empty()
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         st.session_state["last_upload_effect_key"] = uploaded_key
-        st.toast("Dashboard loaded successfully.")
+        st.toast("Report loaded successfully.")
     else:
         status_box.empty()
-        progress_box.empty()
 except WrongFileFormatError as exc:
-    progress_box.empty()
-    status_box.warning(str(exc))
+    status_box.markdown(
+        f"""
+        <div class="error-stage-card">
+            <div class="error-row">
+                <div class="error-mark">!</div>
+                <div class="stage-copy">
+                    <div class="stage-title">Report format not recognized</div>
+                    <div class="stage-subtitle">{html.escape(str(exc))}</div>
+                    <div class="stage-meta">Confirm the warehouse format and upload the matching Item Activity Report.</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.stop()
-except Exception as exc:
-    progress_box.empty()
-    status_box.error("File could not be processed. Please check the selected format and upload a valid Item Activity Report file.")
-    st.exception(exc)
+except Exception:
+    status_box.markdown(
+        """
+        <div class="error-stage-card">
+            <div class="error-row">
+                <div class="error-mark">!</div>
+                <div class="stage-copy">
+                    <div class="stage-title">File could not be processed</div>
+                    <div class="stage-subtitle">Check the selected warehouse format and upload a valid Item Activity Report.</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 sku_df = model["sku_df"].copy()
