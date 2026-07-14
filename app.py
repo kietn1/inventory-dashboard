@@ -1079,6 +1079,121 @@ st.markdown(
             div[data-testid="stTabs"] button[role="tab"] { padding: 0 13px !important; font-size: 11.5px; }
             .tx-status-grid { grid-template-columns: 1fr; }
         }
+
+
+        .st-key-main_navigation {
+            position: sticky;
+            top: 8px;
+            z-index: 80;
+            margin: 0 0 16px;
+            padding: 4px;
+            overflow-x: auto;
+            scrollbar-width: none;
+            background: rgba(248,248,248,.90);
+            border: 1px solid var(--win-border);
+            border-radius: 10px;
+            box-shadow: 0 3px 14px rgba(0,0,0,.055);
+            backdrop-filter: blur(24px) saturate(135%);
+            -webkit-backdrop-filter: blur(24px) saturate(135%);
+        }
+        .st-key-main_navigation::-webkit-scrollbar { display: none; }
+        .st-key-main_navigation [data-testid="stSegmentedControl"] { min-width: max-content; }
+        .st-key-main_navigation [data-testid="stSegmentedControl"] > div,
+        .st-key-main_navigation [role="radiogroup"] {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 5px;
+            min-width: max-content;
+            padding: 0;
+            background: transparent;
+            border: 0;
+        }
+        .st-key-main_navigation button,
+        .st-key-main_navigation [role="radio"] {
+            position: relative;
+            min-width: max-content;
+            min-height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            padding: 0 15px !important;
+            color: var(--win-text-secondary) !important;
+            font-family: inherit !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            white-space: nowrap;
+            background: transparent !important;
+            border: 1px solid transparent !important;
+            border-radius: 7px !important;
+            box-shadow: none !important;
+            transition: color var(--win-fast) ease, background var(--win-fast) ease, border-color var(--win-fast) ease, box-shadow var(--win-normal) var(--win-ease), transform 80ms ease !important;
+        }
+        .st-key-main_navigation button::before,
+        .st-key-main_navigation [role="radio"]::before {
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            color: currentColor;
+            font-size: 13px;
+            font-weight: 400;
+            opacity: .88;
+        }
+        .st-key-main_navigation button:nth-of-type(1)::before,
+        .st-key-main_navigation [role="radio"]:nth-of-type(1)::before { content: "\\E80F"; }
+        .st-key-main_navigation button:nth-of-type(2)::before,
+        .st-key-main_navigation [role="radio"]:nth-of-type(2)::before { content: "\\E77B"; }
+        .st-key-main_navigation button:nth-of-type(3)::before,
+        .st-key-main_navigation [role="radio"]:nth-of-type(3)::before { content: "\\E721"; }
+        .st-key-main_navigation button:nth-of-type(4)::before,
+        .st-key-main_navigation [role="radio"]:nth-of-type(4)::before { content: "\\E9D5"; }
+        .st-key-main_navigation button:nth-of-type(5)::before,
+        .st-key-main_navigation [role="radio"]:nth-of-type(5)::before { content: "\\E9D9"; }
+        .st-key-main_navigation button:nth-of-type(6)::before,
+        .st-key-main_navigation [role="radio"]:nth-of-type(6)::before { content: "\\E897"; }
+        .st-key-main_navigation button:hover,
+        .st-key-main_navigation [role="radio"]:hover {
+            color: var(--win-text) !important;
+            background: rgba(0,0,0,.045) !important;
+        }
+        .st-key-main_navigation button:active,
+        .st-key-main_navigation [role="radio"]:active { transform: scale(.985); }
+        .st-key-main_navigation button:focus-visible,
+        .st-key-main_navigation [role="radio"]:focus-visible {
+            outline: 2px solid rgba(0,103,192,.58) !important;
+            outline-offset: 1px !important;
+        }
+        .st-key-main_navigation button[aria-pressed="true"],
+        .st-key-main_navigation button[data-selected="true"],
+        .st-key-main_navigation [role="radio"][aria-checked="true"] {
+            color: var(--win-text) !important;
+            background: #fff !important;
+            border-color: rgba(0,0,0,.06) !important;
+            box-shadow: 0 1px 3px rgba(0,0,0,.09) !important;
+        }
+        .st-key-main_navigation button[aria-pressed="true"]::before,
+        .st-key-main_navigation button[data-selected="true"]::before,
+        .st-key-main_navigation [role="radio"][aria-checked="true"]::before { color: var(--win-accent); }
+        .st-key-main_navigation button[aria-pressed="true"]::after,
+        .st-key-main_navigation button[data-selected="true"]::after,
+        .st-key-main_navigation [role="radio"][aria-checked="true"]::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            bottom: 1px;
+            width: 18px;
+            height: 2px;
+            border-radius: 999px;
+            background: var(--win-accent);
+            transform: translateX(-50%);
+            animation: tabIndicator .18s var(--win-ease) both;
+        }
+        .st-key-main_navigation p { margin: 0 !important; color: inherit !important; font: inherit !important; }
+        @media (max-width: 820px) {
+            .st-key-main_navigation { top: 6px; }
+            .st-key-main_navigation button,
+            .st-key-main_navigation [role="radio"] { padding: 0 12px !important; }
+        }
+
         @media (prefers-reduced-motion: reduce) {
             html { scroll-behavior: auto; }
             *, *::before, *::after {
@@ -3158,27 +3273,7 @@ try:
 
     model = process_excel_file(file_bytes, format_name, APP_CACHE_VERSION)
 
-    if show_upload_effect:
-        sku_count = len(model["sku_df"])
-        report_end_text = fmt_date(model.get("report_end"))
-        status_box.markdown(
-            f"""
-            <div class="ready-stage-card">
-                <div class="ready-row">
-                    <div class="ready-check">✓</div>
-                    <div class="stage-copy">
-                        <div class="stage-title">Report ready</div>
-                        <div class="stage-subtitle">{sku_count:,} SKUs · {html.escape(format_name)} · Report through {html.escape(report_end_text)}</div>
-                        <div class="stage-meta">{html.escape(active_file_name)}</div>
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.session_state["last_upload_effect_key"] = uploaded_key
-        st.toast("Report loaded successfully.")
-    else:
+    if not show_upload_effect:
         status_box.empty()
 except WrongFileFormatError as exc:
     status_box.markdown(
@@ -3276,11 +3371,30 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-website_tab, sku_tab, do_lookup_tab, stock_check_tab, audit_tab, guide_tab = st.tabs(
-    ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Help"]
-)
+navigation_options = ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Help"]
+if st.session_state.get("main_page_navigation") not in navigation_options:
+    st.session_state["main_page_navigation"] = "Overview"
+with st.container(key="main_navigation"):
+    if hasattr(st, "segmented_control"):
+        selected_page = st.segmented_control(
+            "Navigation",
+            options=navigation_options,
+            key="main_page_navigation",
+            selection_mode="single",
+            label_visibility="collapsed",
+        )
+    else:
+        selected_page = st.radio(
+            "Navigation",
+            options=navigation_options,
+            key="main_page_navigation",
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+selected_page = selected_page or "Overview"
+update_persistent_app_state(values={"main_page_navigation": selected_page})
 
-with website_tab:
+if selected_page == "Overview":
     data_issue_count = int((sku_df["Risk Level"] == "Data Issue").sum())
     critical_count = int((sku_df["Risk Level"] == "Critical").sum())
     warning_count = int((sku_df["Risk Level"] == "Warning").sum())
@@ -3293,28 +3407,42 @@ with website_tab:
 
     export_file_name = report_download_filename(format_name, report_end)
     transaction_file_name = transaction_download_filename(format_name, report_end)
+    report_export_key = f"report_export_{uploaded_key}"
+    transaction_export_key = f"transaction_export_{uploaded_key}"
     heading_col, export_col_1, export_col_2 = st.columns([3.4, 1.25, 1.25])
     with heading_col:
         tab_page_header("Overview", "Review inventory risk first, then move into SKU, DO, or stock validation workflows.")
     with export_col_1:
-        st.download_button(
-            "Export report",
-            data=to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION),
-            file_name=export_file_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            type="primary",
-            help=f"Download {export_file_name}",
-        )
+        if report_export_key not in st.session_state:
+            if st.button("Prepare report", key=f"prepare_{report_export_key}", use_container_width=True, type="primary"):
+                with st.spinner("Preparing report..."):
+                    st.session_state[report_export_key] = to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION)
+        if report_export_key in st.session_state:
+            st.download_button(
+                "Download report",
+                data=st.session_state[report_export_key],
+                file_name=export_file_name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                type="primary",
+                help=f"Download {export_file_name}",
+                key=f"download_{report_export_key}",
+            )
     with export_col_2:
-        st.download_button(
-            "Export transactions",
-            data=to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION),
-            file_name=transaction_file_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            help=f"Download {transaction_file_name}",
-        )
+        if transaction_export_key not in st.session_state:
+            if st.button("Prepare transactions", key=f"prepare_{transaction_export_key}", use_container_width=True):
+                with st.spinner("Preparing transactions..."):
+                    st.session_state[transaction_export_key] = to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION)
+        if transaction_export_key in st.session_state:
+            st.download_button(
+                "Download transactions",
+                data=st.session_state[transaction_export_key],
+                file_name=transaction_file_name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                help=f"Download {transaction_file_name}",
+                key=f"download_{transaction_export_key}",
+            )
 
     k1, k2, k3, k4 = st.columns(4)
     with k1:
@@ -3348,7 +3476,7 @@ with website_tab:
     show_limited_dataframe(priority_display, height=priority_height, limit=250, show_count=False)
 
 
-with sku_tab:
+elif selected_page == "SKU Detail":
     tab_page_header("SKU Detail", "Review one SKU, its risk position, source metrics, and complete transaction history.")
     if not selected_sku:
         st.info("Select a SKU to view SKU Detail.")
@@ -3715,7 +3843,7 @@ with sku_tab:
                 show_transaction_dataframe(tx_filtered[full_tx_cols], height=420, limit=500)
 
 
-with do_lookup_tab:
+elif selected_page == "DO Lookup":
     tab_page_header("DO Lookup", "Paste one or multiple DO numbers to find matching items across every SKU and review results by DO.")
 
     do_tx = model["tx_df"].copy()
@@ -3948,7 +4076,7 @@ with do_lookup_tab:
 
 
 
-with stock_check_tab:
+elif selected_page == "Stock Check":
     tab_page_header("Stock Check", "Enter DO demand to calculate temporary remaining stock. Existing report DOs are recognized to prevent double-counting.")
 
     stock_table_version_key = f"stock_check_table_version_{site_key}"
@@ -4193,7 +4321,7 @@ with stock_check_tab:
                 issue_height = min(280, max(120, 74 + (len(issues_display) * 32)))
                 show_limited_dataframe(issues_display, height=issue_height, limit=1000, show_count=False)
 
-with audit_tab:
+elif selected_page == "Audit":
     tab_page_header("Audit Checks", "Review source completeness, official-row reconciliation, and recent outbound windows.")
 
     audit_df = model["audit_df"].copy()
@@ -4237,7 +4365,7 @@ with audit_tab:
         with st.expander("Beginning Balance Rows", expanded=False):
             show_limited_dataframe(model["beginning_balance_df"], height=260, limit=250)
 
-with guide_tab:
+elif selected_page == "Help":
     tab_page_header("Help", "The shortest path through the dashboard for daily inventory work.")
     st.markdown(
         """
@@ -4248,3 +4376,24 @@ with guide_tab:
         5. Forecast dates exclude weekends and U.S. federal holidays.
         """
     )
+if show_upload_effect:
+    sku_count = len(model["sku_df"])
+    report_end_text = fmt_date(model.get("report_end"))
+    status_box.markdown(
+        f"""
+        <div class="ready-stage-card">
+            <div class="ready-row">
+                <div class="ready-check">✓</div>
+                <div class="stage-copy">
+                    <div class="stage-title">Report ready</div>
+                    <div class="stage-subtitle">{sku_count:,} SKUs · {html.escape(format_name)} · {html.escape(selected_page)} ready · Report through {html.escape(report_end_text)}</div>
+                    <div class="stage-meta">{html.escape(active_file_name)}</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.session_state["last_upload_effect_key"] = uploaded_key
+    st.toast("Report loaded successfully.")
+
