@@ -438,53 +438,70 @@ st.markdown(
         .meta-chip-accent { color: #004f88; background: rgba(224, 240, 255, .82); border-color: rgba(0,103,192,.14); }
         .status-dot { display: none; }
 
-        /* Professional Fluent tab selection */
-        div[data-testid="stTabs"] { margin-top: 0; }
+        div[data-testid="stTabs"] {
+            margin-top: 0;
+            --chrome-strip: rgba(225, 229, 235, .88);
+            --chrome-tab: rgba(249, 250, 252, .98);
+            --chrome-hover: rgba(255, 255, 255, .58);
+            --chrome-line: rgba(0, 0, 0, .10);
+        }
         div[data-testid="stTabs"] [role="tablist"] {
             position: sticky;
             top: 8px;
             z-index: 80;
             display: flex;
-            align-items: center;
-            gap: 2px;
-            min-height: 44px;
-            margin: 0 0 16px;
-            padding: 4px;
+            align-items: flex-end;
+            gap: 0;
+            min-height: 46px;
+            margin: 0;
+            padding: 7px 7px 0;
             overflow-x: auto;
+            overflow-y: hidden;
             scrollbar-width: none;
-            background: rgba(248,248,248,.90);
-            border: 1px solid var(--win-border);
-            border-radius: 10px;
-            box-shadow: 0 3px 14px rgba(0,0,0,.055);
+            background: var(--chrome-strip);
+            border: 1px solid rgba(0, 0, 0, .075);
+            border-bottom-color: var(--chrome-line);
+            border-radius: 12px 12px 0 0;
+            box-shadow: 0 3px 14px rgba(0, 0, 0, .055);
             backdrop-filter: blur(24px) saturate(135%);
             -webkit-backdrop-filter: blur(24px) saturate(135%);
         }
         div[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar { display: none; }
         div[data-testid="stTabs"] button[role="tab"] {
             position: relative;
+            z-index: 1;
             flex: 0 0 auto;
-            min-height: 34px;
+            min-height: 38px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 7px;
-            padding: 0 13px;
-            color: var(--win-text-secondary);
+            margin: 0;
+            padding: 0 17px;
+            color: #4f5358;
             font-family: inherit;
             font-size: 12px;
             font-weight: 600;
             letter-spacing: 0;
             background: transparent;
-            border: 0;
-            border-radius: 7px;
-            transition: color var(--win-fast) ease, background var(--win-fast) ease, transform 80ms ease;
+            border: 1px solid transparent;
+            border-bottom: 0;
+            border-radius: 11px 11px 0 0;
+            box-shadow: inset -1px 0 0 rgba(0, 0, 0, .09);
+            transition:
+                color 140ms ease,
+                background 140ms ease,
+                border-color 140ms ease,
+                box-shadow 140ms ease,
+                transform 90ms ease;
         }
         div[data-testid="stTabs"] button[role="tab"]::before {
             font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
             color: currentColor;
             font-size: 13px;
             font-weight: 400;
-            opacity: .88;
+            opacity: .86;
+            transition: color 140ms ease, transform 160ms var(--win-ease), opacity 140ms ease;
         }
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(1)::before { content: "\E80F"; }
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(2)::before { content: "\E77B"; }
@@ -492,42 +509,65 @@ st.markdown(
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(4)::before { content: "\E9D5"; }
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(5)::before { content: "\E9D9"; }
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(6)::before { content: "\E897"; }
-        div[data-testid="stTabs"] button[role="tab"]:hover {
-            color: var(--win-text);
-            background: rgba(0,0,0,.045);
+        div[data-testid="stTabs"] button[role="tab"]:hover:not([aria-selected="true"]) {
+            color: #202124;
+            background: var(--chrome-hover);
+            box-shadow: none;
+        }
+        div[data-testid="stTabs"] button[role="tab"]:hover:not([aria-selected="true"])::before {
+            color: var(--win-accent);
+            opacity: 1;
+            transform: translateY(-1px);
         }
         div[data-testid="stTabs"] button[role="tab"]:active { transform: scale(.985); }
         div[data-testid="stTabs"] button[role="tab"]:focus-visible {
-            outline: 2px solid rgba(0,103,192,.58);
-            outline-offset: 1px;
+            outline: 2px solid rgba(0, 103, 192, .64);
+            outline-offset: -3px;
         }
         div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-            color: var(--win-text);
-            background: #fff;
-            box-shadow: 0 1px 3px rgba(0,0,0,.09);
+            z-index: 3;
+            color: #202124;
+            margin-bottom: -1px;
+            background: var(--chrome-tab);
+            border-color: rgba(0, 0, 0, .09);
+            border-bottom-color: var(--chrome-tab);
+            box-shadow:
+                -1px 0 0 rgba(255, 255, 255, .52),
+                1px 0 0 rgba(255, 255, 255, .52),
+                0 -1px 2px rgba(0, 0, 0, .035);
+            animation: chromeTabSelect 180ms var(--win-ease) both;
         }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::before { color: var(--win-accent); }
+        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::before {
+            color: var(--win-accent);
+            opacity: 1;
+            transform: translateY(-1px);
+        }
         div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::after {
             content: "";
             position: absolute;
-            left: 50%;
-            bottom: 1px;
-            width: 18px;
+            left: 9px;
+            right: 9px;
+            bottom: -1px;
             height: 2px;
-            border-radius: 999px;
-            background: var(--win-accent);
-            transform: translateX(-50%);
-            animation: tabIndicator .18s var(--win-ease) both;
+            background: var(--chrome-tab);
         }
-        @keyframes tabIndicator {
-            from { width: 6px; opacity: .3; }
-            to { width: 18px; opacity: 1; }
+        @keyframes chromeTabSelect {
+            from { opacity: .76; transform: translateY(2px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-highlight"],
+        div[data-testid="stTabs"] [data-baseweb="tab-border"] {
+            display: none;
         }
         div[data-testid="stTabs"] [role="tabpanel"] {
-            animation: contentReveal .22s var(--win-ease) both;
+            position: relative;
+            z-index: 2;
+            padding-top: 16px;
+            border-top: 1px solid var(--chrome-line);
+            animation: chromeContentReveal 210ms var(--win-ease) both;
         }
-        @keyframes contentReveal {
-            from { opacity: 0; transform: translateY(3px); }
+        @keyframes chromeContentReveal {
+            from { opacity: 0; transform: translateY(4px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
