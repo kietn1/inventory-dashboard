@@ -50,7 +50,7 @@ st.markdown(
             --win-ease: cubic-bezier(.1,.9,.2,1);
             --win-fast: 120ms;
             --win-normal: 180ms;
-            --layout-top: 18px;
+            --layout-top: 6px;
             --layout-x: 24px;
             --sidebar-width: 292px;
         }
@@ -77,15 +77,52 @@ st.markdown(
             pointer-events: none;
         }
         [data-testid="stHeader"] > div { background: transparent; }
-        footer { display: none; }
-        #MainMenu { visibility: hidden; }
+        footer { display: none !important; }
+        #MainMenu { display: none !important; }
+        [data-testid="stToolbar"],
+        [data-testid="stHeaderActionElements"],
+        [data-testid="stAppDeployButton"],
+        [data-testid="stMainMenu"],
+        [data-testid="stStatusWidget"],
+        [data-testid="stDecoration"],
+        [data-testid="stViewerBadge"],
+        .stDeployButton,
+        .viewerBadge_container__1QSob,
+        [class*="viewerBadge"],
+        [class*="ViewerBadge"],
+        [data-testid="stHeader"] a[href*="github.com"],
+        [data-testid="stHeader"] button[aria-label*="Share"],
+        [data-testid="stHeader"] button[title*="Share"],
+        [data-testid="stHeader"] button[aria-label*="Edit"],
+        [data-testid="stHeader"] button[title*="Edit"],
+        [data-testid="stHeader"] button[aria-label*="favorite" i],
+        [data-testid="stHeader"] button[title*="favorite" i] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            pointer-events: none !important;
+        }
+        [data-testid="stHeader"] {
+            top: 0 !important;
+        }
+        [data-testid="stAppViewContainer"] > .main,
+        [data-testid="stMain"] {
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+        }
 
         /* Sidebar open control — supports current and older Streamlit test IDs. */
         [data-testid="stSidebarCollapsedControl"],
         [data-testid="collapsedControl"] {
             display: flex !important;
             position: fixed !important;
-            top: 16px !important;
+            top: 8px !important;
             left: 16px !important;
             z-index: 1000000 !important;
             width: 38px !important;
@@ -152,7 +189,7 @@ st.markdown(
         /* Sidebar close control — visually aligned with the open control. */
         section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {
             position: absolute !important;
-            top: 17px !important;
+            top: 8px !important;
             right: 12px !important;
             z-index: 20 !important;
             width: 34px !important;
@@ -1062,7 +1099,7 @@ st.markdown(
             .tx-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 820px) {
-            :root { --layout-x: 14px; --layout-top: 12px; }
+            :root { --layout-x: 14px; --layout-top: 6px; }
             .app-header { padding: 12px; border-radius: 12px; }
             .app-subtitle, .app-meta { margin-left: 0; }
             .app-meta { display: grid; grid-template-columns: 1fr; width: 100%; }
@@ -3409,40 +3446,34 @@ if selected_page == "Overview":
     transaction_file_name = transaction_download_filename(format_name, report_end)
     report_export_key = f"report_export_{uploaded_key}"
     transaction_export_key = f"transaction_export_{uploaded_key}"
+    report_export_data = to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION)
+    transaction_export_data = to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION)
     heading_col, export_col_1, export_col_2 = st.columns([3.4, 1.25, 1.25])
     with heading_col:
         tab_page_header("Overview", "Review inventory risk first, then move into SKU, DO, or stock validation workflows.")
     with export_col_1:
-        if report_export_key not in st.session_state:
-            if st.button("Prepare report", key=f"prepare_{report_export_key}", use_container_width=True, type="primary"):
-                with st.spinner("Preparing report..."):
-                    st.session_state[report_export_key] = to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION)
-        if report_export_key in st.session_state:
-            st.download_button(
-                "Download report",
-                data=st.session_state[report_export_key],
-                file_name=export_file_name,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                type="primary",
-                help=f"Download {export_file_name}",
-                key=f"download_{report_export_key}",
-            )
+        st.download_button(
+            "Download report",
+            data=report_export_data,
+            file_name=export_file_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            type="primary",
+            help=f"Download {export_file_name}",
+            key=f"download_{report_export_key}",
+            on_click="ignore",
+        )
     with export_col_2:
-        if transaction_export_key not in st.session_state:
-            if st.button("Prepare transactions", key=f"prepare_{transaction_export_key}", use_container_width=True):
-                with st.spinner("Preparing transactions..."):
-                    st.session_state[transaction_export_key] = to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION)
-        if transaction_export_key in st.session_state:
-            st.download_button(
-                "Download transactions",
-                data=st.session_state[transaction_export_key],
-                file_name=transaction_file_name,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                help=f"Download {transaction_file_name}",
-                key=f"download_{transaction_export_key}",
-            )
+        st.download_button(
+            "Download transactions",
+            data=transaction_export_data,
+            file_name=transaction_file_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            help=f"Download {transaction_file_name}",
+            key=f"download_{transaction_export_key}",
+            on_click="ignore",
+        )
 
     k1, k2, k3, k4 = st.columns(4)
     with k1:
