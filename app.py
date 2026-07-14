@@ -80,12 +80,13 @@ st.markdown(
             background: transparent !important;
             border: 0 !important;
             box-shadow: none !important;
-            pointer-events: none !important;
+            pointer-events: auto !important;
             z-index: 999990 !important;
         }
         [data-testid="stHeader"] > div {
             overflow: visible !important;
             background: transparent !important;
+            pointer-events: auto !important;
         }
         footer,
         #MainMenu,
@@ -113,7 +114,7 @@ st.markdown(
             visibility: visible !important;
             overflow: visible !important;
             background: transparent !important;
-            pointer-events: none !important;
+            pointer-events: auto !important;
         }
         [data-testid="stSidebarCollapsedControl"],
         [data-testid="collapsedControl"] {
@@ -122,7 +123,7 @@ st.markdown(
             position: fixed !important;
             top: var(--sidebar-control-top) !important;
             left: 14px !important;
-            z-index: 1000000 !important;
+            z-index: 2147483646 !important;
             width: 108px !important;
             height: var(--sidebar-control-size) !important;
             min-width: 108px !important;
@@ -141,13 +142,17 @@ st.markdown(
         button[title*="open sidebar" i] {
             display: inline-flex !important;
             visibility: visible !important;
+            position: fixed !important;
+            top: var(--sidebar-control-top) !important;
+            left: 14px !important;
+            z-index: 2147483647 !important;
             align-items: center !important;
             justify-content: flex-start !important;
             gap: 9px !important;
-            width: 100% !important;
-            height: 100% !important;
-            min-width: 0 !important;
-            min-height: 0 !important;
+            width: 108px !important;
+            height: var(--sidebar-control-size) !important;
+            min-width: 108px !important;
+            min-height: var(--sidebar-control-size) !important;
             margin: 0 !important;
             padding: 0 14px !important;
             color: #ffffff !important;
@@ -161,6 +166,7 @@ st.markdown(
             background: linear-gradient(180deg, #0a73c9 0%, #0067c0 100%) !important;
             box-shadow: 0 2px 5px rgba(0, 77, 138, .18), 0 8px 22px rgba(0, 77, 138, .22) !important;
             pointer-events: auto !important;
+            touch-action: manipulation !important;
             cursor: pointer !important;
             opacity: 1 !important;
             transform: translateZ(0) !important;
@@ -187,6 +193,7 @@ st.markdown(
             font-size: 15px;
             font-weight: 400;
             flex: 0 0 auto;
+            pointer-events: none;
         }
         [data-testid="stSidebarCollapsedControl"] button::after,
         [data-testid="collapsedControl"] button::after,
@@ -198,6 +205,7 @@ st.markdown(
             font-size: 12px;
             font-weight: 650;
             letter-spacing: .01em;
+            pointer-events: none;
         }
         [data-testid="stSidebarCollapsedControl"] button:hover,
         [data-testid="collapsedControl"] button:hover,
@@ -267,7 +275,7 @@ st.markdown(
         }
         [data-testid="stAppViewContainer"] > .main,
         [data-testid="stMain"] {
-            padding-top: 0 !important;
+            padding-top: 54px !important;
             margin-top: 0 !important;
         }
         .stApp:has([data-testid="stSidebarCollapsedControl"]) .main .block-container,
