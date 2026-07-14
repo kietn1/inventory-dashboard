@@ -991,6 +991,103 @@ class WrongFileFormatError(ValueError):
 
 
 PERSISTENT_UPLOAD_DIR = Path.home() / ".inventory_dashboard_uploads"
+PERSISTENT_APP_STATE_PATH = PERSISTENT_UPLOAD_DIR / "app_state.json"
+
+
+def encode_persistent_value(value):
+    if isinstance(value, pd.DataFrame):
+        frame = value.copy().astype(object)
+        frame = frame.where(pd.notna(frame), None)
+        return {
+            "__type__": "dataframe",
+            "columns": [str(column) for column in frame.columns],
+            "records": [
+                {str(key): encode_persistent_value(item) for key, item in record.items()}
+                for record in frame.to_dict(orient="records")
+            ],
+        }
+    if isinstance(value, pd.Timestamp):
+        return {"__type__": "datetime", "value": value.isoformat()}
+    if isinstance(value, datetime):
+        return {"__type__": "datetime", "value": value.isoformat()}
+    if isinstance(value, date):
+        return {"__type__": "date", "value": value.isoformat()}
+    if isinstance(value, tuple):
+        return {"__type__": "tuple", "items": [encode_persistent_value(item) for item in value]}
+    if isinstance(value, set):
+        return {"__type__": "set", "items": [encode_persistent_value(item) for item in value]}
+    if isinstance(value, list):
+        return [encode_persistent_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): encode_persistent_value(item) for key, item in value.items()}
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        return None if np.isnan(value) else float(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
+    if value is pd.NA:
+        return None
+    return value
+
+
+def decode_persistent_value(value):
+    if isinstance(value, list):
+        return [decode_persistent_value(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    value_type = value.get("__type__")
+    if value_type == "dataframe":
+        records = [
+            {key: decode_persistent_value(item) for key, item in record.items()}
+            for record in value.get("records", [])
+        ]
+        return pd.DataFrame(records, columns=value.get("columns", []))
+    if value_type == "datetime":
+        return pd.to_datetime(value.get("value"), errors="coerce")
+    if value_type == "date":
+        parsed = pd.to_datetime(value.get("value"), errors="coerce")
+        return None if pd.isna(parsed) else parsed.date()
+    if value_type == "tuple":
+        return tuple(decode_persistent_value(item) for item in value.get("items", []))
+    if value_type == "set":
+        return set(decode_persistent_value(item) for item in value.get("items", []))
+    return {key: decode_persistent_value(item) for key, item in value.items()}
+
+
+def load_persistent_app_state() -> dict:
+    try:
+        if not PERSISTENT_APP_STATE_PATH.exists():
+            return {}
+        raw_state = json.loads(PERSISTENT_APP_STATE_PATH.read_text(encoding="utf-8"))
+        return {key: decode_persistent_value(value) for key, value in raw_state.items()}
+    except Exception:
+        return {}
+
+
+def update_persistent_app_state(values=None, remove_keys=None) -> None:
+    try:
+        PERSISTENT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        raw_state = {}
+        if PERSISTENT_APP_STATE_PATH.exists():
+            loaded = json.loads(PERSISTENT_APP_STATE_PATH.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                raw_state = loaded
+        for key in remove_keys or []:
+            raw_state.pop(key, None)
+        for key, value in (values or {}).items():
+            raw_state[key] = encode_persistent_value(value)
+        temp_path = PERSISTENT_APP_STATE_PATH.with_suffix(".tmp")
+        temp_path.write_text(json.dumps(raw_state, ensure_ascii=False), encoding="utf-8")
+        temp_path.replace(PERSISTENT_APP_STATE_PATH)
+    except Exception:
+        pass
+
+
+def restore_persistent_app_state() -> None:
+    for key, value in load_persistent_app_state().items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 
 def stable_file_hash(file_bytes: bytes) -> str:
@@ -2645,22 +2742,33 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
 
 
 def reset_sidebar_filters(site_key):
-    st.session_state[f"{site_key}_filter_risk_levels"] = ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"]
-    st.session_state[f"{site_key}_filter_min_usage"] = 0
-    st.session_state[f"{site_key}_sku_select_combined"] = ""
+    values = {
+        f"{site_key}_filter_risk_levels": ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
+        f"{site_key}_filter_min_usage": 0,
+        f"{site_key}_sku_select_combined": "",
+    }
+    for key, value in values.items():
+        st.session_state[key] = value
+    update_persistent_app_state(values=values)
 
 
 def reset_transaction_filters(search_key, mode_key, date_key, range_key):
     st.session_state[search_key] = ""
     st.session_state[mode_key] = "All Dates"
-    if date_key in st.session_state:
-        st.session_state.pop(date_key)
-    if range_key in st.session_state:
-        st.session_state.pop(range_key)
+    st.session_state.pop(date_key, None)
+    st.session_state.pop(range_key, None)
+    update_persistent_app_state(
+        values={search_key: "", mode_key: "All Dates"},
+        remove_keys=[date_key, range_key],
+    )
 
 
+restore_persistent_app_state()
 st.sidebar.title("📦 Inventory Dashboard")
+if st.session_state.get("report_format") not in ["Newark", "Carson"]:
+    st.session_state["report_format"] = "Newark"
 format_name = st.sidebar.selectbox("Report Format", options=["Newark", "Carson"], index=0, key="report_format")
+update_persistent_app_state(values={"report_format": format_name})
 config = FORMAT_CONFIGS[format_name]
 site_key = safe_format_slug(format_name).lower()
 risk_filter_key = f"{site_key}_filter_risk_levels"
@@ -2674,9 +2782,12 @@ st.sidebar.caption(f"Carson: {saved_carson['file_name'] if saved_carson else 'No
 
 st.sidebar.divider()
 st.sidebar.markdown('<div class="sidebar-section-title">Filters</div>', unsafe_allow_html=True)
+risk_options = ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand", "Inactive / No Demand"]
+if risk_filter_key in st.session_state:
+    st.session_state[risk_filter_key] = [value for value in st.session_state[risk_filter_key] if value in risk_options]
 show_risks = st.sidebar.multiselect(
     "Risk Level",
-    options=["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand", "Inactive / No Demand"],
+    options=risk_options,
     default=["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
     key=risk_filter_key,
 )
@@ -2687,6 +2798,7 @@ min_usage = st.sidebar.number_input(
     step=1,
     key=min_usage_filter_key,
 )
+update_persistent_app_state(values={risk_filter_key: show_risks, min_usage_filter_key: min_usage})
 
 sku_sidebar_slot = st.sidebar.empty()
 st.sidebar.button("Reset Filters", use_container_width=True, on_click=reset_sidebar_filters, args=(site_key,))
@@ -2835,6 +2947,7 @@ with sku_sidebar_slot.container():
 
     if st.session_state.get(sku_select_key) not in sku_options:
         st.session_state[sku_select_key] = ""
+        update_persistent_app_state(values={sku_select_key: ""})
 
     selected_sku = st.selectbox(
         "Search / Select SKU",
@@ -2846,6 +2959,7 @@ with sku_sidebar_slot.container():
     )
 
 selected_sku = clean_text(selected_sku)
+update_persistent_app_state(values={sku_select_key: selected_sku})
 
 if selected_sku:
     priority_filtered = sku_df[sku_df["SKU"].astype(str) == str(selected_sku)].copy()
@@ -3132,6 +3246,7 @@ with sku_tab:
                         height=154,
                         label_visibility="collapsed",
                     )
+                    update_persistent_app_state(values={tx_search_key: tx_search})
                 with date_col:
                     st.markdown(
                         """
@@ -3140,6 +3255,8 @@ with sku_tab:
                         """,
                         unsafe_allow_html=True,
                     )
+                    if st.session_state.get(tx_mode_key) not in ["All Dates", "Single Date", "Date Range"]:
+                        st.session_state[tx_mode_key] = "All Dates"
                     activity_date_mode = st.radio(
                         "Activity Date Filter",
                         options=["All Dates", "Single Date", "Date Range"],
@@ -3147,9 +3264,16 @@ with sku_tab:
                         key=tx_mode_key,
                         label_visibility="collapsed",
                     )
+                    update_persistent_app_state(values={tx_mode_key: activity_date_mode})
                     selected_tx_date = None
                     selected_tx_date_range = None
                     if activity_date_mode == "Single Date":
+                        saved_tx_date = st.session_state.get(tx_date_key)
+                        if saved_tx_date is not None:
+                            saved_tx_date = pd.to_datetime(saved_tx_date, errors="coerce")
+                            if pd.isna(saved_tx_date) or (tx_min_date is not None and saved_tx_date.date() < tx_min_date) or (tx_max_date is not None and saved_tx_date.date() > tx_max_date):
+                                st.session_state.pop(tx_date_key, None)
+                                update_persistent_app_state(remove_keys=[tx_date_key])
                         selected_tx_date = st.date_input(
                             "Select Activity Date",
                             value=None,
@@ -3157,8 +3281,16 @@ with sku_tab:
                             max_value=tx_max_date,
                             key=tx_date_key,
                         )
+                        update_persistent_app_state(values={tx_date_key: selected_tx_date})
                     elif activity_date_mode == "Date Range":
                         default_tx_date_range = (tx_min_date, tx_max_date) if tx_min_date is not None and tx_max_date is not None else None
+                        saved_tx_range = st.session_state.get(tx_range_key)
+                        if isinstance(saved_tx_range, (list, tuple)) and len(saved_tx_range) == 2:
+                            saved_start = pd.to_datetime(saved_tx_range[0], errors="coerce")
+                            saved_end = pd.to_datetime(saved_tx_range[1], errors="coerce")
+                            if pd.isna(saved_start) or pd.isna(saved_end) or (tx_min_date is not None and saved_start.date() < tx_min_date) or (tx_max_date is not None and saved_end.date() > tx_max_date):
+                                st.session_state.pop(tx_range_key, None)
+                                update_persistent_app_state(remove_keys=[tx_range_key])
                         selected_tx_date_range = st.date_input(
                             "Select Activity Date Range",
                             value=default_tx_date_range,
@@ -3166,6 +3298,7 @@ with sku_tab:
                             max_value=tx_max_date,
                             key=tx_range_key,
                         )
+                        update_persistent_app_state(values={tx_range_key: selected_tx_date_range})
                     else:
                         if tx_min_date is not None and tx_max_date is not None:
                             st.markdown(
@@ -3324,6 +3457,7 @@ with do_lookup_tab:
     with do_header_right:
         if st.button("Clear", use_container_width=True, key=do_clear_key):
             st.session_state[do_lookup_key] = ""
+            update_persistent_app_state(values={do_lookup_key: ""})
             st.rerun()
 
     do_lookup_value = st.text_area(
@@ -3333,6 +3467,7 @@ with do_lookup_tab:
         height=104,
         label_visibility="collapsed",
     )
+    update_persistent_app_state(values={do_lookup_key: do_lookup_value})
 
     do_lookup_terms = []
     seen_do_terms = set()
@@ -3564,23 +3699,31 @@ with stock_check_tab:
     stock_issues_result_key = f"stock_check_issues_result_{site_key}"
     stock_temp_result_key = f"stock_check_temp_balance_result_{site_key}"
     stock_temp_filter_key = f"temp_balance_sku_select_{site_key}"
+    stock_saved_table_key = f"stock_check_table_data_{site_key}"
     st.session_state.setdefault(stock_table_version_key, 0)
     reset_col_1, reset_col_2 = st.columns([1, 5])
     with reset_col_1:
         if st.button("Reset", use_container_width=True, key=f"stock_check_reset_{site_key}"):
             st.session_state[stock_table_version_key] += 1
-            for key in [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key]:
+            keys_to_clear = [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key, stock_saved_table_key]
+            for key in keys_to_clear:
                 st.session_state.pop(key, None)
+            update_persistent_app_state(remove_keys=keys_to_clear)
             st.rerun()
 
     stock_table_key = f"stock_check_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
-    stock_template_df = pd.DataFrame(
+    default_stock_table_df = pd.DataFrame(
         {
             "DO #": [""] * 30,
             "Item Code / SKU": [""] * 30,
             "Qty": [""] * 30,
         }
     )
+    saved_stock_table_df = st.session_state.get(stock_saved_table_key)
+    if isinstance(saved_stock_table_df, pd.DataFrame) and set(["DO #", "Item Code / SKU", "Qty"]).issubset(saved_stock_table_df.columns):
+        stock_template_df = saved_stock_table_df[["DO #", "Item Code / SKU", "Qty"]].copy()
+    else:
+        stock_template_df = default_stock_table_df
     stock_table_df = st.data_editor(
         stock_template_df,
         use_container_width=True,
@@ -3594,6 +3737,8 @@ with stock_check_tab:
             "Qty": st.column_config.TextColumn("Qty", help="Paste or enter the requested quantity."),
         },
     )
+    st.session_state[stock_saved_table_key] = stock_table_df.copy()
+    update_persistent_app_state(values={stock_saved_table_key: stock_table_df})
 
     input_df = parse_stock_check_table(stock_table_df)
     input_has_values = not input_df.empty
@@ -3736,12 +3881,14 @@ with stock_check_tab:
                 temp_sku_options = ["All SKUs"] + temporary_balance_df["SKU"].astype(str).dropna().tolist()
                 if st.session_state.get(stock_temp_filter_key) not in temp_sku_options:
                     st.session_state[stock_temp_filter_key] = "All SKUs"
+                    update_persistent_app_state(values={stock_temp_filter_key: "All SKUs"})
                 temp_sku_filter = st.selectbox(
                     "Choose SKU",
                     options=temp_sku_options,
                     index=temp_sku_options.index(st.session_state.get(stock_temp_filter_key, "All SKUs")),
                     key=stock_temp_filter_key,
                 )
+                update_persistent_app_state(values={stock_temp_filter_key: temp_sku_filter})
                 filtered_temp_balance_df = temporary_balance_df.copy()
                 if temp_sku_filter != "All SKUs":
                     filtered_temp_balance_df = filtered_temp_balance_df[filtered_temp_balance_df["SKU"].astype(str) == str(temp_sku_filter)].copy()
