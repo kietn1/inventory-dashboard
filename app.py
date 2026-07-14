@@ -53,6 +53,8 @@ st.markdown(
             --layout-top: 6px;
             --layout-x: 24px;
             --sidebar-width: 292px;
+            --sidebar-control-top: 12px;
+            --sidebar-control-size: 38px;
         }
 
         html { scroll-behavior: smooth; }
@@ -168,11 +170,11 @@ st.markdown(
         button[title*="open sidebar" i] {
             display: flex !important;
             position: fixed !important;
-            top: 8px !important;
+            top: var(--sidebar-control-top) !important;
             left: 16px !important;
             z-index: 1000000 !important;
-            width: 38px !important;
-            height: 38px !important;
+            width: var(--sidebar-control-size) !important;
+            height: var(--sidebar-control-size) !important;
             align-items: center !important;
             justify-content: center !important;
             border: 1px solid var(--win-border-strong) !important;
@@ -245,16 +247,16 @@ st.markdown(
         /* Sidebar close control — visually aligned with the open control. */
         section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {
             position: absolute !important;
-            top: 8px !important;
+            top: var(--sidebar-control-top) !important;
             right: 12px !important;
             z-index: 20 !important;
-            width: 34px !important;
-            height: 34px !important;
+            width: var(--sidebar-control-size) !important;
+            height: var(--sidebar-control-size) !important;
             pointer-events: auto !important;
         }
         section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {
-            width: 34px !important;
-            height: 34px !important;
+            width: var(--sidebar-control-size) !important;
+            height: var(--sidebar-control-size) !important;
             min-height: 0 !important;
             padding: 0 !important;
             border: 1px solid transparent !important;
