@@ -2,6 +2,7 @@ import hashlib
 import html
 import json
 import re
+import time
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
@@ -19,783 +20,847 @@ WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 st.set_page_config(
     page_title="Inventory Shortage Dashboard",
-    page_icon="▦",
+    page_icon="📦",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 st.markdown(
-    r"""
+    """
     <style>
-        :root {
-            --win-accent: #0067c0;
-            --win-accent-hover: #005a9e;
-            --win-accent-pressed: #004578;
-            --win-accent-soft: rgba(0, 103, 192, .10);
-            --win-text: #1f1f1f;
-            --win-text-secondary: #5d5d5d;
-            --win-text-tertiary: #737373;
-            --win-bg: #f3f3f3;
-            --win-surface: rgba(255, 255, 255, .88);
-            --win-surface-solid: #ffffff;
-            --win-surface-subtle: rgba(249, 249, 249, .82);
-            --win-border: rgba(0, 0, 0, .0578);
-            --win-border-strong: rgba(0, 0, 0, .12);
-            --win-shadow-card: 0 1px 2px rgba(0,0,0,.04), 0 4px 14px rgba(0,0,0,.055);
-            --win-shadow-flyout: 0 8px 28px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
-            --win-radius-sm: 6px;
-            --win-radius-md: 8px;
-            --win-radius-lg: 12px;
-            --win-radius-xl: 16px;
-            --win-ease: cubic-bezier(.1,.9,.2,1);
-            --win-fast: 120ms;
-            --win-normal: 180ms;
-            --layout-top: 18px;
-            --layout-x: 24px;
-            --sidebar-width: 292px;
-        }
-
-        html { scroll-behavior: smooth; }
-        body, .stApp {
-            font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-            color: var(--win-text);
-            background:
-                radial-gradient(900px 440px at 82% -10%, rgba(105, 180, 255, .18), transparent 64%),
-                radial-gradient(700px 360px at 10% 0%, rgba(188, 222, 255, .13), transparent 62%),
-                var(--win-bg);
-        }
-        .stApp { min-height: 100vh; }
-        [data-testid="stHeader"], footer { display: none; }
-        #MainMenu { visibility: hidden; }
-
+        :root { --soft-bg:#F5F5F7; --card:#FFFFFF; --text:#111827; --muted:#6B7280; --line:rgba(17,24,39,.10); }
         .main .block-container {
-            max-width: 1660px;
-            padding: var(--layout-top) var(--layout-x) 36px;
-            animation: pageReveal .36s var(--win-ease) both;
+            padding-top: 0.65rem;
+            padding-bottom: 1.15rem;
+            max-width: 1500px;
+            animation: fadeIn 0.35s ease-in-out;
         }
-        @keyframes pageReveal {
-            from { opacity: 0; transform: translateY(5px); }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
             to { opacity: 1; transform: translateY(0); }
         }
-
-        /* Sidebar: same top rhythm and surface language as the workspace */
-        section[data-testid="stSidebar"] {
-            width: var(--sidebar-width) !important;
-            min-width: var(--sidebar-width) !important;
-            background: rgba(248, 248, 248, .88);
-            border-right: 1px solid var(--win-border);
-            backdrop-filter: blur(28px) saturate(125%);
-            -webkit-backdrop-filter: blur(28px) saturate(125%);
+        header, footer {visibility: hidden;}
+        .page-header {
+            margin: 0 0 0.75rem 0;
+            padding-bottom: 0.45rem;
+            border-bottom: 1px solid rgba(17,24,39,.07);
         }
-        section[data-testid="stSidebar"] > div {
-            width: var(--sidebar-width) !important;
+        .page-title {
+            font-size: 1.82rem;
+            font-weight: 850;
+            color: #111827;
+            letter-spacing: -0.035em;
+            line-height: 1.12;
+            margin-bottom: 0.18rem;
         }
-        section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
-            padding: var(--layout-top) 16px 24px;
-        }
-        section[data-testid="stSidebar"] hr {
-            margin: 14px 0;
-            border-color: var(--win-border);
-        }
-        .sidebar-brand {
-            height: 72px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 0 6px;
-            margin: 0 0 14px;
-        }
-        .sidebar-brand-copy { min-width: 0; }
-        .sidebar-brand-title {
-            color: var(--win-text);
-            font-size: 15px;
-            font-weight: 650;
-            letter-spacing: -.015em;
-            line-height: 1.2;
-        }
-        .sidebar-brand-subtitle {
-            margin-top: 3px;
-            color: var(--win-text-secondary);
-            font-size: 12px;
-            line-height: 1.25;
-        }
-        .fluent-grid-icon {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 2px;
-            width: 32px;
-            height: 32px;
-            padding: 7px;
-            border: 1px solid rgba(0, 103, 192, .18);
-            border-radius: 8px;
-            background: linear-gradient(145deg, #0a73c9, #005fb8);
-            box-shadow: 0 2px 7px rgba(0, 95, 184, .18);
-            flex: 0 0 auto;
-        }
-        .fluent-grid-icon span {
-            display: block;
-            border-radius: 1px;
-            background: rgba(255,255,255,.96);
-        }
-        .fluent-grid-icon-small { width: 32px; height: 32px; }
-        .sidebar-section-title {
-            margin: 15px 2px 7px;
-            color: var(--win-text-secondary);
-            font-size: 11px;
-            font-weight: 650;
-            letter-spacing: .035em;
-            text-transform: uppercase;
-        }
-        .sidebar-section-help {
-            margin: -2px 2px 9px;
-            color: var(--win-text-tertiary);
-            font-size: 11px;
+        .page-subtitle {
+            font-size: 0.88rem;
+            color: #6B7280;
             line-height: 1.35;
         }
-        .sidebar-section-gap { height: 2px; }
-        .data-source-card {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            min-height: 34px;
-            margin: 8px 0 1px;
-            padding: 7px 9px;
-            overflow: hidden;
-            color: #174b27;
-            font-size: 11px;
-            line-height: 1.25;
-            background: rgba(223, 246, 227, .76);
-            border: 1px solid rgba(16, 124, 16, .16);
-            border-radius: var(--win-radius-md);
+        .section-block {
+            margin-top: 1.05rem;
         }
-        .data-source-card::before {
-            content: "\E73E";
-            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
-            color: #107c10;
-            font-size: 13px;
-            flex: 0 0 auto;
-        }
-        .data-source-card span {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .data-source-card-empty {
-            color: var(--win-text-secondary);
-            background: rgba(255,255,255,.62);
-            border-color: var(--win-border);
-        }
-        .data-source-card-empty::before { content: "\E946"; color: var(--win-text-secondary); }
-
-        section[data-testid="stSidebar"] label {
-            color: var(--win-text-secondary) !important;
-            font-size: 12px !important;
-            font-weight: 600 !important;
-        }
-        section[data-testid="stSidebar"] [data-baseweb="select"] > div,
-        section[data-testid="stSidebar"] [data-testid="stNumberInput"] input,
-        section[data-testid="stSidebar"] [data-testid="stTextInput"] input {
-            min-height: 34px;
-            color: var(--win-text);
-            background: rgba(255,255,255,.84);
-            border-color: var(--win-border-strong);
-            border-radius: var(--win-radius-md);
-            box-shadow: 0 1px 1px rgba(0,0,0,.025);
-            transition: border-color var(--win-fast) ease, box-shadow var(--win-fast) ease, background var(--win-fast) ease;
-        }
-        section[data-testid="stSidebar"] [data-baseweb="select"] > div:hover,
-        section[data-testid="stSidebar"] [data-testid="stNumberInput"] input:hover,
-        section[data-testid="stSidebar"] [data-testid="stTextInput"] input:hover {
-            background: #fff;
-            border-color: rgba(0,0,0,.2);
-        }
-        section[data-testid="stSidebar"] [data-baseweb="select"] > div:focus-within,
-        section[data-testid="stSidebar"] [data-testid="stNumberInput"] input:focus,
-        section[data-testid="stSidebar"] [data-testid="stTextInput"] input:focus {
-            border-color: var(--win-accent);
-            box-shadow: inset 0 -2px 0 var(--win-accent);
-            outline: none;
-        }
-        section[data-testid="stSidebar"] [data-testid="stFileUploader"] section {
-            min-height: 78px;
-            padding: 10px;
-            background: rgba(255,255,255,.72);
-            border: 1px dashed rgba(0,0,0,.22);
-            border-radius: var(--win-radius-lg);
-            box-shadow: none;
-            transition: background var(--win-normal) ease, border-color var(--win-normal) ease, transform var(--win-normal) var(--win-ease);
-        }
-        section[data-testid="stSidebar"] [data-testid="stFileUploader"] section:hover {
-            background: #fff;
-            border-color: var(--win-accent);
-            transform: translateY(-1px);
-        }
-        section[data-testid="stSidebar"] [data-testid="stFileUploader"] small { font-size: 10px; }
-
-        /* Main header aligned with the sidebar brand */
-        .app-header {
-            min-height: 72px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 20px;
-            padding: 12px 16px;
-            margin: 0 0 12px;
-            background: rgba(255,255,255,.68);
-            border: 1px solid var(--win-border);
-            border-radius: var(--win-radius-xl);
-            box-shadow: 0 1px 1px rgba(0,0,0,.025);
-            backdrop-filter: blur(24px) saturate(125%);
-            -webkit-backdrop-filter: blur(24px) saturate(125%);
-        }
-        .app-header-main { min-width: 0; }
-        .app-title-cluster { display: flex; align-items: center; gap: 11px; }
-        .app-product-icon { width: 34px; height: 34px; padding: 8px; border-radius: 9px; }
-        .app-title-copy { min-width: 0; }
-        .app-eyebrow {
-            color: var(--win-accent);
-            font-size: 10px;
-            font-weight: 650;
-            letter-spacing: .07em;
-            line-height: 1.15;
-            text-transform: uppercase;
-        }
-        .app-title {
-            margin-top: 2px;
-            color: var(--win-text);
-            font-size: 20px;
-            font-weight: 650;
-            letter-spacing: -.025em;
-            line-height: 1.15;
-        }
-        .app-subtitle {
-            margin: 5px 0 0 45px;
-            color: var(--win-text-secondary);
-            font-size: 12px;
-            line-height: 1.35;
-        }
-        .app-meta {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            flex-wrap: wrap;
-            gap: 6px;
-            max-width: 55%;
-        }
-        .meta-chip {
-            min-height: 28px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            max-width: 260px;
-            padding: 5px 9px;
-            overflow: hidden;
-            color: var(--win-text-secondary);
-            font-size: 11px;
-            line-height: 1;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-            background: rgba(255,255,255,.76);
-            border: 1px solid var(--win-border);
-            border-radius: 7px;
-        }
-        .meta-chip::before {
-            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
-            color: var(--win-text-tertiary);
-            font-size: 12px;
-        }
-        .meta-chip-date::before { content: "\E787"; }
-        .meta-chip-file::before { content: "\E8A5"; }
-        .meta-chip-status::before { content: "\E73E"; color: #107c10; }
-        .meta-chip-accent { color: #004f88; background: rgba(224, 240, 255, .82); border-color: rgba(0,103,192,.14); }
-        .status-dot { display: none; }
-
-        /* Professional Fluent tab selection */
-        div[data-testid="stTabs"] { margin-top: 0; }
-        div[data-testid="stTabs"] [role="tablist"] {
-            position: sticky;
-            top: 8px;
-            z-index: 80;
-            display: flex;
-            align-items: center;
-            gap: 2px;
-            min-height: 44px;
-            margin: 0 0 16px;
-            padding: 4px;
-            overflow-x: auto;
-            scrollbar-width: none;
-            background: rgba(248,248,248,.90);
-            border: 1px solid var(--win-border);
-            border-radius: 10px;
-            box-shadow: 0 3px 14px rgba(0,0,0,.055);
-            backdrop-filter: blur(24px) saturate(135%);
-            -webkit-backdrop-filter: blur(24px) saturate(135%);
-        }
-        div[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar { display: none; }
-        div[data-testid="stTabs"] button[role="tab"] {
-            position: relative;
-            flex: 0 0 auto;
-            min-height: 34px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 7px;
-            padding: 0 13px;
-            color: var(--win-text-secondary);
-            font-family: inherit;
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: 0;
-            background: transparent;
-            border: 0;
-            border-radius: 7px;
-            transition: color var(--win-fast) ease, background var(--win-fast) ease, transform 80ms ease;
-        }
-        div[data-testid="stTabs"] button[role="tab"]::before {
-            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
-            color: currentColor;
-            font-size: 13px;
-            font-weight: 400;
-            opacity: .88;
-        }
-        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(1)::before { content: "\E80F"; }
-        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(2)::before { content: "\E77B"; }
-        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(3)::before { content: "\E721"; }
-        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(4)::before { content: "\E9D5"; }
-        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(5)::before { content: "\E9D9"; }
-        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(6)::before { content: "\E897"; }
-        div[data-testid="stTabs"] button[role="tab"]:hover {
-            color: var(--win-text);
-            background: rgba(0,0,0,.045);
-        }
-        div[data-testid="stTabs"] button[role="tab"]:active { transform: scale(.985); }
-        div[data-testid="stTabs"] button[role="tab"]:focus-visible {
-            outline: 2px solid rgba(0,103,192,.58);
-            outline-offset: 1px;
-        }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-            color: var(--win-text);
-            background: #fff;
-            box-shadow: 0 1px 3px rgba(0,0,0,.09);
-        }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::before { color: var(--win-accent); }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::after {
-            content: "";
-            position: absolute;
-            left: 50%;
-            bottom: 1px;
-            width: 18px;
-            height: 2px;
-            border-radius: 999px;
-            background: var(--win-accent);
-            transform: translateX(-50%);
-            animation: tabIndicator .18s var(--win-ease) both;
-        }
-        @keyframes tabIndicator {
-            from { width: 6px; opacity: .3; }
-            to { width: 18px; opacity: 1; }
-        }
-        div[data-testid="stTabs"] [role="tabpanel"] {
-            animation: contentReveal .22s var(--win-ease) both;
-        }
-        @keyframes contentReveal {
-            from { opacity: 0; transform: translateY(3px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Content hierarchy */
-        .tab-page-heading {
-            margin: 1px 0 13px;
-        }
-        .tab-page-title, .section-title {
-            color: var(--win-text);
-            font-size: 17px;
-            font-weight: 650;
-            letter-spacing: -.018em;
-            line-height: 1.22;
-        }
-        .tab-page-subtitle, .section-subtitle {
-            margin-top: 3px;
-            color: var(--win-text-secondary);
-            font-size: 12px;
-            line-height: 1.38;
-        }
-        .section-title { font-size: 14px; }
-        .section-subtitle { margin-bottom: 8px; }
-        .compact-heading { margin-top: 0; }
         .section-divider {
             height: 1px;
-            margin: 16px 0 13px;
-            background: var(--win-border);
+            background: rgba(17,24,39,.08);
+            margin: 1.18rem 0 0.85rem 0;
         }
-        .section-block { height: 14px; }
-        .kpi-row-gap { height: 8px; }
-
-        /* KPI cards */
+        .kpi-row-gap { height: 0.58rem; }
         .kpi-card {
-            position: relative;
-            min-height: 104px;
-            padding: 13px 14px 12px;
-            overflow: hidden;
-            background: var(--win-surface);
-            border: 1px solid var(--win-border);
-            border-radius: var(--win-radius-lg);
-            box-shadow: var(--win-shadow-card);
-            transition: transform var(--win-normal) var(--win-ease), box-shadow var(--win-normal) var(--win-ease), border-color var(--win-normal) ease, background var(--win-normal) ease;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 14px 15px 12px 15px;
+            background: rgba(255,255,255,0.88);
+            box-shadow: 0 7px 24px rgba(16, 24, 40, 0.065);
+            min-height: 96px;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
         }
         .kpi-card:hover {
-            transform: translateY(-2px);
-            background: #fff;
-            border-color: rgba(0,0,0,.10);
-            box-shadow: 0 2px 4px rgba(0,0,0,.045), 0 9px 24px rgba(0,0,0,.075);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(16, 24, 40, 0.10);
+            border-color: rgba(0,0,0,0.12);
         }
-        .kpi-accent {
-            position: absolute;
-            inset: 0 auto 0 0;
-            width: 3px;
-            background: var(--win-accent);
+        .kpi-label {font-size: 0.80rem; color:#6B7280; font-weight: 650; margin-bottom: 6px;}
+        .kpi-value {font-size: 1.62rem; color:#111827; font-weight: 800; line-height: 1.08; letter-spacing:-0.03em;}
+        .kpi-help {font-size: 0.74rem; color:#9CA3AF; margin-top: 7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+        .section-title {font-size:1.11rem; font-weight:820; color:#111827; margin: 0 0 0.18rem 0; line-height:1.25;}
+        .section-subtitle {font-size:0.84rem; color:#6B7280; margin: 0 0 0.55rem 0; line-height:1.35;}
+        .small-note {
+            display: inline-block;
+            font-size:0.81rem;
+            color:#6B7280;
+            background: rgba(255,255,255,0.74);
+            border: 1px solid rgba(17,24,39,.07);
+            border-radius: 999px;
+            padding: 6px 10px;
+            margin: 0.15rem 0 0.75rem 0;
         }
-        .kpi-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-        .kpi-label {
-            color: var(--win-text-secondary);
-            font-size: 11px;
-            font-weight: 600;
-            line-height: 1.2;
-        }
-        .kpi-icon {
-            width: 24px;
-            height: 24px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--win-accent);
-            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
-            font-size: 13px;
-            background: var(--win-accent-soft);
-            border-radius: 6px;
-            flex: 0 0 auto;
-        }
-        .kpi-value {
-            margin-top: 7px;
-            color: var(--win-text);
-            font-size: 24px;
-            font-weight: 650;
-            letter-spacing: -.035em;
-            line-height: 1;
-        }
-        .kpi-help {
-            margin-top: 7px;
-            overflow: hidden;
-            color: var(--win-text-tertiary);
-            font-size: 10.5px;
-            line-height: 1.25;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .kpi-tone-danger .kpi-accent { background: #c42b1c; }
-        .kpi-tone-danger .kpi-icon { color: #c42b1c; background: rgba(196,43,28,.09); }
-        .kpi-tone-warning .kpi-accent { background: #d83b01; }
-        .kpi-tone-warning .kpi-icon { color: #b83b00; background: rgba(216,59,1,.09); }
-        .kpi-tone-watch .kpi-accent { background: #9d7b00; }
-        .kpi-tone-watch .kpi-icon { color: #806000; background: rgba(157,123,0,.10); }
-        .kpi-tone-success .kpi-accent { background: #107c10; }
-        .kpi-tone-success .kpi-icon { color: #107c10; background: rgba(16,124,16,.09); }
-        .kpi-tone-neutral .kpi-accent { background: #6b6b6b; }
-        .kpi-tone-neutral .kpi-icon { color: #5c5c5c; background: rgba(0,0,0,.055); }
-
-        /* Selected SKU */
         .selected-sku-card {
+            border: 1px solid rgba(17,24,39,.09);
+            border-radius: 22px;
+            background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(245,245,247,.90));
+            box-shadow: 0 12px 36px rgba(16,24,40,.09);
+            padding: 22px 24px;
+            margin: 0.20rem 0 1.05rem 0;
             position: relative;
-            margin: 0 0 12px;
-            padding: 15px 17px;
             overflow: hidden;
-            background: rgba(255,255,255,.82);
-            border: 1px solid var(--win-border);
-            border-radius: var(--win-radius-lg);
-            box-shadow: var(--win-shadow-card);
         }
         .selected-sku-card::before {
             content: "";
             position: absolute;
-            inset: 0 auto 0 0;
-            width: 3px;
-            background: var(--win-accent);
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 6px;
+            background: #111827;
         }
         .selected-sku-label {
-            color: var(--win-text-secondary);
-            font-size: 10px;
-            font-weight: 650;
-            letter-spacing: .04em;
+            font-size: .82rem;
+            color: #6B7280;
+            font-weight: 800;
             text-transform: uppercase;
+            letter-spacing: .055em;
+            margin-bottom: 8px;
         }
         .selected-sku-value {
-            margin-top: 4px;
-            color: var(--win-text);
-            font-size: 25px;
-            font-weight: 650;
-            letter-spacing: -.035em;
+            font-size: 2.35rem;
+            color: #111827;
+            font-weight: 900;
             line-height: 1.05;
+            letter-spacing: -0.045em;
+            word-break: break-word;
         }
         .selected-sku-description {
-            margin-top: 5px;
-            color: var(--win-text-secondary);
-            font-size: 12px;
+            font-size: 1.12rem;
+            color: #374151;
+            margin-top: 10px;
             line-height: 1.35;
+            font-weight: 650;
+            word-break: break-word;
         }
-
-        /* Streamlit controls */
+        .sidebar-note {
+            background: #FFFFFF;
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 16px;
+            padding: 12px 13px 10px 13px;
+            margin-top: 0.18rem;
+            box-shadow: 0 4px 18px rgba(16,24,40,.05);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+            line-height: 1.42;
+        }
+        .sidebar-note:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(16,24,40,.08);
+            border-color: rgba(17,24,39,.12);
+        }
+        .sidebar-section-title {
+            font-size: .78rem;
+            font-weight: 850;
+            color: #111827;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin: .10rem 0 .42rem 0;
+            line-height: 1.2;
+        }
+        .sidebar-section-gap { height: .18rem; }
+        div[data-testid="stDataFrame"] {border-radius: 14px; overflow: hidden; margin-top: 0.15rem;}
+        div[data-testid="stSidebar"] {background:#F5F5F7; transition: background 0.25s ease;}
+        div[data-testid="stSidebar"] > div:first-child {
+            padding-top: 1.0rem;
+            padding-left: 1.05rem;
+            padding-right: 1.05rem;
+        }
+        div[data-testid="stSidebar"] h1 {
+            font-size: 1.28rem;
+            line-height: 1.16;
+            margin: 0 0 .55rem 0;
+        }
+        div[data-testid="stSidebar"] hr {
+            margin: .72rem 0 .66rem 0;
+        }
+        div[data-testid="stSidebar"] label {
+            font-size: .82rem !important;
+            font-weight: 720 !important;
+            color: #374151 !important;
+            margin-bottom: .20rem !important;
+        }
+        div[data-testid="stSidebar"] .stSelectbox,
+        div[data-testid="stSidebar"] .stMultiSelect,
+        div[data-testid="stSidebar"] .stNumberInput,
+        div[data-testid="stSidebar"] .stTextInput {
+            margin-bottom: .52rem;
+        }
+        div[data-testid="stSidebar"] .stSelectbox > div,
+        div[data-testid="stSidebar"] .stMultiSelect > div,
+        div[data-testid="stSidebar"] .stNumberInput > div,
+        div[data-testid="stSidebar"] .stTextInput > div {
+            margin-top: .10rem;
+        }
+        div[data-testid="stFileUploader"] section {
+            border: 1.5px dashed rgba(17,24,39,.18);
+            border-radius: 16px;
+            background: rgba(255,255,255,0.86);
+            padding: 16px;
+            box-shadow: 0 8px 26px rgba(16,24,40,.06);
+            transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+        }
+        div[data-testid="stFileUploader"] section:hover {
+            transform: translateY(-2px);
+            border-color: rgba(17,24,39,.34);
+            background: #FFFFFF;
+            box-shadow: 0 12px 34px rgba(16,24,40,.10);
+        }
+        .upload-title {
+            font-size: 1.02rem;
+            font-weight: 800;
+            color: #111827;
+            margin-top: .45rem;
+            margin-bottom: .2rem;
+        }
+        .upload-subtitle {
+            font-size: .86rem;
+            color: #6B7280;
+            margin-bottom: .75rem;
+        }
+        .loading-card {
+            margin-top: .85rem;
+            margin-bottom: .65rem;
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 16px;
+            background: rgba(255,255,255,.92);
+            box-shadow: 0 6px 22px rgba(16,24,40,.06);
+            padding: 14px 16px;
+            animation: fadeIn .22s ease-in-out;
+        }
+        .loading-title {font-size:.95rem; font-weight:800; color:#111827;}
+        .loading-subtitle {font-size:.82rem; color:#6B7280; margin-top:4px;}
         .stButton > button, .stDownloadButton > button {
-            min-height: 34px;
-            padding: 6px 12px;
-            color: var(--win-text);
-            font-family: inherit;
-            font-size: 12px;
-            font-weight: 600;
-            background: rgba(255,255,255,.88);
-            border: 1px solid var(--win-border-strong);
-            border-radius: var(--win-radius-md);
-            box-shadow: 0 1px 2px rgba(0,0,0,.035);
-            transition: background var(--win-fast) ease, border-color var(--win-fast) ease, box-shadow var(--win-fast) ease, transform 80ms ease;
+            transition: all 0.18s ease;
+            border-radius: 12px;
         }
         .stButton > button:hover, .stDownloadButton > button:hover {
-            color: var(--win-text);
-            background: #fff;
-            border-color: rgba(0,0,0,.20);
-            box-shadow: 0 2px 7px rgba(0,0,0,.08);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(16, 24, 40, 0.10);
         }
-        .stButton > button:active, .stDownloadButton > button:active {
-            transform: scale(.985);
-            background: #f6f6f6;
+        div[data-testid="stTabs"] button {
+            transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
         }
-        .stButton > button:focus-visible, .stDownloadButton > button:focus-visible {
-            outline: 2px solid rgba(0,103,192,.58);
-            outline-offset: 2px;
-        }
-        .stDownloadButton > button::before {
-            content: "\E896";
-            margin-right: 7px;
-            color: var(--win-accent);
-            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
-            font-size: 12px;
-            font-weight: 400;
-        }
-        section[data-testid="stSidebar"] .stButton > button {
-            color: var(--win-text-secondary);
-            background: transparent;
-            border-color: transparent;
-            box-shadow: none;
-        }
-        section[data-testid="stSidebar"] .stButton { margin-top: 5px; }
-        section[data-testid="stSidebar"] .stButton > button:hover {
-            color: var(--win-text);
-            background: rgba(0,0,0,.045);
-        }
-        div[data-testid="stTextArea"] textarea,
-        div[data-testid="stTextInput"] input,
-        div[data-testid="stDateInput"] input,
-        div[data-testid="stNumberInput"] input,
-        div[data-baseweb="select"] > div {
-            color: var(--win-text);
-            background: rgba(255,255,255,.88);
-            border-color: var(--win-border-strong);
-            border-radius: var(--win-radius-md);
-            transition: border-color var(--win-fast) ease, box-shadow var(--win-fast) ease, background var(--win-fast) ease;
-        }
-        div[data-testid="stTextArea"] textarea:hover,
-        div[data-testid="stTextInput"] input:hover,
-        div[data-testid="stDateInput"] input:hover,
-        div[data-testid="stNumberInput"] input:hover,
-        div[data-baseweb="select"] > div:hover { background: #fff; border-color: rgba(0,0,0,.2); }
-        div[data-testid="stTextArea"] textarea:focus,
-        div[data-testid="stTextInput"] input:focus,
-        div[data-testid="stDateInput"] input:focus,
-        div[data-testid="stNumberInput"] input:focus,
-        div[data-baseweb="select"] > div:focus-within {
-            border-color: var(--win-accent);
-            box-shadow: inset 0 -2px 0 var(--win-accent);
-            outline: none;
-        }
-        div[data-testid="stTextArea"] textarea { min-height: 104px !important; }
-        div[data-testid="stRadio"] label { font-size: 12px !important; }
-        div[data-testid="stCheckbox"] label { font-size: 12px !important; }
-
-        /* Tables */
-        div[data-testid="stDataFrame"] {
-            margin-top: 5px;
-            overflow: hidden;
-            background: rgba(255,255,255,.84);
-            border: 1px solid var(--win-border);
-            border-radius: var(--win-radius-lg);
-            box-shadow: 0 1px 2px rgba(0,0,0,.025);
-            transition: border-color var(--win-normal) ease, box-shadow var(--win-normal) ease;
-        }
-        div[data-testid="stDataFrame"]:hover {
-            border-color: rgba(0,0,0,.10);
-            box-shadow: 0 3px 14px rgba(0,0,0,.05);
-        }
-        div[data-testid="stCaptionContainer"] {
-            margin: 3px 0 2px;
-            color: var(--win-text-tertiary);
-            font-size: 10.5px;
-        }
-
-        /* Expanders and alerts */
         div[data-testid="stExpander"] {
-            margin-bottom: 8px;
-            overflow: hidden;
-            background: rgba(255,255,255,.72);
-            border: 1px solid var(--win-border);
-            border-radius: var(--win-radius-lg);
-            box-shadow: none;
-            transition: background var(--win-normal) ease, border-color var(--win-normal) ease, box-shadow var(--win-normal) ease;
+            transition: box-shadow 0.18s ease, border-color 0.18s ease;
         }
         div[data-testid="stExpander"]:hover {
-            background: rgba(255,255,255,.90);
-            border-color: rgba(0,0,0,.10);
-            box-shadow: 0 2px 10px rgba(0,0,0,.045);
-        }
-        div[data-testid="stExpander"] details[open] { animation: contentReveal .18s var(--win-ease); }
-        div[data-testid="stAlert"] {
-            border-radius: var(--win-radius-lg);
-            border-width: 1px;
-            box-shadow: none;
+            box-shadow: 0 6px 18px rgba(16, 24, 40, 0.06);
         }
 
-        /* Search/status components */
-        .tx-filter-shell, .lookup-hero, .stock-input-example, .loading-stage-card, .ready-stage-card, .empty-state {
-            background: rgba(255,255,255,.78);
-            border: 1px solid var(--win-border);
-            border-radius: var(--win-radius-lg);
-            box-shadow: var(--win-shadow-card);
+        @keyframes uploadPulse {
+            0% { box-shadow: 0 8px 26px rgba(16,24,40,.06), 0 0 0 0 rgba(17,24,39,.10); }
+            50% { box-shadow: 0 14px 38px rgba(16,24,40,.12), 0 0 0 7px rgba(17,24,39,.035); }
+            100% { box-shadow: 0 8px 26px rgba(16,24,40,.06), 0 0 0 0 rgba(17,24,39,.10); }
         }
-        .tx-filter-shell { padding: 14px; margin: 0 0 11px; }
-        .tx-filter-card { min-height: 0; padding: 11px 12px; background: rgba(255,255,255,.66); border: 1px solid var(--win-border); border-radius: 9px; box-shadow: none; }
-        .tx-filter-title { color: var(--win-text); font-size: 15px; font-weight: 650; }
-        .tx-filter-subtitle, .tx-filter-card-subtitle { color: var(--win-text-secondary); font-size: 11px; }
-        .tx-filter-card-title { color: var(--win-text-secondary); font-size: 10px; font-weight: 650; letter-spacing: .04em; }
-        .tx-status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0 8px; }
-        .tx-status-card {
-            min-height: 70px;
-            padding: 10px 11px;
+        @keyframes cardEnter {
+            from { opacity: 0; transform: translateY(10px) scale(.99); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        @keyframes shimmerMove {
+            from { transform: translateX(-100%); }
+            to { transform: translateX(260%); }
+        }
+        @keyframes dotPulse {
+            0%, 80%, 100% { opacity: .25; transform: translateY(0); }
+            40% { opacity: 1; transform: translateY(-3px); }
+        }
+        @keyframes checkPop {
+            0% { transform: scale(.75); opacity: 0; }
+            55% { transform: scale(1.12); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes softGlow {
+            0%, 100% { box-shadow: 0 8px 26px rgba(16,24,40,.06); }
+            50% { box-shadow: 0 14px 34px rgba(16,24,40,.11); }
+        }
+
+        div[data-testid="stFileUploader"] section {
+            animation: uploadPulse 2.2s ease-in-out infinite;
+        }
+        div[data-testid="stFileUploader"] section:hover {
+            animation: none;
+        }
+
+        .upload-hero {
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 18px;
             background: rgba(255,255,255,.82);
-            border: 1px solid var(--win-border);
-            border-radius: 9px;
-            box-shadow: none;
-            transition: transform var(--win-normal) var(--win-ease), background var(--win-normal) ease;
+            box-shadow: 0 7px 22px rgba(16,24,40,.045);
+            padding: 12px 15px;
+            margin: .1rem 0 .55rem 0;
+            animation: cardEnter .35s ease-out;
         }
-        .tx-status-card:hover { transform: translateY(-1px); background: #fff; }
-        .tx-status-label { color: var(--win-text-tertiary); font-size: 9.5px; font-weight: 650; letter-spacing: .04em; }
-        .tx-status-value { margin-top: 4px; color: var(--win-text); font-size: 18px; font-weight: 650; }
-        .tx-status-help { margin-top: 4px; color: var(--win-text-tertiary); font-size: 10px; }
-        .tx-result-box { margin: 8px 0 6px; padding: 10px 11px; background: rgba(255,255,255,.72); border: 1px solid var(--win-border); border-radius: 9px; }
-        .tx-result-box-ok { background: rgba(223,246,227,.64); border-color: rgba(16,124,16,.15); }
-        .tx-result-box-missing { background: rgba(253,231,233,.72); border-color: rgba(196,43,28,.15); }
-        .tx-result-title { color: var(--win-text); font-size: 11px; font-weight: 650; }
-        .tx-pill-wrap { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+        .upload-hero-title {
+            font-size: 1.03rem;
+            font-weight: 850;
+            color: #111827;
+            margin-bottom: 3px;
+        }
+        .upload-hero-subtitle {
+            font-size: .86rem;
+            color: #6B7280;
+        }
+
+        .loading-stage-card, .ready-stage-card {
+            margin-top: .65rem;
+            margin-bottom: .65rem;
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 18px;
+            background: rgba(255,255,255,.94);
+            box-shadow: 0 10px 30px rgba(16,24,40,.08);
+            padding: 16px 18px;
+            animation: cardEnter .28s ease-out, softGlow 1.8s ease-in-out infinite;
+        }
+        .loading-row, .ready-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .loader-ring {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            border: 3px solid rgba(17,24,39,.12);
+            border-top-color: rgba(17,24,39,.72);
+            animation: spin .75s linear infinite;
+            flex: 0 0 auto;
+        }
+        .ready-check {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #111827;
+            color: #FFFFFF;
+            font-weight: 900;
+            animation: checkPop .45s ease-out;
+            flex: 0 0 auto;
+        }
+        .stage-title {
+            font-size: .96rem;
+            font-weight: 850;
+            color: #111827;
+            line-height: 1.25;
+        }
+        .stage-subtitle {
+            font-size: .82rem;
+            color: #6B7280;
+            margin-top: 2px;
+        }
+        .animated-progress {
+            position: relative;
+            overflow: hidden;
+            height: 9px;
+            border-radius: 999px;
+            background: rgba(17,24,39,.08);
+            margin-top: 13px;
+        }
+        .animated-progress::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            width: 45%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, transparent, rgba(17,24,39,.62), transparent);
+            animation: shimmerMove 1.05s ease-in-out infinite;
+        }
+        .dots span {
+            display: inline-block;
+            animation: dotPulse 1.2s ease-in-out infinite;
+        }
+        .dots span:nth-child(2) { animation-delay: .15s; }
+        .dots span:nth-child(3) { animation-delay: .30s; }
+
+        .tx-filter-shell {
+            border: 1px solid rgba(17,24,39,.085);
+            border-radius: 24px;
+            background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(245,245,247,.88));
+            box-shadow: 0 12px 36px rgba(16,24,40,.085);
+            padding: 18px 20px 16px 20px;
+            margin: .22rem 0 .85rem 0;
+            animation: cardEnter .32s ease-out;
+        }
+        .tx-filter-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+        .tx-filter-title {
+            font-size: 1.12rem;
+            font-weight: 880;
+            color: #111827;
+            line-height: 1.18;
+            letter-spacing: -.025em;
+        }
+        .tx-filter-subtitle {
+            font-size: .84rem;
+            color: #6B7280;
+            line-height: 1.36;
+            margin-top: 3px;
+        }
+        .tx-filter-card {
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 18px;
+            background: rgba(255,255,255,.82);
+            padding: 12px 14px 13px 14px;
+            min-height: 236px;
+            box-shadow: 0 7px 22px rgba(16,24,40,.045);
+        }
+        .tx-filter-card-title {
+            font-size: .78rem;
+            font-weight: 860;
+            color: #111827;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin-bottom: 7px;
+        }
+        .tx-filter-card-subtitle {
+            font-size: .79rem;
+            color: #6B7280;
+            line-height: 1.35;
+            margin-bottom: 9px;
+        }
+        .tx-example-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: -1px 0 9px 0;
+        }
         .tx-example-pill, .tx-pill, .tx-pill-ok, .tx-pill-missing, .tx-pill-muted {
             display: inline-flex;
             align-items: center;
-            min-height: 23px;
-            padding: 3px 7px;
-            color: var(--win-text-secondary);
-            font-size: 10.5px;
-            font-weight: 600;
-            background: rgba(0,0,0,.04);
-            border: 1px solid var(--win-border);
+            max-width: 100%;
             border-radius: 999px;
+            padding: 4px 8px;
+            font-size: .76rem;
+            font-weight: 760;
+            line-height: 1.15;
+            white-space: nowrap;
         }
-        .tx-pill-ok { color: #0f6c0f; background: rgba(223,246,227,.8); border-color: rgba(16,124,16,.15); }
-        .tx-pill-missing { color: #a4262c; background: rgba(253,231,233,.9); border-color: rgba(196,43,28,.15); }
-        .tx-pill-muted { color: var(--win-text-secondary); background: rgba(0,0,0,.035); }
-        .stock-input-example { min-height: 0; padding: 11px 12px; box-shadow: none; }
-        .stock-input-code { margin-top: 7px; padding: 8px 9px; color: var(--win-text-secondary); font-size: 10.5px; background: rgba(0,0,0,.035); border: 1px solid var(--win-border); border-radius: 7px; }
-        .stock-do-heading { color: var(--win-text); font-size: 13px; font-weight: 650; }
-        .stock-do-subtitle { color: var(--win-text-secondary); font-size: 11px; }
-        .empty-state { max-width: 620px; margin: 64px auto; padding: 28px; text-align: center; }
-        .empty-state::before {
-            content: "\E898";
-            display: block;
-            margin-bottom: 12px;
-            color: var(--win-accent);
-            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
-            font-size: 30px;
+        .tx-example-pill {
+            color: #374151;
+            background: rgba(17,24,39,.055);
+            border: 1px solid rgba(17,24,39,.06);
         }
-        .empty-state-title { color: var(--win-text); font-size: 17px; font-weight: 650; }
-        .empty-state-text { margin-top: 6px; color: var(--win-text-secondary); font-size: 12px; line-height: 1.45; }
-        .loading-stage-card, .ready-stage-card { padding: 14px 15px; }
-        .loading-row { display: flex; align-items: center; gap: 11px; }
-        .dots span { display: inline-block; animation: dotPulse 1.15s ease-in-out infinite; }
-        .dots span:nth-child(2) { animation-delay: .14s; }
-        .dots span:nth-child(3) { animation-delay: .28s; }
-        @keyframes dotPulse {
-            0%, 75%, 100% { opacity: .25; transform: translateY(0); }
-            38% { opacity: 1; transform: translateY(-1px); }
+        .tx-pill-ok {
+            color: #067647;
+            background: #DFF3E3;
+            border: 1px solid rgba(6,118,71,.14);
         }
-        .tx-filter-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
-        .tx-example-row { display: flex; flex-wrap: wrap; gap: 5px; margin: 5px 0 8px; }
-        .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {
-            color: #fff;
-            background: var(--win-accent);
-            border-color: var(--win-accent);
-            box-shadow: 0 1px 2px rgba(0,0,0,.08);
+        .tx-pill-missing {
+            color: #B42318;
+            background: #FDE2E1;
+            border: 1px solid rgba(180,35,24,.14);
         }
-        .stButton > button[kind="primary"]:hover, .stDownloadButton > button[kind="primary"]:hover {
-            color: #fff;
-            background: var(--win-accent-hover);
-            border-color: var(--win-accent-hover);
+        .tx-pill-muted {
+            color: #4B5563;
+            background: #F3F4F6;
+            border: 1px solid rgba(75,85,99,.12);
         }
-        .stButton > button[kind="primary"]:active, .stDownloadButton > button[kind="primary"]:active {
-            background: var(--win-accent-pressed);
-            border-color: var(--win-accent-pressed);
+        .tx-status-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin: 12px 0 8px 0;
         }
-        .stDownloadButton > button[kind="primary"]::before { color: #fff; }
-        .loader-ring { border-color: rgba(0,103,192,.14); border-top-color: var(--win-accent); }
-        .animated-progress { height: 4px; background: rgba(0,103,192,.10); }
-        .animated-progress::before { background: linear-gradient(90deg, transparent, var(--win-accent), transparent); }
-        .stage-title { color: var(--win-text); font-size: 12px; font-weight: 650; }
-        .stage-subtitle { color: var(--win-text-secondary); font-size: 11px; }
+        .tx-status-card {
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 16px;
+            background: rgba(255,255,255,.84);
+            padding: 10px 12px;
+            min-height: 76px;
+            box-shadow: 0 5px 18px rgba(16,24,40,.04);
+        }
+        .tx-status-label {
+            font-size: .73rem;
+            font-weight: 830;
+            color: #6B7280;
+            text-transform: uppercase;
+            letter-spacing: .055em;
+            margin-bottom: 4px;
+        }
+        .tx-status-value {
+            font-size: 1.24rem;
+            font-weight: 880;
+            color: #111827;
+            letter-spacing: -.03em;
+            line-height: 1.1;
+        }
+        .tx-status-help {
+            font-size: .75rem;
+            color: #9CA3AF;
+            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .tx-result-box {
+            border-radius: 16px;
+            padding: 11px 13px;
+            margin: 10px 0 6px 0;
+            border: 1px solid rgba(17,24,39,.075);
+            background: rgba(255,255,255,.82);
+        }
+        .tx-result-box-ok {
+            background: rgba(223,243,227,.62);
+            border-color: rgba(6,118,71,.14);
+        }
+        .tx-result-box-missing {
+            background: rgba(253,226,225,.62);
+            border-color: rgba(180,35,24,.14);
+        }
+        .tx-result-title {
+            font-size: .84rem;
+            font-weight: 850;
+            color: #111827;
+            margin-bottom: 7px;
+        }
+        .tx-pill-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        div[data-testid="stTextArea"] textarea {
+            border-radius: 14px !important;
+            min-height: 150px !important;
+        }
+        div[data-testid="stDateInput"] input {
+            border-radius: 12px !important;
+        }
 
-        /* Responsive */
-        @media (max-width: 1180px) {
-            .app-header { align-items: flex-start; flex-direction: column; gap: 9px; }
-            .app-meta { justify-content: flex-start; max-width: 100%; margin-left: 45px; }
+        .stock-input-example {
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 16px;
+            background: rgba(255,255,255,.82);
+            padding: 12px 14px;
+            box-shadow: 0 6px 20px rgba(16,24,40,.045);
+            min-height: 174px;
+        }
+        .stock-input-code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: .78rem;
+            line-height: 1.42;
+            color: #374151;
+            background: rgba(17,24,39,.045);
+            border: 1px solid rgba(17,24,39,.055);
+            border-radius: 12px;
+            padding: 9px 10px;
+            white-space: pre-wrap;
+            margin-top: 8px;
+        }
+        .stock-do-heading {
+            font-size: .96rem;
+            font-weight: 860;
+            color: #111827;
+            letter-spacing: -.015em;
+            margin: 4px 0 8px 0;
+        }
+        .stock-do-subtitle {
+            font-size: .80rem;
+            color: #6B7280;
+            line-height: 1.34;
+            margin: -3px 0 10px 0;
+        }
+
+        @media (max-width: 900px) {
             .tx-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .tx-filter-top { flex-direction: column; }
         }
-        @media (max-width: 820px) {
-            :root { --layout-x: 14px; --layout-top: 12px; }
-            .app-header { padding: 12px; border-radius: 12px; }
-            .app-subtitle, .app-meta { margin-left: 0; }
-            .app-meta { display: grid; grid-template-columns: 1fr; width: 100%; }
-            .meta-chip { width: 100%; max-width: none; }
-            div[data-testid="stTabs"] [role="tablist"] { top: 6px; }
-            .kpi-card { min-height: 96px; }
+
+        .main .block-container {
+            padding-top: .55rem;
+            padding-left: 1.25rem;
+            padding-right: 1.25rem;
+            padding-bottom: .95rem;
+            max-width: 1440px;
         }
-        @media (max-width: 520px) {
-            .main .block-container { padding-left: 9px; padding-right: 9px; }
-            .app-product-icon { display: none; }
-            .app-title { font-size: 18px; }
-            .app-subtitle { font-size: 11px; }
-            div[data-testid="stTabs"] button[role="tab"] { padding: 0 10px; }
-            .tx-status-grid { grid-template-columns: 1fr; }
+        .page-header {
+            margin-bottom: .58rem;
+            padding-bottom: .38rem;
         }
-        @media (prefers-reduced-motion: reduce) {
-            html { scroll-behavior: auto; }
-            *, *::before, *::after {
-                animation-duration: .01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: .01ms !important;
-                scroll-behavior: auto !important;
+        .page-title {
+            font-size: 1.68rem;
+            margin-bottom: .12rem;
+        }
+        .page-subtitle {
+            font-size: .84rem;
+        }
+        .upload-hero {
+            padding: 10px 13px;
+            margin: 0 0 .46rem 0;
+            border-radius: 16px;
+        }
+        .upload-hero-title {
+            font-size: .98rem;
+            margin-bottom: 2px;
+        }
+        .upload-hero-subtitle {
+            font-size: .82rem;
+        }
+        div[data-testid="stFileUploader"] section {
+            padding: 12px 14px;
+            border-radius: 15px;
+            animation: none;
+        }
+        .small-note {
+            padding: 5px 9px;
+            margin: .02rem 0 .58rem 0;
+            font-size: .78rem;
+        }
+        .kpi-card {
+            padding: 12px 13px 10px 13px;
+            min-height: 84px;
+            border-radius: 14px;
+        }
+        .kpi-label {
+            font-size: .76rem;
+            margin-bottom: 4px;
+        }
+        .kpi-value {
+            font-size: 1.46rem;
+            line-height: 1.05;
+        }
+        .kpi-help {
+            font-size: .71rem;
+            margin-top: 5px;
+        }
+        .kpi-row-gap {
+            height: .42rem;
+        }
+        .section-block {
+            margin-top: .78rem;
+        }
+        .section-divider {
+            margin: .88rem 0 .62rem 0;
+            background: rgba(17,24,39,.065);
+        }
+        .section-title {
+            font-size: 1.03rem;
+            margin: 0 0 .10rem 0;
+        }
+        .section-subtitle {
+            font-size: .80rem;
+            margin: 0 0 .42rem 0;
+        }
+        .selected-sku-card {
+            padding: 18px 21px;
+            margin: .12rem 0 .82rem 0;
+            border-radius: 19px;
+        }
+        .selected-sku-card::before {
+            width: 5px;
+        }
+        .selected-sku-label {
+            font-size: .76rem;
+            margin-bottom: 6px;
+        }
+        .selected-sku-value {
+            font-size: 2.05rem;
+        }
+        .selected-sku-description {
+            font-size: 1.02rem;
+            margin-top: 7px;
+        }
+        .tx-filter-shell {
+            padding: 14px 16px 12px 16px;
+            margin: .10rem 0 .62rem 0;
+            border-radius: 20px;
+        }
+        .tx-filter-top {
+            margin-bottom: 0;
+        }
+        .tx-filter-title {
+            font-size: 1.04rem;
+        }
+        .tx-filter-subtitle {
+            font-size: .80rem;
+            margin-top: 2px;
+        }
+        .tx-filter-card {
+            padding: 11px 12px;
+            min-height: 0;
+            border-radius: 16px;
+        }
+        .tx-filter-card-title {
+            font-size: .74rem;
+            margin-bottom: 5px;
+        }
+        .tx-filter-card-subtitle {
+            font-size: .76rem;
+            margin-bottom: 7px;
+        }
+        .tx-example-row {
+            gap: 5px;
+            margin: -1px 0 7px 0;
+        }
+        .tx-example-pill, .tx-pill, .tx-pill-ok, .tx-pill-missing, .tx-pill-muted {
+            padding: 3px 7px;
+            font-size: .72rem;
+        }
+        .tx-status-grid {
+            gap: 8px;
+            margin: 9px 0 6px 0;
+        }
+        .tx-status-card {
+            padding: 9px 10px;
+            min-height: 66px;
+            border-radius: 14px;
+        }
+        .tx-status-label {
+            font-size: .69rem;
+            margin-bottom: 3px;
+        }
+        .tx-status-value {
+            font-size: 1.12rem;
+        }
+        .tx-status-help {
+            font-size: .70rem;
+            margin-top: 3px;
+        }
+        .tx-result-box {
+            padding: 9px 11px;
+            margin: 8px 0 5px 0;
+            border-radius: 14px;
+        }
+        .tx-result-title {
+            font-size: .80rem;
+            margin-bottom: 5px;
+        }
+        .tx-pill-wrap {
+            gap: 5px;
+        }
+        .lookup-hero {
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 20px;
+            background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(245,245,247,.9));
+            box-shadow: 0 10px 30px rgba(16,24,40,.065);
+            padding: 16px 18px;
+            margin: .08rem 0 .72rem 0;
+        }
+        .lookup-title {
+            font-size: 1.16rem;
+            font-weight: 880;
+            color: #111827;
+            letter-spacing: -.028em;
+            line-height: 1.18;
+        }
+        .lookup-subtitle {
+            font-size: .82rem;
+            color: #6B7280;
+            line-height: 1.34;
+            margin-top: 4px;
+        }
+        .compact-heading {
+            margin-top: .1rem;
+            margin-bottom: .28rem;
+        }
+        div[data-testid="stDataFrame"] {
+            margin-top: .08rem;
+            border-radius: 13px;
+            box-shadow: 0 4px 16px rgba(16,24,40,.04);
+        }
+        div[data-testid="stTabs"] {
+            margin-top: .10rem;
+        }
+        div[data-testid="stTabs"] [role="tablist"] {
+            gap: 6px;
+            border-bottom: 1px solid rgba(17,24,39,.08);
+        }
+        div[data-testid="stTabs"] button[role="tab"] {
+            padding: 8px 12px;
+            border-radius: 12px 12px 0 0;
+            font-weight: 760;
+        }
+        div[data-testid="stExpander"] {
+            border-radius: 15px;
+            margin-bottom: .42rem;
+        }
+        div[data-testid="stExpander"] details summary {
+            padding-top: 8px;
+            padding-bottom: 8px;
+        }
+        div[data-testid="stTextArea"] textarea {
+            min-height: 118px !important;
+            border-radius: 13px !important;
+        }
+        div[data-testid="stRadio"] {
+            margin-top: -.1rem;
+        }
+        div[data-testid="stDownloadButton"] button, .stButton > button {
+            min-height: 2.45rem;
+            font-weight: 730;
+        }
+        div[data-testid="stCaptionContainer"] {
+            margin-top: -.18rem;
+        }
+
+        .stock-input-example {
+            border: 1px solid rgba(17,24,39,.08);
+            border-radius: 16px;
+            background: rgba(255,255,255,.82);
+            padding: 12px 14px;
+            box-shadow: 0 6px 20px rgba(16,24,40,.045);
+            min-height: 174px;
+        }
+        .stock-input-code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: .78rem;
+            line-height: 1.42;
+            color: #374151;
+            background: rgba(17,24,39,.045);
+            border: 1px solid rgba(17,24,39,.055);
+            border-radius: 12px;
+            padding: 9px 10px;
+            white-space: pre-wrap;
+            margin-top: 8px;
+        }
+        .stock-do-heading {
+            font-size: .96rem;
+            font-weight: 860;
+            color: #111827;
+            letter-spacing: -.015em;
+            margin: 4px 0 8px 0;
+        }
+        .stock-do-subtitle {
+            font-size: .80rem;
+            color: #6B7280;
+            line-height: 1.34;
+            margin: -3px 0 10px 0;
+        }
+
+        @media (max-width: 900px) {
+            .main .block-container {
+                padding-left: .85rem;
+                padding-right: .85rem;
+            }
+            .selected-sku-value {
+                font-size: 1.65rem;
             }
         }
+
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+
 FORMAT_CONFIGS = {
     "Newark": {
         "title": "Inventory Shortage",
-        "sidebar_title": "Inventory Dashboard",
+        "sidebar_title": "📦 Inventory Dashboard",
         "caption": "Upload an Item Activity Report Excel file to generate the shortage dashboard.",
         "upload_label": "Drop Item Activity Report here",
         "placeholder": "Search SKU...",
@@ -817,7 +882,7 @@ FORMAT_CONFIGS = {
     },
     "Carson": {
         "title": "Inventory Shortage",
-        "sidebar_title": "Inventory Dashboard",
+        "sidebar_title": "📦 Inventory Dashboard",
         "caption": "Upload an Item Activity Report Excel file to generate the shortage dashboard.",
         "upload_label": "Drop Item Activity Report here",
         "placeholder": "Search SKU...",
@@ -1632,7 +1697,15 @@ def fmt_date(value):
 
 
 def risk_badge_text(level: str) -> str:
-    return clean_text(level)
+    return {
+        "Data Issue": "⚫ Data Issue",
+        "Critical": "🔴 Critical",
+        "Warning": "🟠 Warning",
+        "Watch": "🟡 Watch",
+        "Healthy": "🟢 Healthy",
+        "No Recent Demand": "⚪ No Recent Demand",
+        "Inactive / No Demand": "⚪ Inactive / No Demand",
+    }.get(level, level)
 
 
 def html_pills(values, class_name, limit=36):
@@ -1647,66 +1720,12 @@ def html_pills(values, class_name, limit=36):
 
 
 def metric_card(label, value, help_text=""):
-    label_text = clean_text(label)
-    tone = "accent"
-    icon_code = "E9D2"
-    label_lower = label_text.lower()
-    if "total sku" in label_lower:
-        icon_code = "E71D"
-    elif any(keyword in label_lower for keyword in ["critical", "shortage", "missing"]):
-        tone = "danger"
-        icon_code = "E7BA"
-    elif "warning" in label_lower:
-        tone = "warning"
-        icon_code = "E814"
-    elif "watch" in label_lower:
-        tone = "watch"
-        icon_code = "E823"
-    elif any(keyword in label_lower for keyword in ["qty in", "inbound", "healthy"]):
-        tone = "success"
-        icon_code = "E73E"
-    elif any(keyword in label_lower for keyword in ["balance", "remaining"]):
-        tone = "neutral"
-        icon_code = "E9D2"
-    elif "forecast" in label_lower:
-        tone = "neutral"
-        icon_code = "E787"
-    elif "risk" in label_lower:
-        icon_code = "E9D9"
-        value_lower = clean_text(value).lower()
-        if "critical" in value_lower or "data issue" in value_lower:
-            tone = "danger"
-        elif "warning" in value_lower:
-            tone = "warning"
-        elif "watch" in value_lower:
-            tone = "watch"
-        elif "healthy" in value_lower:
-            tone = "success"
-        else:
-            tone = "neutral"
-
     st.markdown(
         f"""
-        <div class="kpi-card kpi-tone-{tone}">
-            <div class="kpi-accent" aria-hidden="true"></div>
-            <div class="kpi-topline">
-                <div class="kpi-label">{html.escape(label_text)}</div>
-                <div class="kpi-icon" aria-hidden="true">&#x{icon_code};</div>
-            </div>
-            <div class="kpi-value">{html.escape(clean_text(value))}</div>
-            <div class="kpi-help">{html.escape(clean_text(help_text))}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def tab_page_header(title: str, subtitle: str) -> None:
-    st.markdown(
-        f"""
-        <div class="tab-page-heading">
-            <div class="tab-page-title">{html.escape(title)}</div>
-            <div class="tab-page-subtitle">{html.escape(subtitle)}</div>
+        <div class="kpi-card">
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-value">{value}</div>
+            <div class="kpi-help">{help_text}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -2193,7 +2212,7 @@ def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame, tx_df
 
 def stock_status_badge(value: str) -> str:
     return {
-        "Enough": "Enough",
+        "Enough": "✅ Enough",
         "Shortage": "⚠️ Shortage",
         "Not Found": "Missing SKU",
         "Invalid Qty": "Invalid Qty",
@@ -2575,38 +2594,10 @@ def show_limited_dataframe(df: pd.DataFrame, height: int = 420, limit: int = 500
     total_rows = len(df)
     if show_count:
         if total_rows > limit:
-            st.caption(f"Showing first {limit:,} rows out of {total_rows:,}. Use the export for the complete dataset.")
+            st.caption(f"Showing first {limit:,} rows out of {total_rows:,} rows for faster loading. Download export for full data.")
         else:
-            st.caption(f"{total_rows:,} rows")
-
-    display_df = display_table(df.head(limit))
-    style_df = pd.DataFrame("", index=display_df.index, columns=display_df.columns)
-
-    if "Risk Level" in display_df.columns:
-        risk_styles = {
-            "Data Issue": "background-color:#F0F0F0;color:#323130;font-weight:650;text-align:center;",
-            "Critical": "background-color:#FDE7E9;color:#A4262C;font-weight:650;text-align:center;",
-            "Warning": "background-color:#FFF4CE;color:#8A4B08;font-weight:650;text-align:center;",
-            "Watch": "background-color:#FFF8D6;color:#6B5900;font-weight:650;text-align:center;",
-            "Healthy": "background-color:#DFF6DD;color:#0B6A0B;font-weight:650;text-align:center;",
-            "No Recent Demand": "background-color:#F3F2F1;color:#605E5C;font-weight:600;text-align:center;",
-            "Inactive / No Demand": "background-color:#F3F2F1;color:#797775;font-weight:600;text-align:center;",
-        }
-        for idx, value in display_df["Risk Level"].items():
-            style_df.at[idx, "Risk Level"] = risk_styles.get(clean_text(value), "")
-
-    if "Audit Status" in display_df.columns:
-        audit_styles = {
-            "Pass": "background-color:#DFF6DD;color:#0B6A0B;font-weight:650;text-align:center;",
-            "Review": "background-color:#FDE7E9;color:#A4262C;font-weight:650;text-align:center;",
-            "Partial": "background-color:#FFF4CE;color:#8A4B08;font-weight:650;text-align:center;",
-            "Not Available": "background-color:#F3F2F1;color:#605E5C;font-weight:600;text-align:center;",
-        }
-        for idx, value in display_df["Audit Status"].items():
-            style_df.at[idx, "Audit Status"] = audit_styles.get(clean_text(value), "")
-
-    styled_df = display_df.style.apply(lambda _: style_df, axis=None)
-    st.dataframe(styled_df, use_container_width=True, hide_index=True, height=height)
+            st.caption(f"Showing {total_rows:,} rows.")
+    st.dataframe(display_table(df.head(limit)), use_container_width=True, hide_index=True, height=height)
 
 
 def show_temporary_balance_dataframe(df: pd.DataFrame, height: int = 420, limit: int = 2000, show_count: bool = True):
@@ -2738,24 +2729,10 @@ def reset_transaction_filters(search_key, mode_key, date_key, range_key):
 
 
 restore_persistent_app_state()
-st.sidebar.markdown(
-    """
-    <div class="sidebar-brand">
-        <div class="fluent-grid-icon fluent-grid-icon-small" aria-hidden="true">
-            <span></span><span></span><span></span><span></span>
-        </div>
-        <div class="sidebar-brand-copy">
-            <div class="sidebar-brand-title">Inventory</div>
-            <div class="sidebar-brand-subtitle">Operations Center</div>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+st.sidebar.title("📦 Inventory Dashboard")
 if st.session_state.get("report_format") not in ["Newark", "Carson"]:
     st.session_state["report_format"] = "Newark"
-st.sidebar.markdown('<div class="sidebar-section-title">Workspace</div>', unsafe_allow_html=True)
-format_name = st.sidebar.selectbox("Warehouse", options=["Newark", "Carson"], index=0, key="report_format")
+format_name = st.sidebar.selectbox("Report Format", options=["Newark", "Carson"], index=0, key="report_format")
 update_persistent_app_state(values={"report_format": format_name})
 config = FORMAT_CONFIGS[format_name]
 site_key = safe_format_slug(format_name).lower()
@@ -2763,19 +2740,13 @@ risk_filter_key = f"{site_key}_filter_risk_levels"
 min_usage_filter_key = f"{site_key}_filter_min_usage"
 sku_select_key = f"{site_key}_sku_select_combined"
 
-st.sidebar.markdown('<div class="sidebar-section-title">Data source</div>', unsafe_allow_html=True)
-st.sidebar.markdown('<div class="sidebar-section-help">Upload a report or continue from the last saved file.</div>', unsafe_allow_html=True)
-uploaded = st.sidebar.file_uploader(
-    config["upload_label"],
-    type=["xlsx", "xls"],
-    help=config["help"],
-    label_visibility="collapsed",
-    key=f"{format_name.lower()}_report_uploader",
-)
-report_source_slot = st.sidebar.empty()
+saved_newark = load_persistent_upload("Newark")
+saved_carson = load_persistent_upload("Carson")
+st.sidebar.caption(f"Newark: {saved_newark['file_name'] if saved_newark else 'No saved report'}")
+st.sidebar.caption(f"Carson: {saved_carson['file_name'] if saved_carson else 'No saved report'}")
 
-st.sidebar.markdown('<div class="sidebar-section-title">Inventory filters</div>', unsafe_allow_html=True)
-st.sidebar.markdown('<div class="sidebar-section-help">Filters apply to Overview and the SKU selector.</div>', unsafe_allow_html=True)
+st.sidebar.divider()
+st.sidebar.markdown('<div class="sidebar-section-title">Filters</div>', unsafe_allow_html=True)
 risk_options = ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand", "Inactive / No Demand"]
 if risk_filter_key in st.session_state:
     st.session_state[risk_filter_key] = [value for value in st.session_state[risk_filter_key] if value in risk_options]
@@ -2795,8 +2766,53 @@ min_usage = st.sidebar.number_input(
 update_persistent_app_state(values={risk_filter_key: show_risks, min_usage_filter_key: min_usage})
 
 sku_sidebar_slot = st.sidebar.empty()
-st.sidebar.button("Clear filters", use_container_width=True, on_click=reset_sidebar_filters, args=(site_key,))
+st.sidebar.button("Reset Filters", use_container_width=True, on_click=reset_sidebar_filters, args=(site_key,))
 
+st.sidebar.divider()
+st.sidebar.markdown(
+    """
+    <div class="sidebar-note">
+    <b>Risk Level Notes</b><br>
+    ⚫ <b>Data Issue:</b> Missing or duplicate source rows<br>
+    🔴 <b>Critical:</b> Active 30D demand with no stock, or 0–7 business days remaining<br>
+    🟠 <b>Warning:</b> 8–14 business days remaining<br>
+    🟡 <b>Watch:</b> 15–30 business days remaining<br>
+    🟢 <b>Healthy:</b> More than 30 business days remaining<br>
+    ⚪ <b>No Recent Demand:</b> Active in 90D but no outbound in 30D<br>
+    ⚪ <b>Inactive / No Demand:</b> No outbound in the 90-day data window
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+st.markdown(
+    f"""
+    <div class="page-header">
+        <div class="page-title">{config["title"]}</div>
+        <div class="page-subtitle">{config["caption"]}</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+    <div class="upload-hero">
+        <div class="upload-hero-title">Upload report</div>
+        <div class="upload-hero-subtitle">Drag and drop the Item Activity Report Excel file below.</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+uploaded = st.file_uploader(
+    config["upload_label"],
+    type=["xlsx", "xls"],
+    help=config["help"],
+    label_visibility="collapsed",
+    key=f"{format_name.lower()}_report_uploader",
+)
 
 status_box = st.empty()
 progress_box = st.empty()
@@ -2811,28 +2827,12 @@ if uploaded is not None:
 else:
     saved_upload = load_persistent_upload(format_name)
     if saved_upload is None:
-        st.markdown(
-            f"""
-            <div class="empty-state">
-                <div class="empty-state-title">Upload a {html.escape(format_name)} report</div>
-                <div class="empty-state-text">Use the report uploader in the sidebar. After the first successful upload, the dashboard will automatically reopen the saved report.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        report_source_slot.markdown(
-            '<div class="data-source-card data-source-card-empty"><span>No saved report</span></div>',
-            unsafe_allow_html=True,
-        )
+        st.info(f"No saved {format_name} report yet. Select {format_name}, then upload the matching Item Activity Report once.")
         st.stop()
     file_bytes = saved_upload["file_bytes"]
     active_file_name = saved_upload["file_name"]
     using_saved_report = True
-
-report_source_slot.markdown(
-    f'<div class="data-source-card"><span>{html.escape("Saved" if using_saved_report else "Uploaded")}: {html.escape(active_file_name)}</span></div>',
-    unsafe_allow_html=True,
-)
+    st.caption(f"Using saved {format_name} report: {active_file_name}")
 
 uploaded_key = f"{format_name}|{active_file_name}|{len(file_bytes)}|{stable_file_hash(file_bytes)}"
 loaded_file_keys = st.session_state.setdefault("loaded_file_keys", set())
@@ -2857,17 +2857,34 @@ try:
                 unsafe_allow_html=True,
             )
         progress_bar = progress_box.progress(8, text="Starting upload check...")
+        time.sleep(0.45)
         progress_bar.progress(28, text="Reading Excel file...")
+        time.sleep(0.55)
         progress_bar.progress(52, text="Checking selected report format...")
+        time.sleep(0.55)
 
     model = process_excel_file(file_bytes, format_name, APP_CACHE_VERSION)
 
     if first_file_load:
         progress_bar.progress(76, text="Building shortage dashboard...")
+        time.sleep(0.55)
         progress_bar.progress(100, text="Dashboard ready")
-        status_box.empty()
-        progress_box.empty()
-        st.toast("Dashboard loaded successfully.")
+        time.sleep(0.55)
+        status_box.markdown(
+            """
+            <div class="ready-stage-card">
+                <div class="ready-row">
+                    <div class="ready-check">✓</div>
+                    <div>
+                        <div class="stage-title">Dashboard ready</div>
+                        <div class="stage-subtitle">The file loaded successfully.</div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.toast("Dashboard loaded successfully.", icon="✅")
         loaded_file_keys.add(uploaded_key)
     else:
         status_box.empty()
@@ -2918,106 +2935,77 @@ report_start = model["report_start"]
 report_end = model["report_end"]
 windows = model["windows"]
 
-source_label = "Saved" if using_saved_report else "Uploaded"
 st.markdown(
-    f"""
-    <div class="app-header">
-        <div class="app-header-main">
-            <div class="app-title-cluster">
-                <div class="fluent-grid-icon app-product-icon" aria-hidden="true">
-                    <span></span><span></span><span></span><span></span>
-                </div>
-                <div class="app-title-copy">
-                    <div class="app-eyebrow">{html.escape(format_name)} warehouse</div>
-                    <div class="app-title">Inventory Shortage</div>
-                </div>
-            </div>
-            <div class="app-subtitle">Inventory risk, SKU activity, DO lookup, and outbound stock validation.</div>
-        </div>
-        <div class="app-meta">
-            <span class="meta-chip meta-chip-date meta-chip-accent">{fmt_date(report_start)} – {fmt_date(report_end)}</span>
-            <span class="meta-chip meta-chip-file" title="{html.escape(active_file_name)}">{html.escape(active_file_name)}</span>
-            <span class="meta-chip meta-chip-status">{source_label}</span>
-        </div>
-    </div>
-    """,
+    f"<div class='small-note'>Report Range: <b>{fmt_date(report_start)}</b> to <b>{fmt_date(report_end)}</b></div>",
     unsafe_allow_html=True,
 )
 
-website_tab, sku_tab, do_lookup_tab, stock_check_tab, audit_tab, guide_tab = st.tabs(
-    ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Help"]
-)
+data_issue_count = int((sku_df["Risk Level"] == "Data Issue").sum())
+critical_count = int((sku_df["Risk Level"] == "Critical").sum())
+warning_count = int((sku_df["Risk Level"] == "Warning").sum())
+watch_count = int((sku_df["Risk Level"] == "Watch").sum())
+healthy_count = int((sku_df["Risk Level"] == "Healthy").sum())
+no_demand_count = int((sku_df["Risk Level"] == "No Recent Demand").sum())
+inactive_count = int((sku_df["Risk Level"] == "Inactive / No Demand").sum())
+active_count = int((sku_df["Demand Status"] == "Active").sum())
+dormant_count = int((sku_df["Demand Status"] == "Dormant").sum())
 
-with website_tab:
-    data_issue_count = int((sku_df["Risk Level"] == "Data Issue").sum())
-    critical_count = int((sku_df["Risk Level"] == "Critical").sum())
-    warning_count = int((sku_df["Risk Level"] == "Warning").sum())
-    watch_count = int((sku_df["Risk Level"] == "Watch").sum())
-    healthy_count = int((sku_df["Risk Level"] == "Healthy").sum())
-    no_demand_count = int((sku_df["Risk Level"] == "No Recent Demand").sum())
-    inactive_count = int((sku_df["Risk Level"] == "Inactive / No Demand").sum())
-    active_count = int((sku_df["Demand Status"] == "Active").sum())
-    dormant_count = int((sku_df["Demand Status"] == "Dormant").sum())
+k1, k2, k3, k4 = st.columns(4)
+with k1:
+    metric_card("Total SKUs", fmt_num(len(sku_df)), f"Active: {active_count:,} | Dormant: {dormant_count:,} | Inactive: {inactive_count:,}")
+with k2:
+    metric_card("Critical SKUs", fmt_num(critical_count), f"Data issues: {data_issue_count:,}")
+with k3:
+    metric_card("Warning SKUs", fmt_num(warning_count), "Need ETA / reserve review")
+with k4:
+    metric_card("Watch SKUs", fmt_num(watch_count), "Monitor usage trend")
 
-    export_file_name = report_download_filename(format_name, report_end)
-    transaction_file_name = transaction_download_filename(format_name, report_end)
-    heading_col, export_col_1, export_col_2 = st.columns([3.4, 1.25, 1.25])
-    with heading_col:
-        tab_page_header("Overview", "Review inventory risk first, then move into SKU, DO, or stock validation workflows.")
-    with export_col_1:
-        st.download_button(
-            "Export report",
-            data=to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION),
-            file_name=export_file_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            type="primary",
-            help=f"Download {export_file_name}",
-        )
-    with export_col_2:
-        st.download_button(
-            "Export transactions",
-            data=to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION),
-            file_name=transaction_file_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            help=f"Download {transaction_file_name}",
-        )
+st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-subtitle'>Critical applies only to SKUs with outbound demand in the 30-day data window. Inactive SKUs are hidden by default.</div>", unsafe_allow_html=True)
 
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
-        metric_card("Total SKUs", fmt_num(len(sku_df)), f"Active {active_count:,} · Dormant {dormant_count:,} · Inactive {inactive_count:,}")
-    with k2:
-        metric_card("Critical SKUs", fmt_num(critical_count), f"Data issues {data_issue_count:,}")
-    with k3:
-        metric_card("Warning SKUs", fmt_num(warning_count), "Need ETA or reserve review")
-    with k4:
-        metric_card("Watch SKUs", fmt_num(watch_count), "Monitor usage trend")
+priority_cols = [
+    "SKU",
+    "Description",
+    "Risk Level",
+    "Ending Balance",
+    "Last Outbound Date",
+    "Avg Daily Usage 30D",
+    "Days Remaining",
+    "Forecast Stockout Date",
+]
+priority_display = prepare_display(priority_filtered[priority_cols])
+show_limited_dataframe(priority_display, height=420, limit=250)
 
-    st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
-    st.markdown(
-        f"<div class='section-subtitle'>Showing {len(priority_filtered):,} of {len(sku_df):,} SKUs. Critical applies only to active 30-day demand; inactive SKUs are hidden by default.</div>",
-        unsafe_allow_html=True,
+st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
+export_file_name = report_download_filename(format_name, report_end)
+transaction_file_name = transaction_download_filename(format_name, report_end)
+export_col_1, export_col_2 = st.columns(2)
+with export_col_1:
+    st.download_button(
+        "⬇️ Download Inventory Status Report",
+        data=to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION),
+        file_name=export_file_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
     )
+    st.caption(f"File name: {export_file_name}")
+with export_col_2:
+    st.download_button(
+        "⬇️ Download Full Transaction History",
+        data=to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION),
+        file_name=transaction_file_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+    st.caption(f"File name: {transaction_file_name}")
 
-    priority_cols = [
-        "SKU",
-        "Description",
-        "Risk Level",
-        "Ending Balance",
-        "Last Outbound Date",
-        "Avg Daily Usage 30D",
-        "Days Remaining",
-        "Forecast Stockout Date",
-    ]
-    priority_display = prepare_display(priority_filtered[priority_cols])
-    priority_height = min(620, max(300, 88 + (min(len(priority_display), 16) * 31)))
-    show_limited_dataframe(priority_display, height=priority_height, limit=250, show_count=False)
+st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 
+sku_tab, do_lookup_tab, stock_check_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "DO Lookup", "Stock Check", "Audit", "Guide"])
 
 with sku_tab:
-    tab_page_header("SKU Detail", "Review one SKU, its risk position, source metrics, and complete transaction history.")
     if not selected_sku:
         st.info("Select a SKU to view SKU Detail.")
     elif priority_filtered.empty:
@@ -3058,8 +3046,7 @@ with sku_tab:
             metric_card("Forecast Stockout", fmt_date(selected["Forecast Stockout Date"]), "Business day estimate")
 
         st.markdown("<div class='section-block'></div>", unsafe_allow_html=True)
-        st.markdown('<div class="section-title">SKU metrics</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-subtitle">Demand, usage, and recent activity for the selected item.</div>', unsafe_allow_html=True)
+        st.subheader("SKU metrics")
         detail_cols = [
             "Demand Status",
             "Official Total Inbound",
@@ -3090,8 +3077,7 @@ with sku_tab:
         if not tx_sku.empty:
             tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].copy()
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-            st.markdown('<div class="section-title">Transaction history</div>', unsafe_allow_html=True)
-            st.markdown('<div class="section-subtitle">Search references or filter activity dates without leaving this SKU.</div>', unsafe_allow_html=True)
+            st.subheader("Full transaction history")
             full_tx_cols = [
                 "Excel Row",
                 "Activity Date",
@@ -3384,7 +3370,15 @@ with sku_tab:
 
 
 with do_lookup_tab:
-    tab_page_header("DO Lookup", "Paste one or multiple DO numbers to find matching items across every SKU and review results by DO.")
+    st.markdown(
+        """
+        <div class="lookup-hero">
+            <div class="lookup-title">DO Lookup</div>
+            <div class="lookup-subtitle">Paste one or multiple DO # values to view all matching items across every SKU. Results are grouped by each searched DO # for easy review.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     do_tx = model["tx_df"].copy()
     do_lookup_key = f"do_lookup_{site_key}"
@@ -3617,7 +3611,20 @@ with do_lookup_tab:
 
 
 with stock_check_tab:
-    tab_page_header("Stock Check", "Enter DO demand to calculate temporary remaining stock. Existing report DOs are recognized to prevent double-counting.")
+    st.markdown(
+        """
+        <div class="tx-filter-shell">
+            <div class="tx-filter-top">
+                <div>
+                    <div class="tx-filter-title">Stock Check</div>
+                    <div class="tx-filter-subtitle">Paste DO demand to check current ending balance. Existing DOs found in the report are recognized so stock is not double-counted.</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
     stock_table_version_key = f"stock_check_table_version_{site_key}"
     stock_result_signature_key = f"stock_check_result_signature_{site_key}"
@@ -3829,7 +3836,7 @@ with stock_check_tab:
             download_col_1, download_col_2, download_col_3 = st.columns(3)
             with download_col_1:
                 st.download_button(
-                    "Export detail CSV",
+                    "⬇️ Download Stock Check Detail CSV",
                     data=export_stock_df.to_csv(index=False).encode("utf-8-sig"),
                     file_name=f"{safe_format_slug(format_name)}_Stock_Check_Detail_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
                     mime="text/csv",
@@ -3837,7 +3844,7 @@ with stock_check_tab:
                 )
             with download_col_2:
                 st.download_button(
-                    "Export overview CSV",
+                    "⬇️ Download Stock Check Overview CSV",
                     data=export_overview_df.to_csv(index=False).encode("utf-8-sig"),
                     file_name=f"{safe_format_slug(format_name)}_Stock_Check_Overview_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
                     mime="text/csv",
@@ -3846,7 +3853,7 @@ with stock_check_tab:
             with download_col_3:
                 if not export_temp_df.empty:
                     st.download_button(
-                        "Export temporary balance CSV",
+                        "⬇️ Download Temporary Balance CSV",
                         data=export_temp_df.to_csv(index=False).encode("utf-8-sig"),
                         file_name=f"{safe_format_slug(format_name)}_Temporary_Balance_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
                         mime="text/csv",
@@ -3862,23 +3869,21 @@ with stock_check_tab:
                 show_limited_dataframe(issues_display, height=issue_height, limit=1000, show_count=False)
 
 with audit_tab:
-    tab_page_header("Audit Checks", "Review source completeness, official-row reconciliation, and recent outbound windows.")
+    st.subheader("Audit Checks")
+    st.caption("Review source completeness, balance reconciliation, and demand windows.")
 
     audit_df = model["audit_df"].copy()
     audit_review_df = audit_df[audit_df["Audit Status"] != "Pass"].copy()
     if audit_review_df.empty:
         st.success("All available audit checks passed.")
     else:
-        st.markdown('<div class="section-title">Items requiring review</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-subtitle">Only audit exceptions are shown below.</div>', unsafe_allow_html=True)
+        st.markdown("**Items Requiring Review**")
         show_limited_dataframe(audit_review_df, height=320, limit=500)
 
     with st.expander("Full SKU Reconciliation", expanded=False):
         show_limited_dataframe(audit_df, height=360, limit=1000)
 
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Outbound window audit</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Totals are calculated from dated outbound transaction rows.</div>', unsafe_allow_html=True)
+    st.markdown("**Recent Outbound Audit**")
     r1, r2, r3, r4 = st.columns(4)
     recent_labels = ["Outbound Last 90 Days", "Outbound Last 30 Days", "Outbound Last 14 Days", "Outbound Last 7 Days"]
     recent_card_labels = ["Recent Outbound 90D", "Recent Outbound 30D", "Recent Outbound 14D", "Recent Outbound 7D"]
@@ -3888,11 +3893,10 @@ with audit_tab:
         with col:
             metric_card(card_label, fmt_num(sku_df[label].sum()), f"{fmt_date(start)} - {fmt_date(end)} | {len(valid_dates)} data dates")
 
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Official total rows</div>', unsafe_allow_html=True)
+    st.markdown("**Official Total Rows**")
     show_limited_dataframe(model["official_total_df"], height=260, limit=250)
 
-    st.markdown('<div class="section-title" style="margin-top:14px;">Official ending balance rows</div>', unsafe_allow_html=True)
+    st.markdown("**Official Ending Balance Rows**")
     show_limited_dataframe(model["official_ending_df"], height=260, limit=250)
 
     with st.expander("Not Shipped Rows", expanded=False):
@@ -3906,13 +3910,15 @@ with audit_tab:
             show_limited_dataframe(model["beginning_balance_df"], height=260, limit=250)
 
 with guide_tab:
-    tab_page_header("Help", "The shortest path through the dashboard for daily inventory work.")
+    st.subheader("How to Use")
     st.markdown(
-        """
-        1. Select the **Warehouse** and upload the matching Item Activity Report.
-        2. Start in **Overview** and review Critical, Warning, and Watch items.
-        3. Use **SKU Detail** for item-level activity and **DO Lookup** for order searches.
-        4. Use **Stock Check** before creating outbound orders, then use **Audit** only when source reconciliation is needed.
-        5. Forecast dates exclude weekends and U.S. federal holidays.
-        """
+        f"""
+        1. Select the matching **Report Format** in the sidebar.
+        2. Upload the matching **Item Activity Report** Excel file.
+        3. Review **Critical**, **Warning**, and **Watch** SKUs first. **Inactive / No Demand** SKUs are excluded from the default list.
+        4. Use **SKU Detail** to drill into one SKU and review transaction history.
+        5. Use **DO Lookup** to search one DO # and see every item tied to that DO # / Trans. # across all SKUs.
+        6. Use **Stock Check** to paste new DO demand and verify remaining stock before creating outbound orders.
+        7. Use **Audit** to review missing source rows, duplicate rows, balance differences, Not Shipped rows, and Cancelled rows.
+        8. Forecast dates exclude weekends and U.S. federal holidays.        """
     )
