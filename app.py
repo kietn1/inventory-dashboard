@@ -438,46 +438,71 @@ st.markdown(
         .meta-chip-accent { color: #004f88; background: rgba(224, 240, 255, .82); border-color: rgba(0,103,192,.14); }
         .status-dot { display: none; }
 
-        /* Professional Fluent tab selection */
-        div[data-testid="stTabs"] { margin-top: 0; }
+        div[data-testid="stTabs"] {
+            margin-top: 0;
+        }
         div[data-testid="stTabs"] [role="tablist"] {
             position: sticky;
             top: 8px;
             z-index: 80;
             display: flex;
             align-items: center;
-            gap: 2px;
-            min-height: 44px;
-            margin: 0 0 16px;
-            padding: 4px;
+            justify-content: flex-start;
+            gap: 4px !important;
+            min-height: 46px;
+            margin: 0 0 14px;
+            padding: 5px;
             overflow-x: auto;
+            overflow-y: hidden;
             scrollbar-width: none;
-            background: rgba(248,248,248,.90);
+            background: rgba(248, 248, 248, .90);
             border: 1px solid var(--win-border);
             border-radius: 10px;
-            box-shadow: 0 3px 14px rgba(0,0,0,.055);
+            box-shadow: 0 3px 14px rgba(0, 0, 0, .055);
             backdrop-filter: blur(24px) saturate(135%);
             -webkit-backdrop-filter: blur(24px) saturate(135%);
         }
-        div[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar { display: none; }
+        div[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar {
+            display: none;
+        }
         div[data-testid="stTabs"] button[role="tab"] {
             position: relative;
-            flex: 0 0 auto;
-            min-height: 34px;
-            display: inline-flex;
+            flex: 0 0 auto !important;
+            width: auto !important;
+            min-width: max-content !important;
+            min-height: 36px;
+            display: inline-flex !important;
             align-items: center;
             justify-content: center;
-            gap: 7px;
-            padding: 0 13px;
+            column-gap: 8px !important;
+            margin: 0 !important;
+            padding: 0 15px !important;
             color: var(--win-text-secondary);
             font-family: inherit;
             font-size: 12px;
             font-weight: 600;
             letter-spacing: 0;
+            white-space: nowrap !important;
             background: transparent;
-            border: 0;
+            border: 1px solid transparent !important;
             border-radius: 7px;
-            transition: color var(--win-fast) ease, background var(--win-fast) ease, transform 80ms ease;
+            box-shadow: none;
+            transition:
+                color var(--win-fast) ease,
+                background var(--win-fast) ease,
+                border-color var(--win-fast) ease,
+                box-shadow var(--win-normal) var(--win-ease),
+                transform 80ms ease;
+        }
+        div[data-testid="stTabs"] button[role="tab"] p,
+        div[data-testid="stTabs"] button[role="tab"] span {
+            margin: 0 !important;
+            padding: 0 !important;
+            color: inherit !important;
+            font-size: inherit !important;
+            font-weight: inherit !important;
+            line-height: 1 !important;
+            white-space: nowrap !important;
         }
         div[data-testid="stTabs"] button[role="tab"]::before {
             font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
@@ -485,6 +510,10 @@ st.markdown(
             font-size: 13px;
             font-weight: 400;
             opacity: .88;
+            transition:
+                color var(--win-fast) ease,
+                transform var(--win-normal) var(--win-ease),
+                opacity var(--win-fast) ease;
         }
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(1)::before { content: "\E80F"; }
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(2)::before { content: "\E77B"; }
@@ -492,21 +521,35 @@ st.markdown(
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(4)::before { content: "\E9D5"; }
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(5)::before { content: "\E9D9"; }
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(6)::before { content: "\E897"; }
-        div[data-testid="stTabs"] button[role="tab"]:hover {
+        div[data-testid="stTabs"] button[role="tab"]:hover:not([aria-selected="true"]) {
             color: var(--win-text);
-            background: rgba(0,0,0,.045);
+            background: rgba(0, 0, 0, .045);
+            border-color: rgba(0, 0, 0, .025) !important;
         }
-        div[data-testid="stTabs"] button[role="tab"]:active { transform: scale(.985); }
+        div[data-testid="stTabs"] button[role="tab"]:hover:not([aria-selected="true"])::before {
+            color: var(--win-accent);
+            opacity: 1;
+            transform: translateY(-1px);
+        }
+        div[data-testid="stTabs"] button[role="tab"]:active {
+            transform: scale(.985);
+            background: rgba(0, 0, 0, .065);
+        }
         div[data-testid="stTabs"] button[role="tab"]:focus-visible {
-            outline: 2px solid rgba(0,103,192,.58);
+            outline: 2px solid rgba(0, 103, 192, .62);
             outline-offset: 1px;
         }
         div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-            color: var(--win-text);
-            background: #fff;
-            box-shadow: 0 1px 3px rgba(0,0,0,.09);
+            color: var(--win-text) !important;
+            background: rgba(255, 255, 255, .96) !important;
+            border-color: rgba(0, 0, 0, .065) !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .09);
+            animation: fluentTabSelect var(--win-normal) var(--win-ease) both;
         }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::before { color: var(--win-accent); }
+        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::before {
+            color: var(--win-accent);
+            opacity: 1;
+        }
         div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::after {
             content: "";
             position: absolute;
@@ -517,16 +560,30 @@ st.markdown(
             border-radius: 999px;
             background: var(--win-accent);
             transform: translateX(-50%);
-            animation: tabIndicator .18s var(--win-ease) both;
+            animation: fluentTabIndicator var(--win-normal) var(--win-ease) both;
         }
-        @keyframes tabIndicator {
-            from { width: 6px; opacity: .3; }
+        @keyframes fluentTabSelect {
+            from { opacity: .78; transform: translateY(1px) scale(.99); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes fluentTabIndicator {
+            from { width: 6px; opacity: .35; }
             to { width: 18px; opacity: 1; }
         }
-        div[data-testid="stTabs"] [role="tabpanel"] {
-            animation: contentReveal .22s var(--win-ease) both;
+        div[data-testid="stTabs"] [data-baseweb="tab-highlight"],
+        div[data-testid="stTabs"] [data-baseweb="tab-border"] {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            border: 0 !important;
         }
-        @keyframes contentReveal {
+        div[data-testid="stTabs"] [role="tabpanel"] {
+            position: relative;
+            z-index: 1;
+            padding-top: 2px;
+            animation: fluentContentReveal 200ms var(--win-ease) both;
+        }
+        @keyframes fluentContentReveal {
             from { opacity: 0; transform: translateY(3px); }
             to { opacity: 1; transform: translateY(0); }
         }
@@ -995,7 +1052,8 @@ st.markdown(
             .app-product-icon { display: none; }
             .app-title { font-size: 18px; }
             .app-subtitle { font-size: 11px; }
-            div[data-testid="stTabs"] button[role="tab"] { padding: 0 10px; }
+            div[data-testid="stTabs"] [role="tablist"] { gap: 3px !important; padding-left: 7px; padding-right: 7px; }
+            div[data-testid="stTabs"] button[role="tab"] { padding: 0 13px !important; font-size: 11.5px; }
             .tx-status-grid { grid-template-columns: 1fr; }
         }
         @media (prefers-reduced-motion: reduce) {
