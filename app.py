@@ -79,8 +79,6 @@ st.markdown(
         [data-testid="stHeader"] > div { background: transparent; }
         footer { display: none !important; }
         #MainMenu { display: none !important; }
-        [data-testid="stToolbar"],
-        [data-testid="stHeaderActionElements"],
         [data-testid="stAppDeployButton"],
         [data-testid="stMainMenu"],
         [data-testid="stStatusWidget"],
@@ -111,6 +109,52 @@ st.markdown(
         [data-testid="stHeader"] {
             top: 0 !important;
         }
+        [data-testid="stToolbar"],
+        [data-testid="stHeaderActionElements"] {
+            display: flex !important;
+            visibility: visible !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 0 !important;
+            height: 0 !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            background: transparent !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            pointer-events: none !important;
+        }
+        [data-testid="stToolbar"] button,
+        [data-testid="stToolbar"] a,
+        [data-testid="stHeaderActionElements"] button,
+        [data-testid="stHeaderActionElements"] a {
+            display: none !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
+        [data-testid="stToolbar"] [data-testid="stSidebarCollapsedControl"],
+        [data-testid="stToolbar"] [data-testid="collapsedControl"],
+        [data-testid="stHeaderActionElements"] [data-testid="stSidebarCollapsedControl"],
+        [data-testid="stHeaderActionElements"] [data-testid="collapsedControl"] {
+            display: flex !important;
+            visibility: visible !important;
+            overflow: visible !important;
+            pointer-events: auto !important;
+        }
+        [data-testid="stToolbar"] [data-testid="stSidebarCollapsedControl"] button,
+        [data-testid="stToolbar"] [data-testid="collapsedControl"] button,
+        [data-testid="stHeaderActionElements"] [data-testid="stSidebarCollapsedControl"] button,
+        [data-testid="stHeaderActionElements"] [data-testid="collapsedControl"] button,
+        button[aria-label*="open sidebar" i],
+        button[title*="open sidebar" i] {
+            display: flex !important;
+            visibility: visible !important;
+            pointer-events: auto !important;
+        }
         [data-testid="stAppViewContainer"] > .main,
         [data-testid="stMain"] {
             padding-top: 0 !important;
@@ -119,7 +163,9 @@ st.markdown(
 
         /* Sidebar open control — supports current and older Streamlit test IDs. */
         [data-testid="stSidebarCollapsedControl"],
-        [data-testid="collapsedControl"] {
+        [data-testid="collapsedControl"],
+        button[aria-label*="open sidebar" i],
+        button[title*="open sidebar" i] {
             display: flex !important;
             position: fixed !important;
             top: 8px !important;
@@ -158,30 +204,40 @@ st.markdown(
             pointer-events: auto !important;
         }
         [data-testid="stSidebarCollapsedControl"] svg,
-        [data-testid="collapsedControl"] svg {
+        [data-testid="collapsedControl"] svg,
+        button[aria-label*="open sidebar" i] svg,
+        button[title*="open sidebar" i] svg {
             width: 18px !important;
             height: 18px !important;
             transition: transform var(--win-normal) var(--win-ease) !important;
         }
         [data-testid="stSidebarCollapsedControl"]:hover,
-        [data-testid="collapsedControl"]:hover {
+        [data-testid="collapsedControl"]:hover,
+        button[aria-label*="open sidebar" i]:hover,
+        button[title*="open sidebar" i]:hover {
             background: rgba(255, 255, 255, .96) !important;
             border-color: rgba(0, 103, 192, .32) !important;
             box-shadow: 0 2px 5px rgba(0,0,0,.06), 0 8px 22px rgba(0,0,0,.11) !important;
             transform: translateY(-1px);
         }
         [data-testid="stSidebarCollapsedControl"]:hover svg,
-        [data-testid="collapsedControl"]:hover svg {
+        [data-testid="collapsedControl"]:hover svg,
+        button[aria-label*="open sidebar" i]:hover svg,
+        button[title*="open sidebar" i]:hover svg {
             transform: translateX(1px);
         }
         [data-testid="stSidebarCollapsedControl"]:active,
-        [data-testid="collapsedControl"]:active {
+        [data-testid="collapsedControl"]:active,
+        button[aria-label*="open sidebar" i]:active,
+        button[title*="open sidebar" i]:active {
             background: rgba(245, 245, 245, .98) !important;
             box-shadow: 0 1px 3px rgba(0,0,0,.07) !important;
             transform: translateY(0) scale(.97);
         }
         [data-testid="stSidebarCollapsedControl"]:focus-within,
-        [data-testid="collapsedControl"]:focus-within {
+        [data-testid="collapsedControl"]:focus-within,
+        button[aria-label*="open sidebar" i]:focus-visible,
+        button[title*="open sidebar" i]:focus-visible {
             outline: 2px solid rgba(0, 103, 192, .78);
             outline-offset: 2px;
         }
