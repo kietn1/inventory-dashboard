@@ -96,28 +96,6 @@ st.markdown(
             padding: 6px 10px;
             margin: 0.15rem 0 0.75rem 0;
         }
-        .health-summary-card {
-            border: 1px solid rgba(17,24,39,.08);
-            border-radius: 18px;
-            background: rgba(255,255,255,.92);
-            box-shadow: 0 8px 26px rgba(16,24,40,.055);
-            padding: 14px 16px;
-            margin: 0.10rem 0 0.85rem 0;
-        }
-        .health-summary-title {
-            font-size: .82rem;
-            color: #6B7280;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .055em;
-            margin-bottom: 4px;
-        }
-        .health-summary-text {
-            font-size: 1.02rem;
-            color: #111827;
-            font-weight: 400;
-            line-height: 1.38;
-        }
         .selected-sku-card {
             border: 1px solid rgba(17,24,39,.09);
             border-radius: 22px;
@@ -641,19 +619,6 @@ st.markdown(
             padding: 5px 9px;
             margin: .02rem 0 .58rem 0;
             font-size: .78rem;
-        }
-        .health-summary-card {
-            padding: 12px 14px;
-            margin: .02rem 0 .66rem 0;
-            border-radius: 16px;
-        }
-        .health-summary-title {
-            font-size: .76rem;
-            margin-bottom: 3px;
-        }
-        .health-summary-text {
-            font-size: .98rem;
-            line-height: 1.32;
         }
         .kpi-card {
             padding: 12px 13px 10px 13px;
@@ -2985,25 +2950,6 @@ inactive_count = int((sku_df["Risk Level"] == "Inactive / No Demand").sum())
 active_count = int((sku_df["Demand Status"] == "Active").sum())
 dormant_count = int((sku_df["Demand Status"] == "Dormant").sum())
 
-review_count = data_issue_count + critical_count + warning_count + watch_count
-if review_count > 0:
-    health_summary_detail = (
-        f"{data_issue_count:,} Data Issue, {critical_count:,} Critical, "
-        f"{warning_count:,} Warning, and {watch_count:,} Watch SKUs need review."
-    )
-else:
-    health_summary_detail = "no Data Issue, Critical, Warning, or Watch SKUs need review."
-
-st.markdown(
-    f"""
-    <div class="health-summary-card">
-        <div class="health-summary-title">Inventory Health Summary</div>
-        <div class="health-summary-text"><b>Inventory health:</b> {html.escape(health_summary_detail)}</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
 k1, k2, k3, k4 = st.columns(4)
 with k1:
     metric_card("Total SKUs", fmt_num(len(sku_df)), f"Active: {active_count:,} | Dormant: {dormant_count:,} | Inactive: {inactive_count:,}")
@@ -3013,18 +2959,6 @@ with k3:
     metric_card("Warning SKUs", fmt_num(warning_count), "Need ETA / reserve review")
 with k4:
     metric_card("Watch SKUs", fmt_num(watch_count), "Monitor usage trend")
-
-st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
-
-k5, k6, k7, k8 = st.columns(4)
-with k5:
-    metric_card("Ending Balance", fmt_num(sku_df["Ending Balance"].sum()), "From official Ending Balance rows")
-with k6:
-    metric_card("Official Total Outbound", fmt_num(sku_df["Official Total Outbound"].sum()), f"From {config['total_source']} rows")
-with k7:
-    metric_card("Recent Outbound 30D", fmt_num(sku_df["Outbound Last 30 Days"].sum()), f"{fmt_date(windows['Outbound Last 30 Days'][0])} - {fmt_date(windows['Outbound Last 30 Days'][1])}")
-with k8:
-    metric_card("Recent Outbound 14D / 7D", f"{fmt_num(sku_df['Outbound Last 14 Days'].sum())} / {fmt_num(sku_df['Outbound Last 7 Days'].sum())}", "Dated Qty Out rows only")
 
 st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
 st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
