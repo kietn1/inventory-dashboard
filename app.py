@@ -25,1811 +25,758 @@ st.set_page_config(
 )
 
 st.markdown(
-    """
+    r"""
     <style>
-        :root { --soft-bg:#F5F5F7; --card:#FFFFFF; --text:#111827; --muted:#6B7280; --line:rgba(17,24,39,.10); }
-        .main .block-container {
-            padding-top: 0.65rem;
-            padding-bottom: 1.15rem;
-            max-width: 1500px;
-            animation: fadeIn 0.35s ease-in-out;
+        :root {
+            --win-accent: #0067c0;
+            --win-accent-hover: #005a9e;
+            --win-accent-pressed: #004578;
+            --win-accent-soft: rgba(0, 103, 192, .10);
+            --win-text: #1f1f1f;
+            --win-text-secondary: #5d5d5d;
+            --win-text-tertiary: #737373;
+            --win-bg: #f3f3f3;
+            --win-surface: rgba(255, 255, 255, .88);
+            --win-surface-solid: #ffffff;
+            --win-surface-subtle: rgba(249, 249, 249, .82);
+            --win-border: rgba(0, 0, 0, .0578);
+            --win-border-strong: rgba(0, 0, 0, .12);
+            --win-shadow-card: 0 1px 2px rgba(0,0,0,.04), 0 4px 14px rgba(0,0,0,.055);
+            --win-shadow-flyout: 0 8px 28px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
+            --win-radius-sm: 6px;
+            --win-radius-md: 8px;
+            --win-radius-lg: 12px;
+            --win-radius-xl: 16px;
+            --win-ease: cubic-bezier(.1,.9,.2,1);
+            --win-fast: 120ms;
+            --win-normal: 180ms;
+            --layout-top: 18px;
+            --layout-x: 24px;
+            --sidebar-width: 292px;
         }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(6px); }
+
+        html { scroll-behavior: smooth; }
+        body, .stApp {
+            font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--win-text);
+            background:
+                radial-gradient(900px 440px at 82% -10%, rgba(105, 180, 255, .18), transparent 64%),
+                radial-gradient(700px 360px at 10% 0%, rgba(188, 222, 255, .13), transparent 62%),
+                var(--win-bg);
+        }
+        .stApp { min-height: 100vh; }
+        [data-testid="stHeader"], footer { display: none; }
+        #MainMenu { visibility: hidden; }
+
+        .main .block-container {
+            max-width: 1660px;
+            padding: var(--layout-top) var(--layout-x) 36px;
+            animation: pageReveal .36s var(--win-ease) both;
+        }
+        @keyframes pageReveal {
+            from { opacity: 0; transform: translateY(5px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        header, footer {visibility: hidden;}
-        .page-header {
-            margin: 0 0 0.75rem 0;
-            padding-bottom: 0.45rem;
-            border-bottom: 1px solid rgba(17,24,39,.07);
-        }
-        .page-title {
-            font-size: 1.82rem;
-            font-weight: 850;
-            color: #111827;
-            letter-spacing: -0.035em;
-            line-height: 1.12;
-            margin-bottom: 0.18rem;
-        }
-        .page-subtitle {
-            font-size: 0.88rem;
-            color: #6B7280;
-            line-height: 1.35;
-        }
-        .section-block {
-            margin-top: 1.05rem;
-        }
-        .section-divider {
-            height: 1px;
-            background: rgba(17,24,39,.08);
-            margin: 1.18rem 0 0.85rem 0;
-        }
-        .kpi-row-gap { height: 0.58rem; }
-        .kpi-card {
-            border: 1px solid var(--line);
-            border-radius: 16px;
-            padding: 14px 15px 12px 15px;
-            background: rgba(255,255,255,0.88);
-            box-shadow: 0 7px 24px rgba(16, 24, 40, 0.065);
-            min-height: 96px;
-            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-        }
-        .kpi-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 30px rgba(16, 24, 40, 0.10);
-            border-color: rgba(0,0,0,0.12);
-        }
-        .kpi-label {font-size: 0.80rem; color:#6B7280; font-weight: 650; margin-bottom: 6px;}
-        .kpi-value {font-size: 1.62rem; color:#111827; font-weight: 800; line-height: 1.08; letter-spacing:-0.03em;}
-        .kpi-help {font-size: 0.74rem; color:#9CA3AF; margin-top: 7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-        .section-title {font-size:1.11rem; font-weight:820; color:#111827; margin: 0 0 0.18rem 0; line-height:1.25;}
-        .section-subtitle {font-size:0.84rem; color:#6B7280; margin: 0 0 0.55rem 0; line-height:1.35;}
-        .small-note {
-            display: inline-block;
-            font-size:0.81rem;
-            color:#6B7280;
-            background: rgba(255,255,255,0.74);
-            border: 1px solid rgba(17,24,39,.07);
-            border-radius: 999px;
-            padding: 6px 10px;
-            margin: 0.15rem 0 0.75rem 0;
-        }
-        .selected-sku-card {
-            border: 1px solid rgba(17,24,39,.09);
-            border-radius: 22px;
-            background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(245,245,247,.90));
-            box-shadow: 0 12px 36px rgba(16,24,40,.09);
-            padding: 22px 24px;
-            margin: 0.20rem 0 1.05rem 0;
-            position: relative;
-            overflow: hidden;
-        }
-        .selected-sku-card::before {
-            content: "";
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 6px;
-            background: #111827;
-        }
-        .selected-sku-label {
-            font-size: .82rem;
-            color: #6B7280;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .055em;
-            margin-bottom: 8px;
-        }
-        .selected-sku-value {
-            font-size: 2.35rem;
-            color: #111827;
-            font-weight: 900;
-            line-height: 1.05;
-            letter-spacing: -0.045em;
-            word-break: break-word;
-        }
-        .selected-sku-description {
-            font-size: 1.12rem;
-            color: #374151;
-            margin-top: 10px;
-            line-height: 1.35;
-            font-weight: 650;
-            word-break: break-word;
-        }
-        .sidebar-note {
-            background: #FFFFFF;
-            border: 1px solid rgba(17,24,39,.08);
-            border-radius: 16px;
-            padding: 12px 13px 10px 13px;
-            margin-top: 0.18rem;
-            box-shadow: 0 4px 18px rgba(16,24,40,.05);
-            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-            line-height: 1.42;
-        }
-        .sidebar-note:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(16,24,40,.08);
-            border-color: rgba(17,24,39,.12);
-        }
-        .sidebar-section-title {
-            font-size: .78rem;
-            font-weight: 850;
-            color: #111827;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            margin: .10rem 0 .42rem 0;
-            line-height: 1.2;
-        }
-        .sidebar-section-gap { height: .18rem; }
-        div[data-testid="stDataFrame"] {border-radius: 14px; overflow: hidden; margin-top: 0.15rem;}
-        div[data-testid="stSidebar"] {background:#F5F5F7; transition: background 0.25s ease;}
-        div[data-testid="stSidebar"] > div:first-child {
-            padding-top: 1.0rem;
-            padding-left: 1.05rem;
-            padding-right: 1.05rem;
-        }
-        div[data-testid="stSidebar"] h1 {
-            font-size: 1.28rem;
-            line-height: 1.16;
-            margin: 0 0 .55rem 0;
-        }
-        div[data-testid="stSidebar"] hr {
-            margin: .72rem 0 .66rem 0;
-        }
-        div[data-testid="stSidebar"] label {
-            font-size: .82rem !important;
-            font-weight: 720 !important;
-            color: #374151 !important;
-            margin-bottom: .20rem !important;
-        }
-        div[data-testid="stSidebar"] .stSelectbox,
-        div[data-testid="stSidebar"] .stMultiSelect,
-        div[data-testid="stSidebar"] .stNumberInput,
-        div[data-testid="stSidebar"] .stTextInput {
-            margin-bottom: .52rem;
-        }
-        div[data-testid="stSidebar"] .stSelectbox > div,
-        div[data-testid="stSidebar"] .stMultiSelect > div,
-        div[data-testid="stSidebar"] .stNumberInput > div,
-        div[data-testid="stSidebar"] .stTextInput > div {
-            margin-top: .10rem;
-        }
-        div[data-testid="stFileUploader"] section {
-            border: 1.5px dashed rgba(17,24,39,.18);
-            border-radius: 16px;
-            background: rgba(255,255,255,0.86);
-            padding: 16px;
-            box-shadow: 0 8px 26px rgba(16,24,40,.06);
-            transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
-        }
-        div[data-testid="stFileUploader"] section:hover {
-            transform: translateY(-2px);
-            border-color: rgba(17,24,39,.34);
-            background: #FFFFFF;
-            box-shadow: 0 12px 34px rgba(16,24,40,.10);
-        }
-        .upload-title {
-            font-size: 1.02rem;
-            font-weight: 800;
-            color: #111827;
-            margin-top: .45rem;
-            margin-bottom: .2rem;
-        }
-        .upload-subtitle {
-            font-size: .86rem;
-            color: #6B7280;
-            margin-bottom: .75rem;
-        }
-        .loading-card {
-            margin-top: .85rem;
-            margin-bottom: .65rem;
-            border: 1px solid rgba(17,24,39,.08);
-            border-radius: 16px;
-            background: rgba(255,255,255,.92);
-            box-shadow: 0 6px 22px rgba(16,24,40,.06);
-            padding: 14px 16px;
-            animation: fadeIn .22s ease-in-out;
-        }
-        .loading-title {font-size:.95rem; font-weight:800; color:#111827;}
-        .loading-subtitle {font-size:.82rem; color:#6B7280; margin-top:4px;}
-        .stButton > button, .stDownloadButton > button {
-            transition: all 0.18s ease;
-            border-radius: 12px;
-        }
-        .stButton > button:hover, .stDownloadButton > button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 6px 18px rgba(16, 24, 40, 0.10);
-        }
-        div[data-testid="stTabs"] button {
-            transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
-        }
-        div[data-testid="stExpander"] {
-            transition: box-shadow 0.18s ease, border-color 0.18s ease;
-        }
-        div[data-testid="stExpander"]:hover {
-            box-shadow: 0 6px 18px rgba(16, 24, 40, 0.06);
-        }
 
-        @keyframes uploadPulse {
-            0% { box-shadow: 0 8px 26px rgba(16,24,40,.06), 0 0 0 0 rgba(17,24,39,.10); }
-            50% { box-shadow: 0 14px 38px rgba(16,24,40,.12), 0 0 0 7px rgba(17,24,39,.035); }
-            100% { box-shadow: 0 8px 26px rgba(16,24,40,.06), 0 0 0 0 rgba(17,24,39,.10); }
+        /* Sidebar: same top rhythm and surface language as the workspace */
+        section[data-testid="stSidebar"] {
+            width: var(--sidebar-width) !important;
+            min-width: var(--sidebar-width) !important;
+            background: rgba(248, 248, 248, .88);
+            border-right: 1px solid var(--win-border);
+            backdrop-filter: blur(28px) saturate(125%);
+            -webkit-backdrop-filter: blur(28px) saturate(125%);
         }
-        @keyframes cardEnter {
-            from { opacity: 0; transform: translateY(10px) scale(.99); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
+        section[data-testid="stSidebar"] > div {
+            width: var(--sidebar-width) !important;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+            padding: var(--layout-top) 16px 24px;
         }
-        @keyframes shimmerMove {
-            from { transform: translateX(-100%); }
-            to { transform: translateX(260%); }
+        section[data-testid="stSidebar"] hr {
+            margin: 14px 0;
+            border-color: var(--win-border);
         }
-        @keyframes dotPulse {
-            0%, 80%, 100% { opacity: .25; transform: translateY(0); }
-            40% { opacity: 1; transform: translateY(-3px); }
-        }
-        @keyframes checkPop {
-            0% { transform: scale(.75); opacity: 0; }
-            55% { transform: scale(1.12); opacity: 1; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes softGlow {
-            0%, 100% { box-shadow: 0 8px 26px rgba(16,24,40,.06); }
-            50% { box-shadow: 0 14px 34px rgba(16,24,40,.11); }
-        }
-
-        div[data-testid="stFileUploader"] section {
-            animation: uploadPulse 2.2s ease-in-out infinite;
-        }
-        div[data-testid="stFileUploader"] section:hover {
-            animation: none;
-        }
-
-        .upload-hero {
-            border: 1px solid rgba(17,24,39,.08);
-            border-radius: 18px;
-            background: rgba(255,255,255,.82);
-            box-shadow: 0 7px 22px rgba(16,24,40,.045);
-            padding: 12px 15px;
-            margin: .1rem 0 .55rem 0;
-            animation: cardEnter .35s ease-out;
-        }
-        .upload-hero-title {
-            font-size: 1.03rem;
-            font-weight: 850;
-            color: #111827;
-            margin-bottom: 3px;
-        }
-        .upload-hero-subtitle {
-            font-size: .86rem;
-            color: #6B7280;
-        }
-
-        .loading-stage-card, .ready-stage-card {
-            margin-top: .65rem;
-            margin-bottom: .65rem;
-            border: 1px solid rgba(17,24,39,.08);
-            border-radius: 18px;
-            background: rgba(255,255,255,.94);
-            box-shadow: 0 10px 30px rgba(16,24,40,.08);
-            padding: 16px 18px;
-            animation: cardEnter .28s ease-out, softGlow 1.8s ease-in-out infinite;
-        }
-        .loading-row, .ready-row {
+        .sidebar-brand {
+            height: 72px;
             display: flex;
             align-items: center;
             gap: 12px;
+            padding: 0 6px;
+            margin: 0 0 14px;
         }
-        .loader-ring {
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            border: 3px solid rgba(17,24,39,.12);
-            border-top-color: rgba(17,24,39,.72);
-            animation: spin .75s linear infinite;
-            flex: 0 0 auto;
-        }
-        .ready-check {
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #111827;
-            color: #FFFFFF;
-            font-weight: 900;
-            animation: checkPop .45s ease-out;
-            flex: 0 0 auto;
-        }
-        .stage-title {
-            font-size: .96rem;
-            font-weight: 850;
-            color: #111827;
-            line-height: 1.25;
-        }
-        .stage-subtitle {
-            font-size: .82rem;
-            color: #6B7280;
-            margin-top: 2px;
-        }
-        .animated-progress {
-            position: relative;
-            overflow: hidden;
-            height: 9px;
-            border-radius: 999px;
-            background: rgba(17,24,39,.08);
-            margin-top: 13px;
-        }
-        .animated-progress::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            width: 45%;
-            border-radius: 999px;
-            background: linear-gradient(90deg, transparent, rgba(17,24,39,.62), transparent);
-            animation: shimmerMove 1.05s ease-in-out infinite;
-        }
-        .dots span {
-            display: inline-block;
-            animation: dotPulse 1.2s ease-in-out infinite;
-        }
-        .dots span:nth-child(2) { animation-delay: .15s; }
-        .dots span:nth-child(3) { animation-delay: .30s; }
-
-        .tx-filter-shell {
-            border: 1px solid rgba(17,24,39,.085);
-            border-radius: 24px;
-            background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(245,245,247,.88));
-            box-shadow: 0 12px 36px rgba(16,24,40,.085);
-            padding: 18px 20px 16px 20px;
-            margin: .22rem 0 .85rem 0;
-            animation: cardEnter .32s ease-out;
-        }
-        .tx-filter-top {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 16px;
-            margin-bottom: 12px;
-        }
-        .tx-filter-title {
-            font-size: 1.12rem;
-            font-weight: 880;
-            color: #111827;
-            line-height: 1.18;
-            letter-spacing: -.025em;
-        }
-        .tx-filter-subtitle {
-            font-size: .84rem;
-            color: #6B7280;
-            line-height: 1.36;
-            margin-top: 3px;
-        }
-        .tx-filter-card {
-            border: 1px solid rgba(17,24,39,.08);
-            border-radius: 18px;
-            background: rgba(255,255,255,.82);
-            padding: 12px 14px 13px 14px;
-            min-height: 236px;
-            box-shadow: 0 7px 22px rgba(16,24,40,.045);
-        }
-        .tx-filter-card-title {
-            font-size: .78rem;
-            font-weight: 860;
-            color: #111827;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            margin-bottom: 7px;
-        }
-        .tx-filter-card-subtitle {
-            font-size: .79rem;
-            color: #6B7280;
-            line-height: 1.35;
-            margin-bottom: 9px;
-        }
-        .tx-example-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin: -1px 0 9px 0;
-        }
-        .tx-example-pill, .tx-pill, .tx-pill-ok, .tx-pill-missing, .tx-pill-muted {
-            display: inline-flex;
-            align-items: center;
-            max-width: 100%;
-            border-radius: 999px;
-            padding: 4px 8px;
-            font-size: .76rem;
-            font-weight: 760;
-            line-height: 1.15;
-            white-space: nowrap;
-        }
-        .tx-example-pill {
-            color: #374151;
-            background: rgba(17,24,39,.055);
-            border: 1px solid rgba(17,24,39,.06);
-        }
-        .tx-pill-ok {
-            color: #067647;
-            background: #DFF3E3;
-            border: 1px solid rgba(6,118,71,.14);
-        }
-        .tx-pill-missing {
-            color: #B42318;
-            background: #FDE2E1;
-            border: 1px solid rgba(180,35,24,.14);
-        }
-        .tx-pill-muted {
-            color: #4B5563;
-            background: #F3F4F6;
-            border: 1px solid rgba(75,85,99,.12);
-        }
-        .tx-status-grid {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
-            margin: 12px 0 8px 0;
-        }
-        .tx-status-card {
-            border: 1px solid rgba(17,24,39,.08);
-            border-radius: 16px;
-            background: rgba(255,255,255,.84);
-            padding: 10px 12px;
-            min-height: 76px;
-            box-shadow: 0 5px 18px rgba(16,24,40,.04);
-        }
-        .tx-status-label {
-            font-size: .73rem;
-            font-weight: 830;
-            color: #6B7280;
-            text-transform: uppercase;
-            letter-spacing: .055em;
-            margin-bottom: 4px;
-        }
-        .tx-status-value {
-            font-size: 1.24rem;
-            font-weight: 880;
-            color: #111827;
-            letter-spacing: -.03em;
-            line-height: 1.1;
-        }
-        .tx-status-help {
-            font-size: .75rem;
-            color: #9CA3AF;
-            margin-top: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .tx-result-box {
-            border-radius: 16px;
-            padding: 11px 13px;
-            margin: 10px 0 6px 0;
-            border: 1px solid rgba(17,24,39,.075);
-            background: rgba(255,255,255,.82);
-        }
-        .tx-result-box-ok {
-            background: rgba(223,243,227,.62);
-            border-color: rgba(6,118,71,.14);
-        }
-        .tx-result-box-missing {
-            background: rgba(253,226,225,.62);
-            border-color: rgba(180,35,24,.14);
-        }
-        .tx-result-title {
-            font-size: .84rem;
-            font-weight: 850;
-            color: #111827;
-            margin-bottom: 7px;
-        }
-        .tx-pill-wrap {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-        div[data-testid="stTextArea"] textarea {
-            border-radius: 14px !important;
-            min-height: 150px !important;
-        }
-        div[data-testid="stDateInput"] input {
-            border-radius: 12px !important;
-        }
-
-        .stock-input-example {
-            border: 1px solid rgba(17,24,39,.08);
-            border-radius: 16px;
-            background: rgba(255,255,255,.82);
-            padding: 12px 14px;
-            box-shadow: 0 6px 20px rgba(16,24,40,.045);
-            min-height: 174px;
-        }
-        .stock-input-code {
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            font-size: .78rem;
-            line-height: 1.42;
-            color: #374151;
-            background: rgba(17,24,39,.045);
-            border: 1px solid rgba(17,24,39,.055);
-            border-radius: 12px;
-            padding: 9px 10px;
-            white-space: pre-wrap;
-            margin-top: 8px;
-        }
-        .stock-do-heading {
-            font-size: .96rem;
-            font-weight: 860;
-            color: #111827;
+        .sidebar-brand-copy { min-width: 0; }
+        .sidebar-brand-title {
+            color: var(--win-text);
+            font-size: 15px;
+            font-weight: 650;
             letter-spacing: -.015em;
-            margin: 4px 0 8px 0;
-        }
-        .stock-do-subtitle {
-            font-size: .80rem;
-            color: #6B7280;
-            line-height: 1.34;
-            margin: -3px 0 10px 0;
-        }
-
-        @media (max-width: 900px) {
-            .tx-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .tx-filter-top { flex-direction: column; }
-        }
-
-        .main .block-container {
-            padding-top: .55rem;
-            padding-left: 1.25rem;
-            padding-right: 1.25rem;
-            padding-bottom: .95rem;
-            max-width: 1440px;
-        }
-        .page-header {
-            margin-bottom: .58rem;
-            padding-bottom: .38rem;
-        }
-        .page-title {
-            font-size: 1.68rem;
-            margin-bottom: .12rem;
-        }
-        .page-subtitle {
-            font-size: .84rem;
-        }
-        .upload-hero {
-            padding: 10px 13px;
-            margin: 0 0 .46rem 0;
-            border-radius: 16px;
-        }
-        .upload-hero-title {
-            font-size: .98rem;
-            margin-bottom: 2px;
-        }
-        .upload-hero-subtitle {
-            font-size: .82rem;
-        }
-        div[data-testid="stFileUploader"] section {
-            padding: 12px 14px;
-            border-radius: 15px;
-            animation: none;
-        }
-        .small-note {
-            padding: 5px 9px;
-            margin: .02rem 0 .58rem 0;
-            font-size: .78rem;
-        }
-        .kpi-card {
-            padding: 12px 13px 10px 13px;
-            min-height: 84px;
-            border-radius: 14px;
-        }
-        .kpi-label {
-            font-size: .76rem;
-            margin-bottom: 4px;
-        }
-        .kpi-value {
-            font-size: 1.46rem;
-            line-height: 1.05;
-        }
-        .kpi-help {
-            font-size: .71rem;
-            margin-top: 5px;
-        }
-        .kpi-row-gap {
-            height: .42rem;
-        }
-        .section-block {
-            margin-top: .78rem;
-        }
-        .section-divider {
-            margin: .88rem 0 .62rem 0;
-            background: rgba(17,24,39,.065);
-        }
-        .section-title {
-            font-size: 1.03rem;
-            margin: 0 0 .10rem 0;
-        }
-        .section-subtitle {
-            font-size: .80rem;
-            margin: 0 0 .42rem 0;
-        }
-        .selected-sku-card {
-            padding: 18px 21px;
-            margin: .12rem 0 .82rem 0;
-            border-radius: 19px;
-        }
-        .selected-sku-card::before {
-            width: 5px;
-        }
-        .selected-sku-label {
-            font-size: .76rem;
-            margin-bottom: 6px;
-        }
-        .selected-sku-value {
-            font-size: 2.05rem;
-        }
-        .selected-sku-description {
-            font-size: 1.02rem;
-            margin-top: 7px;
-        }
-        .tx-filter-shell {
-            padding: 14px 16px 12px 16px;
-            margin: .10rem 0 .62rem 0;
-            border-radius: 20px;
-        }
-        .tx-filter-top {
-            margin-bottom: 0;
-        }
-        .tx-filter-title {
-            font-size: 1.04rem;
-        }
-        .tx-filter-subtitle {
-            font-size: .80rem;
-            margin-top: 2px;
-        }
-        .tx-filter-card {
-            padding: 11px 12px;
-            min-height: 0;
-            border-radius: 16px;
-        }
-        .tx-filter-card-title {
-            font-size: .74rem;
-            margin-bottom: 5px;
-        }
-        .tx-filter-card-subtitle {
-            font-size: .76rem;
-            margin-bottom: 7px;
-        }
-        .tx-example-row {
-            gap: 5px;
-            margin: -1px 0 7px 0;
-        }
-        .tx-example-pill, .tx-pill, .tx-pill-ok, .tx-pill-missing, .tx-pill-muted {
-            padding: 3px 7px;
-            font-size: .72rem;
-        }
-        .tx-status-grid {
-            gap: 8px;
-            margin: 9px 0 6px 0;
-        }
-        .tx-status-card {
-            padding: 9px 10px;
-            min-height: 66px;
-            border-radius: 14px;
-        }
-        .tx-status-label {
-            font-size: .69rem;
-            margin-bottom: 3px;
-        }
-        .tx-status-value {
-            font-size: 1.12rem;
-        }
-        .tx-status-help {
-            font-size: .70rem;
-            margin-top: 3px;
-        }
-        .tx-result-box {
-            padding: 9px 11px;
-            margin: 8px 0 5px 0;
-            border-radius: 14px;
-        }
-        .tx-result-title {
-            font-size: .80rem;
-            margin-bottom: 5px;
-        }
-        .tx-pill-wrap {
-            gap: 5px;
-        }
-        .lookup-hero {
-            border: 1px solid rgba(17,24,39,.08);
-            border-radius: 20px;
-            background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(245,245,247,.9));
-            box-shadow: 0 10px 30px rgba(16,24,40,.065);
-            padding: 16px 18px;
-            margin: .08rem 0 .72rem 0;
-        }
-        .lookup-title {
-            font-size: 1.16rem;
-            font-weight: 880;
-            color: #111827;
-            letter-spacing: -.028em;
-            line-height: 1.18;
-        }
-        .lookup-subtitle {
-            font-size: .82rem;
-            color: #6B7280;
-            line-height: 1.34;
-            margin-top: 4px;
-        }
-        .compact-heading {
-            margin-top: .1rem;
-            margin-bottom: .28rem;
-        }
-        div[data-testid="stDataFrame"] {
-            margin-top: .08rem;
-            border-radius: 13px;
-            box-shadow: 0 4px 16px rgba(16,24,40,.04);
-        }
-        div[data-testid="stTabs"] {
-            margin-top: .10rem;
-        }
-        div[data-testid="stTabs"] [role="tablist"] {
-            gap: 6px;
-            border-bottom: 1px solid rgba(17,24,39,.08);
-        }
-        div[data-testid="stTabs"] button[role="tab"] {
-            padding: 8px 12px;
-            border-radius: 12px 12px 0 0;
-            font-weight: 760;
-        }
-        div[data-testid="stExpander"] {
-            border-radius: 15px;
-            margin-bottom: .42rem;
-        }
-        div[data-testid="stExpander"] details summary {
-            padding-top: 8px;
-            padding-bottom: 8px;
-        }
-        div[data-testid="stTextArea"] textarea {
-            min-height: 118px !important;
-            border-radius: 13px !important;
-        }
-        div[data-testid="stRadio"] {
-            margin-top: -.1rem;
-        }
-        div[data-testid="stDownloadButton"] button, .stButton > button {
-            min-height: 2.45rem;
-            font-weight: 730;
-        }
-        div[data-testid="stCaptionContainer"] {
-            margin-top: -.18rem;
-        }
-
-        .stock-input-example {
-            border: 1px solid rgba(17,24,39,.08);
-            border-radius: 16px;
-            background: rgba(255,255,255,.82);
-            padding: 12px 14px;
-            box-shadow: 0 6px 20px rgba(16,24,40,.045);
-            min-height: 174px;
-        }
-        .stock-input-code {
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            font-size: .78rem;
-            line-height: 1.42;
-            color: #374151;
-            background: rgba(17,24,39,.045);
-            border: 1px solid rgba(17,24,39,.055);
-            border-radius: 12px;
-            padding: 9px 10px;
-            white-space: pre-wrap;
-            margin-top: 8px;
-        }
-        .stock-do-heading {
-            font-size: .96rem;
-            font-weight: 860;
-            color: #111827;
-            letter-spacing: -.015em;
-            margin: 4px 0 8px 0;
-        }
-        .stock-do-subtitle {
-            font-size: .80rem;
-            color: #6B7280;
-            line-height: 1.34;
-            margin: -3px 0 10px 0;
-        }
-
-        @media (max-width: 900px) {
-            .main .block-container {
-                padding-left: .85rem;
-                padding-right: .85rem;
-            }
-            .selected-sku-value {
-                font-size: 1.65rem;
-            }
-        }
-
-        div[data-testid="stTabs"] {
-            margin-top: .18rem;
-        }
-        div[data-testid="stTabs"] [role="tablist"] {
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-            display: flex;
-            gap: 6px;
-            width: 100%;
-            padding: 7px;
-            margin: 0 0 .78rem 0;
-            overflow-x: auto;
-            scrollbar-width: none;
-            background: rgba(245,245,247,.94);
-            border: 1px solid rgba(17,24,39,.09);
-            border-radius: 16px;
-            box-shadow: 0 8px 24px rgba(16,24,40,.08);
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
-        }
-        div[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar {
-            display: none;
-        }
-        div[data-testid="stTabs"] button[role="tab"] {
-            flex: 0 0 auto;
-            min-height: 38px;
-            padding: 8px 14px;
-            border: 0 !important;
-            border-radius: 11px;
-            background: transparent;
-            font-weight: 780;
-            white-space: nowrap;
-        }
-        div[data-testid="stTabs"] button[role="tab"]:hover {
-            background: rgba(255,255,255,.82);
-        }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-            background: #111827 !important;
-            color: #FFFFFF !important;
-            box-shadow: 0 4px 12px rgba(17,24,39,.18);
-        }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] p {
-            color: #FFFFFF !important;
-        }
-        div[data-testid="stTabs"] button[role="tab"] p {
-            font-size: .82rem;
-            font-weight: 780;
-        }
-        div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
-            display: none;
-        }
-        div[data-testid="stTabs"] [data-baseweb="tab-border"] {
-            display: none;
-        }
-
-
-
-        /* Optimized website layout */
-        :root {
-            --app-bg: #F4F5F7;
-            --surface: #FFFFFF;
-            --surface-soft: #F8F9FB;
-            --text-strong: #101828;
-            --text: #344054;
-            --text-muted: #667085;
-            --border: #E4E7EC;
-            --shadow-sm: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
-            --shadow-md: 0 8px 24px rgba(16,24,40,.08);
-            --radius-sm: 10px;
-            --radius-md: 14px;
-            --radius-lg: 18px;
-        }
-
-        html { scroll-behavior: smooth; }
-        body, [data-testid="stAppViewContainer"] { background: var(--app-bg); }
-        header[data-testid="stHeader"] {
-            visibility: visible !important;
-            background: rgba(244,245,247,.88) !important;
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            border-bottom: 1px solid rgba(228,231,236,.72);
-        }
-        div[data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
-        footer { visibility: hidden; }
-
-        .main .block-container {
-            width: 100%;
-            max-width: 1580px;
-            padding: .55rem clamp(.8rem, 2vw, 1.65rem) 1.5rem;
-            animation: none;
-        }
-
-        .app-header {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 1.25rem;
-            padding: 1rem 1.1rem;
-            margin: 0 0 .62rem;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-sm);
-        }
-        .app-header-main { min-width: 0; }
-        .app-eyebrow {
-            margin-bottom: .18rem;
-            color: var(--text-muted);
-            font-size: .7rem;
-            font-weight: 800;
-            letter-spacing: .075em;
-            text-transform: uppercase;
-        }
-        .app-title {
-            color: var(--text-strong);
-            font-size: clamp(1.35rem, 2vw, 1.75rem);
-            font-weight: 850;
-            letter-spacing: -.035em;
-            line-height: 1.08;
-        }
-        .app-subtitle {
-            max-width: 720px;
-            margin-top: .28rem;
-            color: var(--text-muted);
-            font-size: .82rem;
-            line-height: 1.4;
-        }
-        .app-meta {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-            gap: .4rem;
-            max-width: 52%;
-        }
-        .meta-chip {
-            display: inline-flex;
-            align-items: center;
-            min-height: 30px;
-            max-width: 100%;
-            padding: .35rem .62rem;
-            color: var(--text);
-            background: var(--surface-soft);
-            border: 1px solid var(--border);
-            border-radius: 999px;
-            font-size: .73rem;
-            font-weight: 700;
             line-height: 1.2;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
-        .empty-state {
-            max-width: 720px;
-            margin: 3.5rem auto;
-            padding: 2rem;
-            text-align: center;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 22px;
-            box-shadow: var(--shadow-md);
-        }
-        .empty-state-title {
-            color: var(--text-strong);
-            font-size: 1.35rem;
-            font-weight: 850;
-            letter-spacing: -.025em;
-        }
-        .empty-state-text {
-            margin-top: .45rem;
-            color: var(--text-muted);
-            font-size: .88rem;
-            line-height: 1.5;
-        }
-
-        .tab-page-heading {
-            margin: .05rem 0 .65rem;
-        }
-        .tab-page-title {
-            color: var(--text-strong);
-            font-size: 1.08rem;
-            font-weight: 820;
-            letter-spacing: -.018em;
+        .sidebar-brand-subtitle {
+            margin-top: 3px;
+            color: var(--win-text-secondary);
+            font-size: 12px;
             line-height: 1.25;
         }
-        .tab-page-subtitle {
-            margin-top: .16rem;
-            color: var(--text-muted);
-            font-size: .79rem;
-            line-height: 1.38;
-        }
-
-        div[data-testid="stTabs"] { margin-top: 0; }
-        div[data-testid="stTabs"] [role="tablist"] {
-            position: sticky;
-            top: 2.9rem;
-            z-index: 990;
-            width: 100%;
-            gap: .3rem;
-            margin: 0 0 .7rem;
-            padding: .34rem;
-            overflow-x: auto;
-            background: rgba(255,255,255,.94);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            scrollbar-width: none;
-        }
-        div[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar { display: none; }
-        div[data-testid="stTabs"] button[role="tab"] {
-            flex: 1 0 auto;
-            min-height: 36px;
-            padding: .46rem .78rem;
-            color: var(--text-muted);
-            background: transparent;
-            border: 0 !important;
-            border-radius: var(--radius-sm);
-            font-weight: 760;
-            white-space: nowrap;
-            transition: background .15s ease, color .15s ease, box-shadow .15s ease;
-        }
-        div[data-testid="stTabs"] button[role="tab"] p {
-            color: inherit;
-            font-size: .79rem;
-            font-weight: inherit;
-        }
-        div[data-testid="stTabs"] button[role="tab"]:hover {
-            color: var(--text-strong);
-            background: var(--surface-soft);
-        }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-            color: #FFFFFF !important;
-            background: var(--text-strong) !important;
-            box-shadow: 0 2px 7px rgba(16,24,40,.18);
-        }
-        div[data-testid="stTabs"] [role="tabpanel"] { padding-top: .05rem; }
-
-        .kpi-card {
-            min-height: 88px;
-            padding: .8rem .85rem .72rem;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-            transition: border-color .15s ease, box-shadow .15s ease;
-        }
-        .kpi-card:hover {
-            transform: none;
-            border-color: #D0D5DD;
-            box-shadow: 0 4px 12px rgba(16,24,40,.07);
-        }
-        .kpi-label {
-            margin-bottom: .3rem;
-            color: var(--text-muted);
-            font-size: .73rem;
-            font-weight: 720;
-        }
-        .kpi-value {
-            color: var(--text-strong);
-            font-size: clamp(1.25rem, 1.8vw, 1.48rem);
-            font-weight: 850;
-            line-height: 1.06;
-        }
-        .kpi-help {
-            margin-top: .38rem;
-            color: #98A2B3;
-            font-size: .68rem;
-        }
-        .kpi-row-gap { height: .45rem; }
-
-        .section-divider {
-            height: 1px;
-            margin: .85rem 0 .65rem;
-            background: var(--border);
-        }
-        .section-block { margin-top: .7rem; }
-        .section-title {
-            color: var(--text-strong);
-            font-size: .99rem;
-            font-weight: 800;
-            line-height: 1.3;
-        }
-        .section-subtitle {
-            margin: .12rem 0 .4rem;
-            color: var(--text-muted);
-            font-size: .76rem;
-            line-height: 1.4;
-        }
-        .small-note { display: none; }
-
-        .selected-sku-card, .lookup-hero, .tx-filter-shell {
-            margin: .04rem 0 .65rem;
-            padding: .9rem 1rem;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-sm);
-        }
-        .selected-sku-card::before { width: 4px; }
-        .selected-sku-label { margin-bottom: .28rem; font-size: .69rem; }
-        .selected-sku-value { font-size: clamp(1.45rem, 2.5vw, 1.9rem); }
-        .selected-sku-description { margin-top: .3rem; font-size: .92rem; }
-        .lookup-title, .tx-filter-title { font-size: 1.04rem; }
-        .lookup-subtitle, .tx-filter-subtitle { font-size: .78rem; }
-
-        div[data-testid="stDataFrame"] {
-            margin-top: .1rem;
-            overflow: hidden;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-        }
-        div[data-testid="stExpander"] {
-            overflow: hidden;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            box-shadow: none;
-        }
-        div[data-testid="stExpander"]:hover { box-shadow: var(--shadow-sm); }
-
-        .stButton > button, .stDownloadButton > button {
-            min-height: 2.35rem;
-            border-radius: var(--radius-sm);
-            font-size: .76rem;
-            font-weight: 740;
-            transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
-        }
-        .stButton > button:hover, .stDownloadButton > button:hover {
-            transform: none;
-            box-shadow: var(--shadow-sm);
-        }
-
-        div[data-testid="stSidebar"] {
-            background: #F8F9FB;
-            border-right: 1px solid var(--border);
-        }
-        div[data-testid="stSidebar"] > div:first-child {
-            padding: .85rem .9rem 1.25rem;
-        }
-        div[data-testid="stSidebar"] h1 {
-            margin-bottom: .45rem;
-            color: var(--text-strong);
-            font-size: 1.12rem;
-            letter-spacing: -.02em;
-        }
-        div[data-testid="stSidebar"] hr { margin: .65rem 0; }
-        div[data-testid="stSidebar"] label {
-            color: var(--text) !important;
-            font-size: .77rem !important;
-            font-weight: 700 !important;
-        }
-        div[data-testid="stSidebar"] div[data-testid="stFileUploader"] section {
-            padding: .65rem;
-            background: var(--surface);
-            border: 1px dashed #C8CDD5;
-            border-radius: 12px;
-            box-shadow: none;
-            animation: none;
-        }
-        div[data-testid="stSidebar"] div[data-testid="stFileUploader"] section:hover {
-            transform: none;
-            border-color: #98A2B3;
-            box-shadow: none;
-        }
-        .sidebar-note {
-            padding: .72rem .78rem;
-            color: var(--text-muted);
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            box-shadow: none;
-            font-size: .72rem;
-            line-height: 1.48;
-        }
-        .sidebar-note:hover { transform: none; box-shadow: none; }
-        .sidebar-section-title {
-            margin: 0 0 .35rem;
-            color: var(--text-muted);
-            font-size: .68rem;
-            letter-spacing: .075em;
-        }
-
-        .tx-status-grid { gap: .55rem; margin: .6rem 0; }
-        .tx-status-card {
-            min-height: 68px;
-            padding: .65rem .72rem;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-        }
-        .tx-result-box { margin: .55rem 0; }
-
-        @media (max-width: 1100px) {
-            .app-header { flex-direction: column; gap: .65rem; }
-            .app-meta { justify-content: flex-start; max-width: 100%; }
-            div[data-testid="stTabs"] button[role="tab"] { flex: 0 0 auto; }
-        }
-        @media (max-width: 760px) {
-            .main .block-container { padding-left: .65rem; padding-right: .65rem; }
-            .app-header { padding: .82rem .85rem; border-radius: 15px; }
-            .app-meta { display: grid; grid-template-columns: 1fr; width: 100%; }
-            .meta-chip { width: 100%; justify-content: flex-start; }
-            div[data-testid="stTabs"] [role="tablist"] { top: 2.75rem; }
-            .tx-status-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
-        }
-
-
-
-        /* Windows 11 / Fluent visual polish */
-        :root {
-            --win-accent: #0F6CBD;
-            --win-accent-hover: #115EA3;
-            --win-accent-pressed: #0C3B5E;
-            --win-accent-soft: rgba(15,108,189,.10);
-            --win-bg: #F3F3F3;
-            --win-mica: rgba(250,250,250,.78);
-            --win-surface: rgba(255,255,255,.88);
-            --win-surface-solid: #FFFFFF;
-            --win-surface-subtle: rgba(249,249,249,.78);
-            --win-stroke: rgba(0,0,0,.075);
-            --win-stroke-strong: rgba(0,0,0,.14);
-            --win-text: #1B1B1B;
-            --win-text-secondary: #5D5D5D;
-            --win-text-tertiary: #7A7A7A;
-            --win-danger: #C42B1C;
-            --win-warning: #F7630C;
-            --win-watch: #C19C00;
-            --win-success: #107C10;
-            --win-shadow-2: 0 2px 4px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.055);
-            --win-shadow-4: 0 4px 8px rgba(0,0,0,.05), 0 16px 36px rgba(0,0,0,.08);
-            --win-radius-control: 8px;
-            --win-radius-card: 12px;
-            --win-radius-large: 18px;
-            --win-ease: cubic-bezier(.2,.8,.2,1);
-        }
-
-        html { scroll-behavior: smooth; }
-        body,
-        [data-testid="stAppViewContainer"] {
-            color: var(--win-text);
-            background:
-                radial-gradient(circle at 12% 8%, rgba(15,108,189,.075), transparent 25rem),
-                radial-gradient(circle at 88% 18%, rgba(122,95,183,.055), transparent 27rem),
-                linear-gradient(135deg, #F7F7F7 0%, #F1F3F7 48%, #F6F6F6 100%);
-            background-attachment: fixed;
-        }
-        [data-testid="stAppViewContainer"]::before {
-            content: "";
-            position: fixed;
-            inset: 0;
-            z-index: -1;
-            pointer-events: none;
-            opacity: .7;
-            background-image: linear-gradient(rgba(255,255,255,.28) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.22) 1px, transparent 1px);
-            background-size: 48px 48px;
-            mask-image: linear-gradient(to bottom, rgba(0,0,0,.45), transparent 70%);
-        }
-
-        header[data-testid="stHeader"] {
-            background: rgba(246,247,249,.72) !important;
-            border-bottom: 1px solid rgba(255,255,255,.55);
-            box-shadow: 0 1px 0 rgba(0,0,0,.035);
-            backdrop-filter: blur(28px) saturate(150%);
-            -webkit-backdrop-filter: blur(28px) saturate(150%);
-        }
-        .main .block-container {
-            max-width: 1620px;
-            padding-top: .7rem;
-            padding-bottom: 2rem;
-        }
-
-        .app-header {
-            position: relative;
-            isolation: isolate;
-            align-items: center;
-            min-height: 116px;
-            padding: 1.05rem 1.15rem;
-            overflow: hidden;
-            color: var(--win-text);
-            background: linear-gradient(120deg, rgba(255,255,255,.92), rgba(248,250,253,.78));
-            border: 1px solid rgba(255,255,255,.78);
-            border-radius: var(--win-radius-large);
-            box-shadow: var(--win-shadow-2), inset 0 0 0 1px rgba(0,0,0,.035);
-            backdrop-filter: blur(30px) saturate(145%);
-            -webkit-backdrop-filter: blur(30px) saturate(145%);
-            animation: fluentReveal .52s var(--win-ease) both;
-        }
-        .app-header::before {
-            content: "";
-            position: absolute;
-            z-index: -1;
-            width: 280px;
-            height: 280px;
-            right: -85px;
-            top: -120px;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(15,108,189,.18), rgba(15,108,189,0) 68%);
-            filter: blur(2px);
-            animation: ambientDrift 9s ease-in-out infinite alternate;
-        }
-        .app-header::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            z-index: -1;
-            pointer-events: none;
-            background: linear-gradient(115deg, rgba(255,255,255,.55), transparent 42%);
-        }
-        .app-header-main { flex: 1 1 auto; }
-        .app-title-cluster {
-            display: flex;
-            align-items: center;
-            gap: .78rem;
-        }
-        .app-title-copy { min-width: 0; }
         .fluent-grid-icon {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 3px;
+            gap: 2px;
+            width: 32px;
+            height: 32px;
+            padding: 7px;
+            border: 1px solid rgba(0, 103, 192, .18);
+            border-radius: 8px;
+            background: linear-gradient(145deg, #0a73c9, #005fb8);
+            box-shadow: 0 2px 7px rgba(0, 95, 184, .18);
             flex: 0 0 auto;
         }
         .fluent-grid-icon span {
             display: block;
-            background: currentColor;
-            border-radius: 2px;
+            border-radius: 1px;
+            background: rgba(255,255,255,.96);
         }
-        .app-product-icon {
-            width: 42px;
-            height: 42px;
-            padding: 8px;
-            color: #FFFFFF;
-            background: linear-gradient(145deg, #1684D8, #0F6CBD 62%, #0B4F8A);
-            border: 1px solid rgba(255,255,255,.52);
-            border-radius: 12px;
-            box-shadow: 0 6px 16px rgba(15,108,189,.24), inset 0 1px 0 rgba(255,255,255,.36);
+        .fluent-grid-icon-small { width: 32px; height: 32px; }
+        .sidebar-section-title {
+            margin: 15px 2px 7px;
+            color: var(--win-text-secondary);
+            font-size: 11px;
+            font-weight: 650;
+            letter-spacing: .035em;
+            text-transform: uppercase;
         }
-        .app-product-icon span { box-shadow: inset 0 1px 0 rgba(255,255,255,.25); }
+        .sidebar-section-help {
+            margin: -2px 2px 9px;
+            color: var(--win-text-tertiary);
+            font-size: 11px;
+            line-height: 1.35;
+        }
+        .sidebar-section-gap { height: 2px; }
+        .data-source-card {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 34px;
+            margin: 8px 0 1px;
+            padding: 7px 9px;
+            overflow: hidden;
+            color: #174b27;
+            font-size: 11px;
+            line-height: 1.25;
+            background: rgba(223, 246, 227, .76);
+            border: 1px solid rgba(16, 124, 16, .16);
+            border-radius: var(--win-radius-md);
+        }
+        .data-source-card::before {
+            content: "\E73E";
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            color: #107c10;
+            font-size: 13px;
+            flex: 0 0 auto;
+        }
+        .data-source-card span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .data-source-card-empty {
+            color: var(--win-text-secondary);
+            background: rgba(255,255,255,.62);
+            border-color: var(--win-border);
+        }
+        .data-source-card-empty::before { content: "\E946"; color: var(--win-text-secondary); }
+
+        section[data-testid="stSidebar"] label {
+            color: var(--win-text-secondary) !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+        }
+        section[data-testid="stSidebar"] [data-baseweb="select"] > div,
+        section[data-testid="stSidebar"] [data-testid="stNumberInput"] input,
+        section[data-testid="stSidebar"] [data-testid="stTextInput"] input {
+            min-height: 34px;
+            color: var(--win-text);
+            background: rgba(255,255,255,.84);
+            border-color: var(--win-border-strong);
+            border-radius: var(--win-radius-md);
+            box-shadow: 0 1px 1px rgba(0,0,0,.025);
+            transition: border-color var(--win-fast) ease, box-shadow var(--win-fast) ease, background var(--win-fast) ease;
+        }
+        section[data-testid="stSidebar"] [data-baseweb="select"] > div:hover,
+        section[data-testid="stSidebar"] [data-testid="stNumberInput"] input:hover,
+        section[data-testid="stSidebar"] [data-testid="stTextInput"] input:hover {
+            background: #fff;
+            border-color: rgba(0,0,0,.2);
+        }
+        section[data-testid="stSidebar"] [data-baseweb="select"] > div:focus-within,
+        section[data-testid="stSidebar"] [data-testid="stNumberInput"] input:focus,
+        section[data-testid="stSidebar"] [data-testid="stTextInput"] input:focus {
+            border-color: var(--win-accent);
+            box-shadow: inset 0 -2px 0 var(--win-accent);
+            outline: none;
+        }
+        section[data-testid="stSidebar"] [data-testid="stFileUploader"] section {
+            min-height: 78px;
+            padding: 10px;
+            background: rgba(255,255,255,.72);
+            border: 1px dashed rgba(0,0,0,.22);
+            border-radius: var(--win-radius-lg);
+            box-shadow: none;
+            transition: background var(--win-normal) ease, border-color var(--win-normal) ease, transform var(--win-normal) var(--win-ease);
+        }
+        section[data-testid="stSidebar"] [data-testid="stFileUploader"] section:hover {
+            background: #fff;
+            border-color: var(--win-accent);
+            transform: translateY(-1px);
+        }
+        section[data-testid="stSidebar"] [data-testid="stFileUploader"] small { font-size: 10px; }
+
+        /* Main header aligned with the sidebar brand */
+        .app-header {
+            min-height: 72px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            padding: 12px 16px;
+            margin: 0 0 12px;
+            background: rgba(255,255,255,.68);
+            border: 1px solid var(--win-border);
+            border-radius: var(--win-radius-xl);
+            box-shadow: 0 1px 1px rgba(0,0,0,.025);
+            backdrop-filter: blur(24px) saturate(125%);
+            -webkit-backdrop-filter: blur(24px) saturate(125%);
+        }
+        .app-header-main { min-width: 0; }
+        .app-title-cluster { display: flex; align-items: center; gap: 11px; }
+        .app-product-icon { width: 34px; height: 34px; padding: 8px; border-radius: 9px; }
+        .app-title-copy { min-width: 0; }
         .app-eyebrow {
-            margin-bottom: .12rem;
             color: var(--win-accent);
-            font-size: .68rem;
-            font-weight: 750;
-            letter-spacing: .08em;
+            font-size: 10px;
+            font-weight: 650;
+            letter-spacing: .07em;
+            line-height: 1.15;
+            text-transform: uppercase;
         }
         .app-title {
+            margin-top: 2px;
             color: var(--win-text);
-            font-size: clamp(1.45rem, 2vw, 1.9rem);
-            font-weight: 720;
-            letter-spacing: -.035em;
+            font-size: 20px;
+            font-weight: 650;
+            letter-spacing: -.025em;
+            line-height: 1.15;
         }
         .app-subtitle {
-            margin-top: .48rem;
-            margin-left: 3.55rem;
+            margin: 5px 0 0 45px;
             color: var(--win-text-secondary);
-            font-size: .81rem;
+            font-size: 12px;
+            line-height: 1.35;
         }
-        .app-meta { gap: .42rem; }
+        .app-meta {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 6px;
+            max-width: 55%;
+        }
         .meta-chip {
-            min-height: 32px;
-            padding: .38rem .68rem;
+            min-height: 28px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 260px;
+            padding: 5px 9px;
+            overflow: hidden;
             color: var(--win-text-secondary);
-            background: rgba(255,255,255,.66);
-            border: 1px solid rgba(0,0,0,.075);
-            border-radius: 9px;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.58);
-            font-size: .71rem;
-            font-weight: 650;
-            transition: transform .18s var(--win-ease), background .18s ease, border-color .18s ease, box-shadow .18s ease;
+            font-size: 11px;
+            line-height: 1;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            background: rgba(255,255,255,.76);
+            border: 1px solid var(--win-border);
+            border-radius: 7px;
         }
-        .meta-chip:hover {
-            transform: translateY(-1px);
-            background: rgba(255,255,255,.92);
-            border-color: rgba(0,0,0,.11);
-            box-shadow: 0 4px 12px rgba(0,0,0,.055);
+        .meta-chip::before {
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            color: var(--win-text-tertiary);
+            font-size: 12px;
         }
-        .meta-chip-accent {
-            color: #0B4F8A;
-            background: rgba(15,108,189,.09);
-            border-color: rgba(15,108,189,.18);
-        }
-        .meta-chip-status { color: #0B5A0B; }
-        .status-dot {
-            width: 7px;
-            height: 7px;
-            margin-right: .4rem;
-            border-radius: 50%;
-            background: #13A10E;
-            box-shadow: 0 0 0 3px rgba(19,161,14,.12);
-            animation: statusPulse 2.8s ease-in-out infinite;
-        }
+        .meta-chip-date::before { content: "\E787"; }
+        .meta-chip-file::before { content: "\E8A5"; }
+        .meta-chip-status::before { content: "\E73E"; color: #107c10; }
+        .meta-chip-accent { color: #004f88; background: rgba(224, 240, 255, .82); border-color: rgba(0,103,192,.14); }
+        .status-dot { display: none; }
 
+        /* Professional Fluent tab selection */
+        div[data-testid="stTabs"] { margin-top: 0; }
         div[data-testid="stTabs"] [role="tablist"] {
-            top: 3.05rem;
-            gap: .18rem;
-            padding: .32rem;
-            background: rgba(250,250,250,.76);
-            border: 1px solid rgba(255,255,255,.72);
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,.055), inset 0 0 0 1px rgba(0,0,0,.035);
-            backdrop-filter: blur(28px) saturate(150%);
-            -webkit-backdrop-filter: blur(28px) saturate(150%);
+            position: sticky;
+            top: 8px;
+            z-index: 80;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            min-height: 44px;
+            margin: 0 0 16px;
+            padding: 4px;
+            overflow-x: auto;
+            scrollbar-width: none;
+            background: rgba(248,248,248,.90);
+            border: 1px solid var(--win-border);
+            border-radius: 10px;
+            box-shadow: 0 3px 14px rgba(0,0,0,.055);
+            backdrop-filter: blur(24px) saturate(135%);
+            -webkit-backdrop-filter: blur(24px) saturate(135%);
         }
+        div[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar { display: none; }
         div[data-testid="stTabs"] button[role="tab"] {
             position: relative;
-            min-height: 38px;
-            padding: .48rem .82rem;
+            flex: 0 0 auto;
+            min-height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            padding: 0 13px;
             color: var(--win-text-secondary);
-            border-radius: 8px;
-            transition: color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s var(--win-ease);
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0;
+            background: transparent;
+            border: 0;
+            border-radius: 7px;
+            transition: color var(--win-fast) ease, background var(--win-fast) ease, transform 80ms ease;
         }
-        div[data-testid="stTabs"] button[role="tab"]::after {
+        div[data-testid="stTabs"] button[role="tab"]::before {
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            color: currentColor;
+            font-size: 13px;
+            font-weight: 400;
+            opacity: .88;
+        }
+        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(1)::before { content: "\E80F"; }
+        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(2)::before { content: "\E77B"; }
+        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(3)::before { content: "\E721"; }
+        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(4)::before { content: "\E9D5"; }
+        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(5)::before { content: "\E9D9"; }
+        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(6)::before { content: "\E897"; }
+        div[data-testid="stTabs"] button[role="tab"]:hover {
+            color: var(--win-text);
+            background: rgba(0,0,0,.045);
+        }
+        div[data-testid="stTabs"] button[role="tab"]:active { transform: scale(.985); }
+        div[data-testid="stTabs"] button[role="tab"]:focus-visible {
+            outline: 2px solid rgba(0,103,192,.58);
+            outline-offset: 1px;
+        }
+        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+            color: var(--win-text);
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,.09);
+        }
+        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::before { color: var(--win-accent); }
+        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::after {
             content: "";
             position: absolute;
             left: 50%;
-            bottom: 2px;
-            width: 0;
+            bottom: 1px;
+            width: 18px;
             height: 2px;
             border-radius: 999px;
             background: var(--win-accent);
             transform: translateX(-50%);
-            transition: width .2s var(--win-ease);
+            animation: tabIndicator .18s var(--win-ease) both;
         }
-        div[data-testid="stTabs"] button[role="tab"]:hover {
-            color: var(--win-text);
-            background: rgba(255,255,255,.68);
+        @keyframes tabIndicator {
+            from { width: 6px; opacity: .3; }
+            to { width: 18px; opacity: 1; }
         }
-        div[data-testid="stTabs"] button[role="tab"]:active { transform: scale(.985); }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-            color: var(--win-text) !important;
-            background: rgba(255,255,255,.96) !important;
-            box-shadow: 0 1px 3px rgba(0,0,0,.07), inset 0 0 0 1px rgba(0,0,0,.055);
-        }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] p { color: var(--win-text) !important; }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::after { width: 20px; }
         div[data-testid="stTabs"] [role="tabpanel"] {
-            animation: tabContentIn .34s var(--win-ease) both;
+            animation: contentReveal .22s var(--win-ease) both;
+        }
+        @keyframes contentReveal {
+            from { opacity: 0; transform: translateY(3px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .tab-page-heading { margin: .12rem 0 .72rem; }
-        .tab-page-title {
+        /* Content hierarchy */
+        .tab-page-heading {
+            margin: 1px 0 13px;
+        }
+        .tab-page-title, .section-title {
             color: var(--win-text);
-            font-size: 1.08rem;
-            font-weight: 700;
-            letter-spacing: -.02em;
+            font-size: 17px;
+            font-weight: 650;
+            letter-spacing: -.018em;
+            line-height: 1.22;
         }
-        .tab-page-subtitle { color: var(--win-text-secondary); }
-
-        .kpi-card {
-            position: relative;
-            min-height: 94px;
-            padding: .82rem .9rem .74rem;
-            overflow: hidden;
-            background: linear-gradient(145deg, rgba(255,255,255,.96), rgba(250,250,250,.82));
-            border: 1px solid rgba(255,255,255,.8);
-            border-radius: var(--win-radius-card);
-            box-shadow: var(--win-shadow-2), inset 0 0 0 1px rgba(0,0,0,.035);
-            transition: transform .22s var(--win-ease), box-shadow .22s ease, border-color .22s ease;
-            animation: cardRise .46s var(--win-ease) both;
+        .tab-page-subtitle, .section-subtitle {
+            margin-top: 3px;
+            color: var(--win-text-secondary);
+            font-size: 12px;
+            line-height: 1.38;
         }
-        .kpi-card::after {
-            content: "";
-            position: absolute;
-            width: 110px;
-            height: 110px;
-            right: -42px;
-            top: -48px;
-            border-radius: 50%;
-            background: radial-gradient(circle, var(--kpi-glow, rgba(15,108,189,.11)), transparent 68%);
-            transition: transform .28s var(--win-ease), opacity .28s ease;
-        }
-        .kpi-card:hover {
-            transform: translateY(-3px);
-            border-color: rgba(255,255,255,.96);
-            box-shadow: var(--win-shadow-4), inset 0 0 0 1px rgba(0,0,0,.04);
-        }
-        .kpi-card:hover::after { transform: scale(1.15); }
-        .kpi-accent {
-            position: absolute;
-            left: 0;
-            top: 14px;
-            bottom: 14px;
-            width: 3px;
-            border-radius: 0 4px 4px 0;
-            background: var(--kpi-color, var(--win-accent));
-        }
-        .kpi-tone-danger { --kpi-color: var(--win-danger); --kpi-glow: rgba(196,43,28,.13); }
-        .kpi-tone-warning { --kpi-color: var(--win-warning); --kpi-glow: rgba(247,99,12,.13); }
-        .kpi-tone-watch { --kpi-color: var(--win-watch); --kpi-glow: rgba(193,156,0,.13); }
-        .kpi-tone-success { --kpi-color: var(--win-success); --kpi-glow: rgba(16,124,16,.12); }
-        .kpi-tone-neutral { --kpi-color: #6B69D6; --kpi-glow: rgba(107,105,214,.12); }
-        .kpi-label { color: var(--win-text-secondary); font-weight: 650; }
-        .kpi-value { color: var(--win-text); font-weight: 720; }
-        .kpi-help { color: var(--win-text-tertiary); }
-        div[data-testid="stHorizontalBlock"] > div:nth-child(2) .kpi-card { animation-delay: .045s; }
-        div[data-testid="stHorizontalBlock"] > div:nth-child(3) .kpi-card { animation-delay: .09s; }
-        div[data-testid="stHorizontalBlock"] > div:nth-child(4) .kpi-card { animation-delay: .135s; }
-
-        .selected-sku-card,
-        .lookup-hero,
-        .tx-filter-shell,
-        .stock-input-example,
-        .tx-filter-card,
-        .tx-status-card,
-        .tx-result-box,
-        .empty-state {
-            background: linear-gradient(145deg, rgba(255,255,255,.94), rgba(249,249,249,.82));
-            border: 1px solid rgba(255,255,255,.82);
-            border-radius: var(--win-radius-card);
-            box-shadow: var(--win-shadow-2), inset 0 0 0 1px rgba(0,0,0,.035);
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
-            animation: fluentReveal .4s var(--win-ease) both;
-        }
-        .selected-sku-card::before {
-            width: 4px;
-            background: linear-gradient(to bottom, #1684D8, var(--win-accent));
-        }
-        .selected-sku-label { color: var(--win-accent); }
-        .selected-sku-value, .lookup-title, .tx-filter-title { color: var(--win-text); font-weight: 720; }
-        .selected-sku-description, .lookup-subtitle, .tx-filter-subtitle { color: var(--win-text-secondary); }
-
+        .section-title { font-size: 14px; }
+        .section-subtitle { margin-bottom: 8px; }
+        .compact-heading { margin-top: 0; }
         .section-divider {
             height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(0,0,0,.11) 10%, rgba(0,0,0,.11) 90%, transparent);
+            margin: 16px 0 13px;
+            background: var(--win-border);
         }
-        .section-title { color: var(--win-text); font-weight: 700; }
-        .section-subtitle { color: var(--win-text-secondary); }
+        .section-block { height: 14px; }
+        .kpi-row-gap { height: 8px; }
 
-        div[data-testid="stDataFrame"] {
-            background: rgba(255,255,255,.9);
-            border: 1px solid rgba(255,255,255,.82);
-            border-radius: var(--win-radius-card);
-            box-shadow: var(--win-shadow-2), inset 0 0 0 1px rgba(0,0,0,.045);
-            transition: box-shadow .2s ease, transform .2s var(--win-ease);
+        /* KPI cards */
+        .kpi-card {
+            position: relative;
+            min-height: 104px;
+            padding: 13px 14px 12px;
+            overflow: hidden;
+            background: var(--win-surface);
+            border: 1px solid var(--win-border);
+            border-radius: var(--win-radius-lg);
+            box-shadow: var(--win-shadow-card);
+            transition: transform var(--win-normal) var(--win-ease), box-shadow var(--win-normal) var(--win-ease), border-color var(--win-normal) ease, background var(--win-normal) ease;
         }
-        div[data-testid="stDataFrame"]:hover { box-shadow: var(--win-shadow-4), inset 0 0 0 1px rgba(0,0,0,.04); }
-
-        .stButton > button,
-        .stDownloadButton > button {
-            min-height: 2.35rem;
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            background: #fff;
+            border-color: rgba(0,0,0,.10);
+            box-shadow: 0 2px 4px rgba(0,0,0,.045), 0 9px 24px rgba(0,0,0,.075);
+        }
+        .kpi-accent {
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 3px;
+            background: var(--win-accent);
+        }
+        .kpi-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .kpi-label {
+            color: var(--win-text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+        .kpi-icon {
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--win-accent);
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            font-size: 13px;
+            background: var(--win-accent-soft);
+            border-radius: 6px;
+            flex: 0 0 auto;
+        }
+        .kpi-value {
+            margin-top: 7px;
             color: var(--win-text);
-            background: rgba(255,255,255,.88);
-            border: 1px solid rgba(0,0,0,.12);
-            border-radius: var(--win-radius-control);
-            box-shadow: 0 1px 2px rgba(0,0,0,.045), inset 0 1px 0 rgba(255,255,255,.72);
+            font-size: 24px;
             font-weight: 650;
-            transition: transform .14s var(--win-ease), background .14s ease, border-color .14s ease, box-shadow .14s ease;
+            letter-spacing: -.035em;
+            line-height: 1;
         }
-        .stButton > button:hover,
-        .stDownloadButton > button:hover {
-            transform: translateY(-1px);
+        .kpi-help {
+            margin-top: 7px;
+            overflow: hidden;
+            color: var(--win-text-tertiary);
+            font-size: 10.5px;
+            line-height: 1.25;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .kpi-tone-danger .kpi-accent { background: #c42b1c; }
+        .kpi-tone-danger .kpi-icon { color: #c42b1c; background: rgba(196,43,28,.09); }
+        .kpi-tone-warning .kpi-accent { background: #d83b01; }
+        .kpi-tone-warning .kpi-icon { color: #b83b00; background: rgba(216,59,1,.09); }
+        .kpi-tone-watch .kpi-accent { background: #9d7b00; }
+        .kpi-tone-watch .kpi-icon { color: #806000; background: rgba(157,123,0,.10); }
+        .kpi-tone-success .kpi-accent { background: #107c10; }
+        .kpi-tone-success .kpi-icon { color: #107c10; background: rgba(16,124,16,.09); }
+        .kpi-tone-neutral .kpi-accent { background: #6b6b6b; }
+        .kpi-tone-neutral .kpi-icon { color: #5c5c5c; background: rgba(0,0,0,.055); }
+
+        /* Selected SKU */
+        .selected-sku-card {
+            position: relative;
+            margin: 0 0 12px;
+            padding: 15px 17px;
+            overflow: hidden;
+            background: rgba(255,255,255,.82);
+            border: 1px solid var(--win-border);
+            border-radius: var(--win-radius-lg);
+            box-shadow: var(--win-shadow-card);
+        }
+        .selected-sku-card::before {
+            content: "";
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 3px;
+            background: var(--win-accent);
+        }
+        .selected-sku-label {
+            color: var(--win-text-secondary);
+            font-size: 10px;
+            font-weight: 650;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+        }
+        .selected-sku-value {
+            margin-top: 4px;
             color: var(--win-text);
-            background: #FFFFFF;
-            border-color: rgba(0,0,0,.17);
-            box-shadow: 0 4px 12px rgba(0,0,0,.08), inset 0 1px 0 rgba(255,255,255,.78);
+            font-size: 25px;
+            font-weight: 650;
+            letter-spacing: -.035em;
+            line-height: 1.05;
         }
-        .stButton > button:active,
-        .stDownloadButton > button:active {
-            transform: translateY(0) scale(.985);
-            background: #F5F5F5;
-            box-shadow: inset 0 1px 2px rgba(0,0,0,.08);
-        }
-        .stDownloadButton > button {
-            color: #FFFFFF;
-            background: linear-gradient(#1684D8, var(--win-accent));
-            border-color: rgba(0,0,0,.12);
-            box-shadow: 0 2px 6px rgba(15,108,189,.18), inset 0 1px 0 rgba(255,255,255,.25);
-        }
-        .stDownloadButton > button:hover {
-            color: #FFFFFF;
-            background: linear-gradient(#1177C4, var(--win-accent-hover));
-            border-color: rgba(0,0,0,.15);
-            box-shadow: 0 5px 14px rgba(15,108,189,.24), inset 0 1px 0 rgba(255,255,255,.22);
-        }
-        .stDownloadButton > button:active { background: var(--win-accent-pressed); }
-        button:focus-visible,
-        input:focus-visible,
-        textarea:focus-visible,
-        [role="combobox"]:focus-visible {
-            outline: 2px solid rgba(15,108,189,.72) !important;
-            outline-offset: 2px !important;
+        .selected-sku-description {
+            margin-top: 5px;
+            color: var(--win-text-secondary);
+            font-size: 12px;
+            line-height: 1.35;
         }
 
-        div[data-baseweb="select"] > div,
-        div[data-testid="stNumberInput"] input,
+        /* Streamlit controls */
+        .stButton > button, .stDownloadButton > button {
+            min-height: 34px;
+            padding: 6px 12px;
+            color: var(--win-text);
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(255,255,255,.88);
+            border: 1px solid var(--win-border-strong);
+            border-radius: var(--win-radius-md);
+            box-shadow: 0 1px 2px rgba(0,0,0,.035);
+            transition: background var(--win-fast) ease, border-color var(--win-fast) ease, box-shadow var(--win-fast) ease, transform 80ms ease;
+        }
+        .stButton > button:hover, .stDownloadButton > button:hover {
+            color: var(--win-text);
+            background: #fff;
+            border-color: rgba(0,0,0,.20);
+            box-shadow: 0 2px 7px rgba(0,0,0,.08);
+        }
+        .stButton > button:active, .stDownloadButton > button:active {
+            transform: scale(.985);
+            background: #f6f6f6;
+        }
+        .stButton > button:focus-visible, .stDownloadButton > button:focus-visible {
+            outline: 2px solid rgba(0,103,192,.58);
+            outline-offset: 2px;
+        }
+        .stDownloadButton > button::before {
+            content: "\E896";
+            margin-right: 7px;
+            color: var(--win-accent);
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            font-size: 12px;
+            font-weight: 400;
+        }
+        section[data-testid="stSidebar"] .stButton > button {
+            color: var(--win-text-secondary);
+            background: transparent;
+            border-color: transparent;
+            box-shadow: none;
+        }
+        section[data-testid="stSidebar"] .stButton { margin-top: 5px; }
+        section[data-testid="stSidebar"] .stButton > button:hover {
+            color: var(--win-text);
+            background: rgba(0,0,0,.045);
+        }
+        div[data-testid="stTextArea"] textarea,
         div[data-testid="stTextInput"] input,
         div[data-testid="stDateInput"] input,
-        div[data-testid="stTextArea"] textarea {
-            color: var(--win-text) !important;
-            background: rgba(255,255,255,.86) !important;
-            border-color: rgba(0,0,0,.11) !important;
-            border-radius: var(--win-radius-control) !important;
-            box-shadow: inset 0 1px 2px rgba(0,0,0,.025);
-            transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+        div[data-testid="stNumberInput"] input,
+        div[data-baseweb="select"] > div {
+            color: var(--win-text);
+            background: rgba(255,255,255,.88);
+            border-color: var(--win-border-strong);
+            border-radius: var(--win-radius-md);
+            transition: border-color var(--win-fast) ease, box-shadow var(--win-fast) ease, background var(--win-fast) ease;
         }
-        div[data-baseweb="select"] > div:hover,
-        div[data-testid="stNumberInput"] input:hover,
+        div[data-testid="stTextArea"] textarea:hover,
         div[data-testid="stTextInput"] input:hover,
         div[data-testid="stDateInput"] input:hover,
-        div[data-testid="stTextArea"] textarea:hover {
-            background: #FFFFFF !important;
-            border-color: rgba(0,0,0,.18) !important;
+        div[data-testid="stNumberInput"] input:hover,
+        div[data-baseweb="select"] > div:hover { background: #fff; border-color: rgba(0,0,0,.2); }
+        div[data-testid="stTextArea"] textarea:focus,
+        div[data-testid="stTextInput"] input:focus,
+        div[data-testid="stDateInput"] input:focus,
+        div[data-testid="stNumberInput"] input:focus,
+        div[data-baseweb="select"] > div:focus-within {
+            border-color: var(--win-accent);
+            box-shadow: inset 0 -2px 0 var(--win-accent);
+            outline: none;
         }
-        div[data-baseweb="select"] > div:focus-within,
-        div[data-testid="stNumberInput"]:focus-within input,
-        div[data-testid="stTextInput"]:focus-within input,
-        div[data-testid="stDateInput"]:focus-within input,
-        div[data-testid="stTextArea"]:focus-within textarea {
-            background: #FFFFFF !important;
-            border-color: var(--win-accent) !important;
-            box-shadow: 0 0 0 1px var(--win-accent), 0 0 0 4px rgba(15,108,189,.11) !important;
+        div[data-testid="stTextArea"] textarea { min-height: 104px !important; }
+        div[data-testid="stRadio"] label { font-size: 12px !important; }
+        div[data-testid="stCheckbox"] label { font-size: 12px !important; }
+
+        /* Tables */
+        div[data-testid="stDataFrame"] {
+            margin-top: 5px;
+            overflow: hidden;
+            background: rgba(255,255,255,.84);
+            border: 1px solid var(--win-border);
+            border-radius: var(--win-radius-lg);
+            box-shadow: 0 1px 2px rgba(0,0,0,.025);
+            transition: border-color var(--win-normal) ease, box-shadow var(--win-normal) ease;
+        }
+        div[data-testid="stDataFrame"]:hover {
+            border-color: rgba(0,0,0,.10);
+            box-shadow: 0 3px 14px rgba(0,0,0,.05);
+        }
+        div[data-testid="stCaptionContainer"] {
+            margin: 3px 0 2px;
+            color: var(--win-text-tertiary);
+            font-size: 10.5px;
         }
 
+        /* Expanders and alerts */
         div[data-testid="stExpander"] {
-            background: rgba(255,255,255,.82);
-            border: 1px solid rgba(255,255,255,.82);
-            border-radius: var(--win-radius-card);
-            box-shadow: var(--win-shadow-2), inset 0 0 0 1px rgba(0,0,0,.04);
-            transition: transform .2s var(--win-ease), box-shadow .2s ease;
+            margin-bottom: 8px;
+            overflow: hidden;
+            background: rgba(255,255,255,.72);
+            border: 1px solid var(--win-border);
+            border-radius: var(--win-radius-lg);
+            box-shadow: none;
+            transition: background var(--win-normal) ease, border-color var(--win-normal) ease, box-shadow var(--win-normal) ease;
         }
         div[data-testid="stExpander"]:hover {
-            transform: translateY(-1px);
-            box-shadow: var(--win-shadow-4), inset 0 0 0 1px rgba(0,0,0,.04);
+            background: rgba(255,255,255,.90);
+            border-color: rgba(0,0,0,.10);
+            box-shadow: 0 2px 10px rgba(0,0,0,.045);
         }
-        div[data-testid="stExpander"] details[open] { animation: fluentReveal .24s var(--win-ease); }
-
+        div[data-testid="stExpander"] details[open] { animation: contentReveal .18s var(--win-ease); }
         div[data-testid="stAlert"] {
-            border: 1px solid rgba(0,0,0,.08);
-            border-radius: var(--win-radius-card);
-            box-shadow: 0 2px 8px rgba(0,0,0,.04);
-            animation: notificationIn .34s var(--win-ease) both;
-        }
-        div[data-testid="stToast"] {
-            border: 1px solid rgba(255,255,255,.75);
-            border-radius: 12px;
-            box-shadow: var(--win-shadow-4);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
+            border-radius: var(--win-radius-lg);
+            border-width: 1px;
+            box-shadow: none;
         }
 
-        div[data-testid="stSidebar"] {
-            background: rgba(246,247,249,.78);
-            border-right: 1px solid rgba(255,255,255,.62);
-            box-shadow: 1px 0 0 rgba(0,0,0,.035);
-            backdrop-filter: blur(30px) saturate(145%);
-            -webkit-backdrop-filter: blur(30px) saturate(145%);
+        /* Search/status components */
+        .tx-filter-shell, .lookup-hero, .stock-input-example, .loading-stage-card, .ready-stage-card, .empty-state {
+            background: rgba(255,255,255,.78);
+            border: 1px solid var(--win-border);
+            border-radius: var(--win-radius-lg);
+            box-shadow: var(--win-shadow-card);
         }
-        div[data-testid="stSidebar"] > div:first-child { padding: .82rem .82rem 1.35rem; }
-        .sidebar-brand {
-            display: flex;
+        .tx-filter-shell { padding: 14px; margin: 0 0 11px; }
+        .tx-filter-card { min-height: 0; padding: 11px 12px; background: rgba(255,255,255,.66); border: 1px solid var(--win-border); border-radius: 9px; box-shadow: none; }
+        .tx-filter-title { color: var(--win-text); font-size: 15px; font-weight: 650; }
+        .tx-filter-subtitle, .tx-filter-card-subtitle { color: var(--win-text-secondary); font-size: 11px; }
+        .tx-filter-card-title { color: var(--win-text-secondary); font-size: 10px; font-weight: 650; letter-spacing: .04em; }
+        .tx-status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0 8px; }
+        .tx-status-card {
+            min-height: 70px;
+            padding: 10px 11px;
+            background: rgba(255,255,255,.82);
+            border: 1px solid var(--win-border);
+            border-radius: 9px;
+            box-shadow: none;
+            transition: transform var(--win-normal) var(--win-ease), background var(--win-normal) ease;
+        }
+        .tx-status-card:hover { transform: translateY(-1px); background: #fff; }
+        .tx-status-label { color: var(--win-text-tertiary); font-size: 9.5px; font-weight: 650; letter-spacing: .04em; }
+        .tx-status-value { margin-top: 4px; color: var(--win-text); font-size: 18px; font-weight: 650; }
+        .tx-status-help { margin-top: 4px; color: var(--win-text-tertiary); font-size: 10px; }
+        .tx-result-box { margin: 8px 0 6px; padding: 10px 11px; background: rgba(255,255,255,.72); border: 1px solid var(--win-border); border-radius: 9px; }
+        .tx-result-box-ok { background: rgba(223,246,227,.64); border-color: rgba(16,124,16,.15); }
+        .tx-result-box-missing { background: rgba(253,231,233,.72); border-color: rgba(196,43,28,.15); }
+        .tx-result-title { color: var(--win-text); font-size: 11px; font-weight: 650; }
+        .tx-pill-wrap { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+        .tx-example-pill, .tx-pill, .tx-pill-ok, .tx-pill-missing, .tx-pill-muted {
+            display: inline-flex;
             align-items: center;
-            gap: .68rem;
-            padding: .42rem .42rem .82rem;
-            margin-bottom: .18rem;
-            animation: fluentReveal .42s var(--win-ease) both;
-        }
-        .fluent-grid-icon-small {
-            width: 34px;
-            height: 34px;
-            padding: 7px;
-            color: #FFFFFF;
-            background: linear-gradient(145deg, #1684D8, var(--win-accent));
-            border-radius: 10px;
-            box-shadow: 0 5px 12px rgba(15,108,189,.2), inset 0 1px 0 rgba(255,255,255,.28);
-        }
-        .sidebar-brand-title {
-            color: var(--win-text);
-            font-size: 1.04rem;
-            font-weight: 720;
-            letter-spacing: -.02em;
-            line-height: 1.1;
-        }
-        .sidebar-brand-subtitle {
-            margin-top: .12rem;
-            color: var(--win-text-tertiary);
-            font-size: .68rem;
-            font-weight: 600;
-        }
-        .sidebar-section-title {
-            color: var(--win-text-tertiary);
-            font-size: .66rem;
-            font-weight: 700;
-            letter-spacing: .08em;
-        }
-        div[data-testid="stSidebar"] div[data-testid="stFileUploader"] section {
-            background: rgba(255,255,255,.72);
-            border: 1px dashed rgba(0,0,0,.16);
-            border-radius: 10px;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.58);
-            transition: transform .18s var(--win-ease), background .18s ease, border-color .18s ease, box-shadow .18s ease;
-        }
-        div[data-testid="stSidebar"] div[data-testid="stFileUploader"] section:hover {
-            transform: translateY(-1px);
-            background: rgba(255,255,255,.94);
-            border-color: var(--win-accent);
-            box-shadow: 0 5px 14px rgba(0,0,0,.065);
-        }
-        .sidebar-note {
+            min-height: 23px;
+            padding: 3px 7px;
             color: var(--win-text-secondary);
-            background: rgba(255,255,255,.62);
-            border: 1px solid rgba(255,255,255,.76);
-            border-radius: 10px;
-            box-shadow: inset 0 0 0 1px rgba(0,0,0,.035);
-        }
-        .sidebar-note:hover { background: rgba(255,255,255,.86); }
-
-        .loading-stage-card,
-        .ready-stage-card {
-            background: rgba(255,255,255,.9);
-            border: 1px solid rgba(255,255,255,.84);
-            border-radius: var(--win-radius-card);
-            box-shadow: var(--win-shadow-4), inset 0 0 0 1px rgba(0,0,0,.035);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-        }
-        .loader-ring {
-            border-color: rgba(15,108,189,.16);
-            border-top-color: var(--win-accent);
-        }
-        .ready-check { background: var(--win-success); }
-        .animated-progress { background: rgba(15,108,189,.10); }
-        .animated-progress::before {
-            background: linear-gradient(90deg, transparent, rgba(15,108,189,.75), transparent);
-        }
-
-        * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,.24) transparent; }
-        *::-webkit-scrollbar { width: 10px; height: 10px; }
-        *::-webkit-scrollbar-track { background: transparent; }
-        *::-webkit-scrollbar-thumb {
-            background: rgba(0,0,0,.22);
-            border: 3px solid transparent;
+            font-size: 10.5px;
+            font-weight: 600;
+            background: rgba(0,0,0,.04);
+            border: 1px solid var(--win-border);
             border-radius: 999px;
-            background-clip: padding-box;
         }
-        *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,.34); background-clip: padding-box; }
+        .tx-pill-ok { color: #0f6c0f; background: rgba(223,246,227,.8); border-color: rgba(16,124,16,.15); }
+        .tx-pill-missing { color: #a4262c; background: rgba(253,231,233,.9); border-color: rgba(196,43,28,.15); }
+        .tx-pill-muted { color: var(--win-text-secondary); background: rgba(0,0,0,.035); }
+        .stock-input-example { min-height: 0; padding: 11px 12px; box-shadow: none; }
+        .stock-input-code { margin-top: 7px; padding: 8px 9px; color: var(--win-text-secondary); font-size: 10.5px; background: rgba(0,0,0,.035); border: 1px solid var(--win-border); border-radius: 7px; }
+        .stock-do-heading { color: var(--win-text); font-size: 13px; font-weight: 650; }
+        .stock-do-subtitle { color: var(--win-text-secondary); font-size: 11px; }
+        .empty-state { max-width: 620px; margin: 64px auto; padding: 28px; text-align: center; }
+        .empty-state::before {
+            content: "\E898";
+            display: block;
+            margin-bottom: 12px;
+            color: var(--win-accent);
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            font-size: 30px;
+        }
+        .empty-state-title { color: var(--win-text); font-size: 17px; font-weight: 650; }
+        .empty-state-text { margin-top: 6px; color: var(--win-text-secondary); font-size: 12px; line-height: 1.45; }
+        .loading-stage-card, .ready-stage-card { padding: 14px 15px; }
+        .loading-row { display: flex; align-items: center; gap: 11px; }
+        .dots span { display: inline-block; animation: dotPulse 1.15s ease-in-out infinite; }
+        .dots span:nth-child(2) { animation-delay: .14s; }
+        .dots span:nth-child(3) { animation-delay: .28s; }
+        @keyframes dotPulse {
+            0%, 75%, 100% { opacity: .25; transform: translateY(0); }
+            38% { opacity: 1; transform: translateY(-1px); }
+        }
+        .tx-filter-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+        .tx-example-row { display: flex; flex-wrap: wrap; gap: 5px; margin: 5px 0 8px; }
+        .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {
+            color: #fff;
+            background: var(--win-accent);
+            border-color: var(--win-accent);
+            box-shadow: 0 1px 2px rgba(0,0,0,.08);
+        }
+        .stButton > button[kind="primary"]:hover, .stDownloadButton > button[kind="primary"]:hover {
+            color: #fff;
+            background: var(--win-accent-hover);
+            border-color: var(--win-accent-hover);
+        }
+        .stButton > button[kind="primary"]:active, .stDownloadButton > button[kind="primary"]:active {
+            background: var(--win-accent-pressed);
+            border-color: var(--win-accent-pressed);
+        }
+        .stDownloadButton > button[kind="primary"]::before { color: #fff; }
+        .loader-ring { border-color: rgba(0,103,192,.14); border-top-color: var(--win-accent); }
+        .animated-progress { height: 4px; background: rgba(0,103,192,.10); }
+        .animated-progress::before { background: linear-gradient(90deg, transparent, var(--win-accent), transparent); }
+        .stage-title { color: var(--win-text); font-size: 12px; font-weight: 650; }
+        .stage-subtitle { color: var(--win-text-secondary); font-size: 11px; }
 
-        @keyframes fluentReveal {
-            from { opacity: 0; transform: translateY(8px) scale(.995); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
+        /* Responsive */
+        @media (max-width: 1180px) {
+            .app-header { align-items: flex-start; flex-direction: column; gap: 9px; }
+            .app-meta { justify-content: flex-start; max-width: 100%; margin-left: 45px; }
+            .tx-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
-        @keyframes cardRise {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+        @media (max-width: 820px) {
+            :root { --layout-x: 14px; --layout-top: 12px; }
+            .app-header { padding: 12px; border-radius: 12px; }
+            .app-subtitle, .app-meta { margin-left: 0; }
+            .app-meta { display: grid; grid-template-columns: 1fr; width: 100%; }
+            .meta-chip { width: 100%; max-width: none; }
+            div[data-testid="stTabs"] [role="tablist"] { top: 6px; }
+            .kpi-card { min-height: 96px; }
         }
-        @keyframes tabContentIn {
-            from { opacity: 0; transform: translateY(6px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes notificationIn {
-            from { opacity: 0; transform: translateY(-6px) scale(.99); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes ambientDrift {
-            from { transform: translate3d(-10px, 4px, 0) scale(.96); }
-            to { transform: translate3d(12px, -8px, 0) scale(1.06); }
-        }
-        @keyframes statusPulse {
-            0%, 100% { box-shadow: 0 0 0 3px rgba(19,161,14,.11); }
-            50% { box-shadow: 0 0 0 5px rgba(19,161,14,.045); }
-        }
-
-        @media (max-width: 1100px) {
-            .app-header { align-items: flex-start; }
-            .app-subtitle { margin-left: 0; }
-            .app-meta { max-width: 100%; }
-        }
-        @media (max-width: 760px) {
-            .main .block-container { padding: .5rem .58rem 1.3rem; }
-            .app-header { min-height: auto; padding: .86rem; border-radius: 14px; }
-            .app-product-icon { width: 38px; height: 38px; }
-            .app-title { font-size: 1.35rem; }
-            .app-subtitle { font-size: .76rem; }
-            .meta-chip { width: 100%; }
-            div[data-testid="stTabs"] [role="tablist"] { top: 2.8rem; }
-            .kpi-card { min-height: 88px; }
+        @media (max-width: 520px) {
+            .main .block-container { padding-left: 9px; padding-right: 9px; }
+            .app-product-icon { display: none; }
+            .app-title { font-size: 18px; }
+            .app-subtitle { font-size: 11px; }
+            div[data-testid="stTabs"] button[role="tab"] { padding: 0 10px; }
+            .tx-status-grid { grid-template-columns: 1fr; }
         }
         @media (prefers-reduced-motion: reduce) {
             html { scroll-behavior: auto; }
@@ -1840,17 +787,15 @@ st.markdown(
                 scroll-behavior: auto !important;
             }
         }
-
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-
 FORMAT_CONFIGS = {
     "Newark": {
         "title": "Inventory Shortage",
-        "sidebar_title": "📦 Inventory Dashboard",
+        "sidebar_title": "Inventory Dashboard",
         "caption": "Upload an Item Activity Report Excel file to generate the shortage dashboard.",
         "upload_label": "Drop Item Activity Report here",
         "placeholder": "Search SKU...",
@@ -1872,7 +817,7 @@ FORMAT_CONFIGS = {
     },
     "Carson": {
         "title": "Inventory Shortage",
-        "sidebar_title": "📦 Inventory Dashboard",
+        "sidebar_title": "Inventory Dashboard",
         "caption": "Upload an Item Activity Report Excel file to generate the shortage dashboard.",
         "upload_label": "Drop Item Activity Report here",
         "placeholder": "Search SKU...",
@@ -2687,15 +1632,7 @@ def fmt_date(value):
 
 
 def risk_badge_text(level: str) -> str:
-    return {
-        "Data Issue": "⚫ Data Issue",
-        "Critical": "🔴 Critical",
-        "Warning": "🟠 Warning",
-        "Watch": "🟡 Watch",
-        "Healthy": "🟢 Healthy",
-        "No Recent Demand": "⚪ No Recent Demand",
-        "Inactive / No Demand": "⚪ Inactive / No Demand",
-    }.get(level, level)
+    return clean_text(level)
 
 
 def html_pills(values, class_name, limit=36):
@@ -2712,23 +1649,50 @@ def html_pills(values, class_name, limit=36):
 def metric_card(label, value, help_text=""):
     label_text = clean_text(label)
     tone = "accent"
+    icon_code = "E9D2"
     label_lower = label_text.lower()
-    if any(keyword in label_lower for keyword in ["critical", "shortage", "missing"]):
+    if "total sku" in label_lower:
+        icon_code = "E71D"
+    elif any(keyword in label_lower for keyword in ["critical", "shortage", "missing"]):
         tone = "danger"
+        icon_code = "E7BA"
     elif "warning" in label_lower:
         tone = "warning"
+        icon_code = "E814"
     elif "watch" in label_lower:
         tone = "watch"
+        icon_code = "E823"
     elif any(keyword in label_lower for keyword in ["qty in", "inbound", "healthy"]):
         tone = "success"
-    elif any(keyword in label_lower for keyword in ["balance", "remaining", "forecast"]):
+        icon_code = "E73E"
+    elif any(keyword in label_lower for keyword in ["balance", "remaining"]):
         tone = "neutral"
+        icon_code = "E9D2"
+    elif "forecast" in label_lower:
+        tone = "neutral"
+        icon_code = "E787"
+    elif "risk" in label_lower:
+        icon_code = "E9D9"
+        value_lower = clean_text(value).lower()
+        if "critical" in value_lower or "data issue" in value_lower:
+            tone = "danger"
+        elif "warning" in value_lower:
+            tone = "warning"
+        elif "watch" in value_lower:
+            tone = "watch"
+        elif "healthy" in value_lower:
+            tone = "success"
+        else:
+            tone = "neutral"
 
     st.markdown(
         f"""
         <div class="kpi-card kpi-tone-{tone}">
             <div class="kpi-accent" aria-hidden="true"></div>
-            <div class="kpi-label">{html.escape(label_text)}</div>
+            <div class="kpi-topline">
+                <div class="kpi-label">{html.escape(label_text)}</div>
+                <div class="kpi-icon" aria-hidden="true">&#x{icon_code};</div>
+            </div>
             <div class="kpi-value">{html.escape(clean_text(value))}</div>
             <div class="kpi-help">{html.escape(clean_text(help_text))}</div>
         </div>
@@ -3229,7 +2193,7 @@ def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame, tx_df
 
 def stock_status_badge(value: str) -> str:
     return {
-        "Enough": "✅ Enough",
+        "Enough": "Enough",
         "Shortage": "⚠️ Shortage",
         "Not Found": "Missing SKU",
         "Invalid Qty": "Invalid Qty",
@@ -3611,10 +2575,38 @@ def show_limited_dataframe(df: pd.DataFrame, height: int = 420, limit: int = 500
     total_rows = len(df)
     if show_count:
         if total_rows > limit:
-            st.caption(f"Showing first {limit:,} rows out of {total_rows:,} rows for faster loading. Download export for full data.")
+            st.caption(f"Showing first {limit:,} rows out of {total_rows:,}. Use the export for the complete dataset.")
         else:
-            st.caption(f"Showing {total_rows:,} rows.")
-    st.dataframe(display_table(df.head(limit)), use_container_width=True, hide_index=True, height=height)
+            st.caption(f"{total_rows:,} rows")
+
+    display_df = display_table(df.head(limit))
+    style_df = pd.DataFrame("", index=display_df.index, columns=display_df.columns)
+
+    if "Risk Level" in display_df.columns:
+        risk_styles = {
+            "Data Issue": "background-color:#F0F0F0;color:#323130;font-weight:650;text-align:center;",
+            "Critical": "background-color:#FDE7E9;color:#A4262C;font-weight:650;text-align:center;",
+            "Warning": "background-color:#FFF4CE;color:#8A4B08;font-weight:650;text-align:center;",
+            "Watch": "background-color:#FFF8D6;color:#6B5900;font-weight:650;text-align:center;",
+            "Healthy": "background-color:#DFF6DD;color:#0B6A0B;font-weight:650;text-align:center;",
+            "No Recent Demand": "background-color:#F3F2F1;color:#605E5C;font-weight:600;text-align:center;",
+            "Inactive / No Demand": "background-color:#F3F2F1;color:#797775;font-weight:600;text-align:center;",
+        }
+        for idx, value in display_df["Risk Level"].items():
+            style_df.at[idx, "Risk Level"] = risk_styles.get(clean_text(value), "")
+
+    if "Audit Status" in display_df.columns:
+        audit_styles = {
+            "Pass": "background-color:#DFF6DD;color:#0B6A0B;font-weight:650;text-align:center;",
+            "Review": "background-color:#FDE7E9;color:#A4262C;font-weight:650;text-align:center;",
+            "Partial": "background-color:#FFF4CE;color:#8A4B08;font-weight:650;text-align:center;",
+            "Not Available": "background-color:#F3F2F1;color:#605E5C;font-weight:600;text-align:center;",
+        }
+        for idx, value in display_df["Audit Status"].items():
+            style_df.at[idx, "Audit Status"] = audit_styles.get(clean_text(value), "")
+
+    styled_df = display_df.style.apply(lambda _: style_df, axis=None)
+    st.dataframe(styled_df, use_container_width=True, hide_index=True, height=height)
 
 
 def show_temporary_balance_dataframe(df: pd.DataFrame, height: int = 420, limit: int = 2000, show_count: bool = True):
@@ -3762,7 +2754,8 @@ st.sidebar.markdown(
 )
 if st.session_state.get("report_format") not in ["Newark", "Carson"]:
     st.session_state["report_format"] = "Newark"
-format_name = st.sidebar.selectbox("Report Format", options=["Newark", "Carson"], index=0, key="report_format")
+st.sidebar.markdown('<div class="sidebar-section-title">Workspace</div>', unsafe_allow_html=True)
+format_name = st.sidebar.selectbox("Warehouse", options=["Newark", "Carson"], index=0, key="report_format")
 update_persistent_app_state(values={"report_format": format_name})
 config = FORMAT_CONFIGS[format_name]
 site_key = safe_format_slug(format_name).lower()
@@ -3770,9 +2763,8 @@ risk_filter_key = f"{site_key}_filter_risk_levels"
 min_usage_filter_key = f"{site_key}_filter_min_usage"
 sku_select_key = f"{site_key}_sku_select_combined"
 
-saved_newark = load_persistent_upload("Newark")
-saved_carson = load_persistent_upload("Carson")
-st.sidebar.markdown('<div class="sidebar-section-title">Report File</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="sidebar-section-title">Data source</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="sidebar-section-help">Upload a report or continue from the last saved file.</div>', unsafe_allow_html=True)
 uploaded = st.sidebar.file_uploader(
     config["upload_label"],
     type=["xlsx", "xls"],
@@ -3781,12 +2773,9 @@ uploaded = st.sidebar.file_uploader(
     key=f"{format_name.lower()}_report_uploader",
 )
 report_source_slot = st.sidebar.empty()
-with st.sidebar.expander("Saved reports", expanded=False):
-    st.caption(f"Newark: {saved_newark['file_name'] if saved_newark else 'No saved report'}")
-    st.caption(f"Carson: {saved_carson['file_name'] if saved_carson else 'No saved report'}")
 
-st.sidebar.divider()
-st.sidebar.markdown('<div class="sidebar-section-title">Filters</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="sidebar-section-title">Inventory filters</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="sidebar-section-help">Filters apply to Overview and the SKU selector.</div>', unsafe_allow_html=True)
 risk_options = ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand", "Inactive / No Demand"]
 if risk_filter_key in st.session_state:
     st.session_state[risk_filter_key] = [value for value in st.session_state[risk_filter_key] if value in risk_options]
@@ -3806,24 +2795,7 @@ min_usage = st.sidebar.number_input(
 update_persistent_app_state(values={risk_filter_key: show_risks, min_usage_filter_key: min_usage})
 
 sku_sidebar_slot = st.sidebar.empty()
-st.sidebar.button("Reset Filters", use_container_width=True, on_click=reset_sidebar_filters, args=(site_key,))
-
-st.sidebar.divider()
-st.sidebar.markdown(
-    """
-    <div class="sidebar-note">
-    <b>Risk Level Notes</b><br>
-    ⚫ <b>Data Issue:</b> Missing or duplicate source rows<br>
-    🔴 <b>Critical:</b> Active 30D demand with no stock, or 0–7 business days remaining<br>
-    🟠 <b>Warning:</b> 8–14 business days remaining<br>
-    🟡 <b>Watch:</b> 15–30 business days remaining<br>
-    🟢 <b>Healthy:</b> More than 30 business days remaining<br>
-    ⚪ <b>No Recent Demand:</b> Active in 90D but no outbound in 30D<br>
-    ⚪ <b>Inactive / No Demand:</b> No outbound in the 90-day data window
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+st.sidebar.button("Clear filters", use_container_width=True, on_click=reset_sidebar_filters, args=(site_key,))
 
 
 status_box = st.empty()
@@ -3848,15 +2820,18 @@ else:
             """,
             unsafe_allow_html=True,
         )
-        report_source_slot.info("No saved report")
+        report_source_slot.markdown(
+            '<div class="data-source-card data-source-card-empty"><span>No saved report</span></div>',
+            unsafe_allow_html=True,
+        )
         st.stop()
     file_bytes = saved_upload["file_bytes"]
     active_file_name = saved_upload["file_name"]
     using_saved_report = True
 
-report_source_slot.success(
-    f"{'Saved' if using_saved_report else 'Uploaded'}: {active_file_name}",
-    icon="✅",
+report_source_slot.markdown(
+    f'<div class="data-source-card"><span>{html.escape("Saved" if using_saved_report else "Uploaded")}: {html.escape(active_file_name)}</span></div>',
+    unsafe_allow_html=True,
 )
 
 uploaded_key = f"{format_name}|{active_file_name}|{len(file_bytes)}|{stable_file_hash(file_bytes)}"
@@ -3892,7 +2867,7 @@ try:
         progress_bar.progress(100, text="Dashboard ready")
         status_box.empty()
         progress_box.empty()
-        st.toast("Dashboard loaded successfully.", icon="✅")
+        st.toast("Dashboard loaded successfully.")
         loaded_file_keys.add(uploaded_key)
     else:
         status_box.empty()
@@ -3943,7 +2918,7 @@ report_start = model["report_start"]
 report_end = model["report_end"]
 windows = model["windows"]
 
-source_label = "Saved report" if using_saved_report else "New upload"
+source_label = "Saved" if using_saved_report else "Uploaded"
 st.markdown(
     f"""
     <div class="app-header">
@@ -3953,16 +2928,16 @@ st.markdown(
                     <span></span><span></span><span></span><span></span>
                 </div>
                 <div class="app-title-copy">
-                    <div class="app-eyebrow">{html.escape(format_name)} Warehouse</div>
-                    <div class="app-title">{html.escape(config["title"])}</div>
+                    <div class="app-eyebrow">{html.escape(format_name)} warehouse</div>
+                    <div class="app-title">Inventory Shortage</div>
                 </div>
             </div>
-            <div class="app-subtitle">Review shortage priorities, inspect SKU transactions, find DOs, and validate new outbound demand from one workspace.</div>
+            <div class="app-subtitle">Inventory risk, SKU activity, DO lookup, and outbound stock validation.</div>
         </div>
         <div class="app-meta">
-            <span class="meta-chip meta-chip-accent">Report&nbsp; {fmt_date(report_start)} – {fmt_date(report_end)}</span>
-            <span class="meta-chip" title="{html.escape(active_file_name)}">File&nbsp; {html.escape(active_file_name)}</span>
-            <span class="meta-chip meta-chip-status"><span class="status-dot"></span>{source_label}</span>
+            <span class="meta-chip meta-chip-date meta-chip-accent">{fmt_date(report_start)} – {fmt_date(report_end)}</span>
+            <span class="meta-chip meta-chip-file" title="{html.escape(active_file_name)}">{html.escape(active_file_name)}</span>
+            <span class="meta-chip meta-chip-status">{source_label}</span>
         </div>
     </div>
     """,
@@ -3970,7 +2945,7 @@ st.markdown(
 )
 
 website_tab, sku_tab, do_lookup_tab, stock_check_tab, audit_tab, guide_tab = st.tabs(
-    ["Dashboard", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Guide"]
+    ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Help"]
 )
 
 with website_tab:
@@ -3988,19 +2963,20 @@ with website_tab:
     transaction_file_name = transaction_download_filename(format_name, report_end)
     heading_col, export_col_1, export_col_2 = st.columns([3.4, 1.25, 1.25])
     with heading_col:
-        tab_page_header("Operations Overview", "Priority inventory is shown first. Sidebar filters apply to the dashboard and SKU selector.")
+        tab_page_header("Overview", "Review inventory risk first, then move into SKU, DO, or stock validation workflows.")
     with export_col_1:
         st.download_button(
-            "⬇ Inventory Report",
+            "Export report",
             data=to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION),
             file_name=export_file_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
+            type="primary",
             help=f"Download {export_file_name}",
         )
     with export_col_2:
         st.download_button(
-            "⬇ Transactions",
+            "Export transactions",
             data=to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION),
             file_name=transaction_file_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -4037,7 +3013,7 @@ with website_tab:
     ]
     priority_display = prepare_display(priority_filtered[priority_cols])
     priority_height = min(620, max(300, 88 + (min(len(priority_display), 16) * 31)))
-    show_limited_dataframe(priority_display, height=priority_height, limit=250)
+    show_limited_dataframe(priority_display, height=priority_height, limit=250, show_count=False)
 
 
 with sku_tab:
@@ -4082,7 +3058,8 @@ with sku_tab:
             metric_card("Forecast Stockout", fmt_date(selected["Forecast Stockout Date"]), "Business day estimate")
 
         st.markdown("<div class='section-block'></div>", unsafe_allow_html=True)
-        st.subheader("SKU metrics")
+        st.markdown('<div class="section-title">SKU metrics</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Demand, usage, and recent activity for the selected item.</div>', unsafe_allow_html=True)
         detail_cols = [
             "Demand Status",
             "Official Total Inbound",
@@ -4113,7 +3090,8 @@ with sku_tab:
         if not tx_sku.empty:
             tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].copy()
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-            st.subheader("Full transaction history")
+            st.markdown('<div class="section-title">Transaction history</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-subtitle">Search references or filter activity dates without leaving this SKU.</div>', unsafe_allow_html=True)
             full_tx_cols = [
                 "Excel Row",
                 "Activity Date",
@@ -4851,7 +3829,7 @@ with stock_check_tab:
             download_col_1, download_col_2, download_col_3 = st.columns(3)
             with download_col_1:
                 st.download_button(
-                    "⬇️ Download Stock Check Detail CSV",
+                    "Export detail CSV",
                     data=export_stock_df.to_csv(index=False).encode("utf-8-sig"),
                     file_name=f"{safe_format_slug(format_name)}_Stock_Check_Detail_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
                     mime="text/csv",
@@ -4859,7 +3837,7 @@ with stock_check_tab:
                 )
             with download_col_2:
                 st.download_button(
-                    "⬇️ Download Stock Check Overview CSV",
+                    "Export overview CSV",
                     data=export_overview_df.to_csv(index=False).encode("utf-8-sig"),
                     file_name=f"{safe_format_slug(format_name)}_Stock_Check_Overview_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
                     mime="text/csv",
@@ -4868,7 +3846,7 @@ with stock_check_tab:
             with download_col_3:
                 if not export_temp_df.empty:
                     st.download_button(
-                        "⬇️ Download Temporary Balance CSV",
+                        "Export temporary balance CSV",
                         data=export_temp_df.to_csv(index=False).encode("utf-8-sig"),
                         file_name=f"{safe_format_slug(format_name)}_Temporary_Balance_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
                         mime="text/csv",
@@ -4891,13 +3869,16 @@ with audit_tab:
     if audit_review_df.empty:
         st.success("All available audit checks passed.")
     else:
-        st.markdown("**Items Requiring Review**")
+        st.markdown('<div class="section-title">Items requiring review</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Only audit exceptions are shown below.</div>', unsafe_allow_html=True)
         show_limited_dataframe(audit_review_df, height=320, limit=500)
 
     with st.expander("Full SKU Reconciliation", expanded=False):
         show_limited_dataframe(audit_df, height=360, limit=1000)
 
-    st.markdown("**Recent Outbound Audit**")
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Outbound window audit</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Totals are calculated from dated outbound transaction rows.</div>', unsafe_allow_html=True)
     r1, r2, r3, r4 = st.columns(4)
     recent_labels = ["Outbound Last 90 Days", "Outbound Last 30 Days", "Outbound Last 14 Days", "Outbound Last 7 Days"]
     recent_card_labels = ["Recent Outbound 90D", "Recent Outbound 30D", "Recent Outbound 14D", "Recent Outbound 7D"]
@@ -4907,10 +3888,11 @@ with audit_tab:
         with col:
             metric_card(card_label, fmt_num(sku_df[label].sum()), f"{fmt_date(start)} - {fmt_date(end)} | {len(valid_dates)} data dates")
 
-    st.markdown("**Official Total Rows**")
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Official total rows</div>', unsafe_allow_html=True)
     show_limited_dataframe(model["official_total_df"], height=260, limit=250)
 
-    st.markdown("**Official Ending Balance Rows**")
+    st.markdown('<div class="section-title" style="margin-top:14px;">Official ending balance rows</div>', unsafe_allow_html=True)
     show_limited_dataframe(model["official_ending_df"], height=260, limit=250)
 
     with st.expander("Not Shipped Rows", expanded=False):
@@ -4924,15 +3906,13 @@ with audit_tab:
             show_limited_dataframe(model["beginning_balance_df"], height=260, limit=250)
 
 with guide_tab:
-    tab_page_header("How to Use", "A compact workflow for loading reports, reviewing shortages, finding DOs, and validating stock.")
+    tab_page_header("Help", "The shortest path through the dashboard for daily inventory work.")
     st.markdown(
-        f"""
-        1. Select the matching **Report Format** in the sidebar.
-        2. Upload the matching **Item Activity Report** Excel file.
-        3. Review **Critical**, **Warning**, and **Watch** SKUs first. **Inactive / No Demand** SKUs are excluded from the default list.
-        4. Use **SKU Detail** to drill into one SKU and review transaction history.
-        5. Use **DO Lookup** to search one DO # and see every item tied to that DO # / Trans. # across all SKUs.
-        6. Use **Stock Check** to paste new DO demand and verify remaining stock before creating outbound orders.
-        7. Use **Audit** to review missing source rows, duplicate rows, balance differences, Not Shipped rows, and Cancelled rows.
-        8. Forecast dates exclude weekends and U.S. federal holidays.        """
+        """
+        1. Select the **Warehouse** and upload the matching Item Activity Report.
+        2. Start in **Overview** and review Critical, Warning, and Watch items.
+        3. Use **SKU Detail** for item-level activity and **DO Lookup** for order searches.
+        4. Use **Stock Check** before creating outbound orders, then use **Audit** only when source reconciliation is needed.
+        5. Forecast dates exclude weekends and U.S. federal holidays.
+        """
     )
