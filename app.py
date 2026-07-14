@@ -2,7 +2,6 @@ import hashlib
 import html
 import json
 import re
-import time
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
@@ -907,6 +906,361 @@ st.markdown(
             display: none;
         }
 
+
+
+        /* Optimized website layout */
+        :root {
+            --app-bg: #F4F5F7;
+            --surface: #FFFFFF;
+            --surface-soft: #F8F9FB;
+            --text-strong: #101828;
+            --text: #344054;
+            --text-muted: #667085;
+            --border: #E4E7EC;
+            --shadow-sm: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+            --shadow-md: 0 8px 24px rgba(16,24,40,.08);
+            --radius-sm: 10px;
+            --radius-md: 14px;
+            --radius-lg: 18px;
+        }
+
+        html { scroll-behavior: smooth; }
+        body, [data-testid="stAppViewContainer"] { background: var(--app-bg); }
+        header[data-testid="stHeader"] {
+            visibility: visible !important;
+            background: rgba(244,245,247,.88) !important;
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border-bottom: 1px solid rgba(228,231,236,.72);
+        }
+        div[data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
+        footer { visibility: hidden; }
+
+        .main .block-container {
+            width: 100%;
+            max-width: 1580px;
+            padding: .55rem clamp(.8rem, 2vw, 1.65rem) 1.5rem;
+            animation: none;
+        }
+
+        .app-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1.25rem;
+            padding: 1rem 1.1rem;
+            margin: 0 0 .62rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+        }
+        .app-header-main { min-width: 0; }
+        .app-eyebrow {
+            margin-bottom: .18rem;
+            color: var(--text-muted);
+            font-size: .7rem;
+            font-weight: 800;
+            letter-spacing: .075em;
+            text-transform: uppercase;
+        }
+        .app-title {
+            color: var(--text-strong);
+            font-size: clamp(1.35rem, 2vw, 1.75rem);
+            font-weight: 850;
+            letter-spacing: -.035em;
+            line-height: 1.08;
+        }
+        .app-subtitle {
+            max-width: 720px;
+            margin-top: .28rem;
+            color: var(--text-muted);
+            font-size: .82rem;
+            line-height: 1.4;
+        }
+        .app-meta {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: .4rem;
+            max-width: 52%;
+        }
+        .meta-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 30px;
+            max-width: 100%;
+            padding: .35rem .62rem;
+            color: var(--text);
+            background: var(--surface-soft);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            font-size: .73rem;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .empty-state {
+            max-width: 720px;
+            margin: 3.5rem auto;
+            padding: 2rem;
+            text-align: center;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            box-shadow: var(--shadow-md);
+        }
+        .empty-state-title {
+            color: var(--text-strong);
+            font-size: 1.35rem;
+            font-weight: 850;
+            letter-spacing: -.025em;
+        }
+        .empty-state-text {
+            margin-top: .45rem;
+            color: var(--text-muted);
+            font-size: .88rem;
+            line-height: 1.5;
+        }
+
+        .tab-page-heading {
+            margin: .05rem 0 .65rem;
+        }
+        .tab-page-title {
+            color: var(--text-strong);
+            font-size: 1.08rem;
+            font-weight: 820;
+            letter-spacing: -.018em;
+            line-height: 1.25;
+        }
+        .tab-page-subtitle {
+            margin-top: .16rem;
+            color: var(--text-muted);
+            font-size: .79rem;
+            line-height: 1.38;
+        }
+
+        div[data-testid="stTabs"] { margin-top: 0; }
+        div[data-testid="stTabs"] [role="tablist"] {
+            position: sticky;
+            top: 2.9rem;
+            z-index: 990;
+            width: 100%;
+            gap: .3rem;
+            margin: 0 0 .7rem;
+            padding: .34rem;
+            overflow-x: auto;
+            background: rgba(255,255,255,.94);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            scrollbar-width: none;
+        }
+        div[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar { display: none; }
+        div[data-testid="stTabs"] button[role="tab"] {
+            flex: 1 0 auto;
+            min-height: 36px;
+            padding: .46rem .78rem;
+            color: var(--text-muted);
+            background: transparent;
+            border: 0 !important;
+            border-radius: var(--radius-sm);
+            font-weight: 760;
+            white-space: nowrap;
+            transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+        }
+        div[data-testid="stTabs"] button[role="tab"] p {
+            color: inherit;
+            font-size: .79rem;
+            font-weight: inherit;
+        }
+        div[data-testid="stTabs"] button[role="tab"]:hover {
+            color: var(--text-strong);
+            background: var(--surface-soft);
+        }
+        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+            color: #FFFFFF !important;
+            background: var(--text-strong) !important;
+            box-shadow: 0 2px 7px rgba(16,24,40,.18);
+        }
+        div[data-testid="stTabs"] [role="tabpanel"] { padding-top: .05rem; }
+
+        .kpi-card {
+            min-height: 88px;
+            padding: .8rem .85rem .72rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            transition: border-color .15s ease, box-shadow .15s ease;
+        }
+        .kpi-card:hover {
+            transform: none;
+            border-color: #D0D5DD;
+            box-shadow: 0 4px 12px rgba(16,24,40,.07);
+        }
+        .kpi-label {
+            margin-bottom: .3rem;
+            color: var(--text-muted);
+            font-size: .73rem;
+            font-weight: 720;
+        }
+        .kpi-value {
+            color: var(--text-strong);
+            font-size: clamp(1.25rem, 1.8vw, 1.48rem);
+            font-weight: 850;
+            line-height: 1.06;
+        }
+        .kpi-help {
+            margin-top: .38rem;
+            color: #98A2B3;
+            font-size: .68rem;
+        }
+        .kpi-row-gap { height: .45rem; }
+
+        .section-divider {
+            height: 1px;
+            margin: .85rem 0 .65rem;
+            background: var(--border);
+        }
+        .section-block { margin-top: .7rem; }
+        .section-title {
+            color: var(--text-strong);
+            font-size: .99rem;
+            font-weight: 800;
+            line-height: 1.3;
+        }
+        .section-subtitle {
+            margin: .12rem 0 .4rem;
+            color: var(--text-muted);
+            font-size: .76rem;
+            line-height: 1.4;
+        }
+        .small-note { display: none; }
+
+        .selected-sku-card, .lookup-hero, .tx-filter-shell {
+            margin: .04rem 0 .65rem;
+            padding: .9rem 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+        }
+        .selected-sku-card::before { width: 4px; }
+        .selected-sku-label { margin-bottom: .28rem; font-size: .69rem; }
+        .selected-sku-value { font-size: clamp(1.45rem, 2.5vw, 1.9rem); }
+        .selected-sku-description { margin-top: .3rem; font-size: .92rem; }
+        .lookup-title, .tx-filter-title { font-size: 1.04rem; }
+        .lookup-subtitle, .tx-filter-subtitle { font-size: .78rem; }
+
+        div[data-testid="stDataFrame"] {
+            margin-top: .1rem;
+            overflow: hidden;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+        }
+        div[data-testid="stExpander"] {
+            overflow: hidden;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: none;
+        }
+        div[data-testid="stExpander"]:hover { box-shadow: var(--shadow-sm); }
+
+        .stButton > button, .stDownloadButton > button {
+            min-height: 2.35rem;
+            border-radius: var(--radius-sm);
+            font-size: .76rem;
+            font-weight: 740;
+            transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+        }
+        .stButton > button:hover, .stDownloadButton > button:hover {
+            transform: none;
+            box-shadow: var(--shadow-sm);
+        }
+
+        div[data-testid="stSidebar"] {
+            background: #F8F9FB;
+            border-right: 1px solid var(--border);
+        }
+        div[data-testid="stSidebar"] > div:first-child {
+            padding: .85rem .9rem 1.25rem;
+        }
+        div[data-testid="stSidebar"] h1 {
+            margin-bottom: .45rem;
+            color: var(--text-strong);
+            font-size: 1.12rem;
+            letter-spacing: -.02em;
+        }
+        div[data-testid="stSidebar"] hr { margin: .65rem 0; }
+        div[data-testid="stSidebar"] label {
+            color: var(--text) !important;
+            font-size: .77rem !important;
+            font-weight: 700 !important;
+        }
+        div[data-testid="stSidebar"] div[data-testid="stFileUploader"] section {
+            padding: .65rem;
+            background: var(--surface);
+            border: 1px dashed #C8CDD5;
+            border-radius: 12px;
+            box-shadow: none;
+            animation: none;
+        }
+        div[data-testid="stSidebar"] div[data-testid="stFileUploader"] section:hover {
+            transform: none;
+            border-color: #98A2B3;
+            box-shadow: none;
+        }
+        .sidebar-note {
+            padding: .72rem .78rem;
+            color: var(--text-muted);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: none;
+            font-size: .72rem;
+            line-height: 1.48;
+        }
+        .sidebar-note:hover { transform: none; box-shadow: none; }
+        .sidebar-section-title {
+            margin: 0 0 .35rem;
+            color: var(--text-muted);
+            font-size: .68rem;
+            letter-spacing: .075em;
+        }
+
+        .tx-status-grid { gap: .55rem; margin: .6rem 0; }
+        .tx-status-card {
+            min-height: 68px;
+            padding: .65rem .72rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+        }
+        .tx-result-box { margin: .55rem 0; }
+
+        @media (max-width: 1100px) {
+            .app-header { flex-direction: column; gap: .65rem; }
+            .app-meta { justify-content: flex-start; max-width: 100%; }
+            div[data-testid="stTabs"] button[role="tab"] { flex: 0 0 auto; }
+        }
+        @media (max-width: 760px) {
+            .main .block-container { padding-left: .65rem; padding-right: .65rem; }
+            .app-header { padding: .82rem .85rem; border-radius: 15px; }
+            .app-meta { display: grid; grid-template-columns: 1fr; width: 100%; }
+            .meta-chip { width: 100%; justify-content: flex-start; }
+            div[data-testid="stTabs"] [role="tablist"] { top: 2.75rem; }
+            .tx-status-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+        }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -1782,6 +2136,18 @@ def metric_card(label, value, help_text=""):
             <div class="kpi-label">{label}</div>
             <div class="kpi-value">{value}</div>
             <div class="kpi-help">{help_text}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def tab_page_header(title: str, subtitle: str) -> None:
+    st.markdown(
+        f"""
+        <div class="tab-page-heading">
+            <div class="tab-page-title">{html.escape(title)}</div>
+            <div class="tab-page-subtitle">{html.escape(subtitle)}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -2798,8 +3164,18 @@ sku_select_key = f"{site_key}_sku_select_combined"
 
 saved_newark = load_persistent_upload("Newark")
 saved_carson = load_persistent_upload("Carson")
-st.sidebar.caption(f"Newark: {saved_newark['file_name'] if saved_newark else 'No saved report'}")
-st.sidebar.caption(f"Carson: {saved_carson['file_name'] if saved_carson else 'No saved report'}")
+st.sidebar.markdown('<div class="sidebar-section-title">Report File</div>', unsafe_allow_html=True)
+uploaded = st.sidebar.file_uploader(
+    config["upload_label"],
+    type=["xlsx", "xls"],
+    help=config["help"],
+    label_visibility="collapsed",
+    key=f"{format_name.lower()}_report_uploader",
+)
+report_source_slot = st.sidebar.empty()
+with st.sidebar.expander("Saved reports", expanded=False):
+    st.caption(f"Newark: {saved_newark['file_name'] if saved_newark else 'No saved report'}")
+    st.caption(f"Carson: {saved_carson['file_name'] if saved_carson else 'No saved report'}")
 
 st.sidebar.divider()
 st.sidebar.markdown('<div class="sidebar-section-title">Filters</div>', unsafe_allow_html=True)
@@ -2842,34 +3218,6 @@ st.sidebar.markdown(
 )
 
 
-st.markdown(
-    f"""
-    <div class="page-header">
-        <div class="page-title">{config["title"]}</div>
-        <div class="page-subtitle">{config["caption"]}</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    """
-    <div class="upload-hero">
-        <div class="upload-hero-title">Upload report</div>
-        <div class="upload-hero-subtitle">Drag and drop the Item Activity Report Excel file below.</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-uploaded = st.file_uploader(
-    config["upload_label"],
-    type=["xlsx", "xls"],
-    help=config["help"],
-    label_visibility="collapsed",
-    key=f"{format_name.lower()}_report_uploader",
-)
-
 status_box = st.empty()
 progress_box = st.empty()
 
@@ -2883,12 +3231,25 @@ if uploaded is not None:
 else:
     saved_upload = load_persistent_upload(format_name)
     if saved_upload is None:
-        st.info(f"No saved {format_name} report yet. Select {format_name}, then upload the matching Item Activity Report once.")
+        st.markdown(
+            f"""
+            <div class="empty-state">
+                <div class="empty-state-title">Upload a {html.escape(format_name)} report</div>
+                <div class="empty-state-text">Use the report uploader in the sidebar. After the first successful upload, the dashboard will automatically reopen the saved report.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        report_source_slot.info("No saved report")
         st.stop()
     file_bytes = saved_upload["file_bytes"]
     active_file_name = saved_upload["file_name"]
     using_saved_report = True
-    st.caption(f"Using saved {format_name} report: {active_file_name}")
+
+report_source_slot.success(
+    f"{'Saved' if using_saved_report else 'Uploaded'}: {active_file_name}",
+    icon="✅",
+)
 
 uploaded_key = f"{format_name}|{active_file_name}|{len(file_bytes)}|{stable_file_hash(file_bytes)}"
 loaded_file_keys = st.session_state.setdefault("loaded_file_keys", set())
@@ -2913,33 +3274,16 @@ try:
                 unsafe_allow_html=True,
             )
         progress_bar = progress_box.progress(8, text="Starting upload check...")
-        time.sleep(0.45)
         progress_bar.progress(28, text="Reading Excel file...")
-        time.sleep(0.55)
         progress_bar.progress(52, text="Checking selected report format...")
-        time.sleep(0.55)
 
     model = process_excel_file(file_bytes, format_name, APP_CACHE_VERSION)
 
     if first_file_load:
         progress_bar.progress(76, text="Building shortage dashboard...")
-        time.sleep(0.55)
         progress_bar.progress(100, text="Dashboard ready")
-        time.sleep(0.55)
-        status_box.markdown(
-            """
-            <div class="ready-stage-card">
-                <div class="ready-row">
-                    <div class="ready-check">✓</div>
-                    <div>
-                        <div class="stage-title">Dashboard ready</div>
-                        <div class="stage-subtitle">The file loaded successfully.</div>
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        status_box.empty()
+        progress_box.empty()
         st.toast("Dashboard loaded successfully.", icon="✅")
         loaded_file_keys.add(uploaded_key)
     else:
@@ -2991,8 +3335,22 @@ report_start = model["report_start"]
 report_end = model["report_end"]
 windows = model["windows"]
 
+source_label = "Saved report" if using_saved_report else "New upload"
 st.markdown(
-    f"<div class='small-note'>Report Range: <b>{fmt_date(report_start)}</b> to <b>{fmt_date(report_end)}</b></div>",
+    f"""
+    <div class="app-header">
+        <div class="app-header-main">
+            <div class="app-eyebrow">{html.escape(format_name)} Warehouse</div>
+            <div class="app-title">{html.escape(config["title"])}</div>
+            <div class="app-subtitle">Review shortage priorities, inspect SKU transactions, find DOs, and validate new outbound demand from one workspace.</div>
+        </div>
+        <div class="app-meta">
+            <span class="meta-chip">Report: {fmt_date(report_start)} – {fmt_date(report_end)}</span>
+            <span class="meta-chip">File: {html.escape(active_file_name)}</span>
+            <span class="meta-chip">{source_label}</span>
+        </div>
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
@@ -3011,19 +3369,46 @@ with website_tab:
     active_count = int((sku_df["Demand Status"] == "Active").sum())
     dormant_count = int((sku_df["Demand Status"] == "Dormant").sum())
 
+    export_file_name = report_download_filename(format_name, report_end)
+    transaction_file_name = transaction_download_filename(format_name, report_end)
+    heading_col, export_col_1, export_col_2 = st.columns([3.4, 1.25, 1.25])
+    with heading_col:
+        tab_page_header("Operations Overview", "Priority inventory is shown first. Sidebar filters apply to the dashboard and SKU selector.")
+    with export_col_1:
+        st.download_button(
+            "⬇ Inventory Report",
+            data=to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION),
+            file_name=export_file_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            help=f"Download {export_file_name}",
+        )
+    with export_col_2:
+        st.download_button(
+            "⬇ Transactions",
+            data=to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION),
+            file_name=transaction_file_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            help=f"Download {transaction_file_name}",
+        )
+
     k1, k2, k3, k4 = st.columns(4)
     with k1:
-        metric_card("Total SKUs", fmt_num(len(sku_df)), f"Active: {active_count:,} | Dormant: {dormant_count:,} | Inactive: {inactive_count:,}")
+        metric_card("Total SKUs", fmt_num(len(sku_df)), f"Active {active_count:,} · Dormant {dormant_count:,} · Inactive {inactive_count:,}")
     with k2:
-        metric_card("Critical SKUs", fmt_num(critical_count), f"Data issues: {data_issue_count:,}")
+        metric_card("Critical SKUs", fmt_num(critical_count), f"Data issues {data_issue_count:,}")
     with k3:
-        metric_card("Warning SKUs", fmt_num(warning_count), "Need ETA / reserve review")
+        metric_card("Warning SKUs", fmt_num(warning_count), "Need ETA or reserve review")
     with k4:
         metric_card("Watch SKUs", fmt_num(watch_count), "Monitor usage trend")
 
     st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-subtitle'>Critical applies only to SKUs with outbound demand in the 30-day data window. Inactive SKUs are hidden by default.</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='section-subtitle'>Showing {len(priority_filtered):,} of {len(sku_df):,} SKUs. Critical applies only to active 30-day demand; inactive SKUs are hidden by default.</div>",
+        unsafe_allow_html=True,
+    )
 
     priority_cols = [
         "SKU",
@@ -3036,34 +3421,12 @@ with website_tab:
         "Forecast Stockout Date",
     ]
     priority_display = prepare_display(priority_filtered[priority_cols])
-    show_limited_dataframe(priority_display, height=420, limit=250)
-
-    st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
-    export_file_name = report_download_filename(format_name, report_end)
-    transaction_file_name = transaction_download_filename(format_name, report_end)
-    export_col_1, export_col_2 = st.columns(2)
-    with export_col_1:
-        st.download_button(
-            "⬇️ Download Inventory Status Report",
-            data=to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION),
-            file_name=export_file_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-        st.caption(f"File name: {export_file_name}")
-    with export_col_2:
-        st.download_button(
-            "⬇️ Download Full Transaction History",
-            data=to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION),
-            file_name=transaction_file_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-        st.caption(f"File name: {transaction_file_name}")
+    priority_height = min(620, max(300, 88 + (min(len(priority_display), 16) * 31)))
+    show_limited_dataframe(priority_display, height=priority_height, limit=250)
 
 
 with sku_tab:
+    tab_page_header("SKU Detail", "Review one SKU, its risk position, source metrics, and complete transaction history.")
     if not selected_sku:
         st.info("Select a SKU to view SKU Detail.")
     elif priority_filtered.empty:
@@ -3428,15 +3791,7 @@ with sku_tab:
 
 
 with do_lookup_tab:
-    st.markdown(
-        """
-        <div class="lookup-hero">
-            <div class="lookup-title">DO Lookup</div>
-            <div class="lookup-subtitle">Paste one or multiple DO # values to view all matching items across every SKU. Results are grouped by each searched DO # for easy review.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    tab_page_header("DO Lookup", "Paste one or multiple DO numbers to find matching items across every SKU and review results by DO.")
 
     do_tx = model["tx_df"].copy()
     do_lookup_key = f"do_lookup_{site_key}"
@@ -3669,20 +4024,7 @@ with do_lookup_tab:
 
 
 with stock_check_tab:
-    st.markdown(
-        """
-        <div class="tx-filter-shell">
-            <div class="tx-filter-top">
-                <div>
-                    <div class="tx-filter-title">Stock Check</div>
-                    <div class="tx-filter-subtitle">Paste DO demand to check current ending balance. Existing DOs found in the report are recognized so stock is not double-counted.</div>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+    tab_page_header("Stock Check", "Enter DO demand to calculate temporary remaining stock. Existing report DOs are recognized to prevent double-counting.")
 
     stock_table_version_key = f"stock_check_table_version_{site_key}"
     stock_result_signature_key = f"stock_check_result_signature_{site_key}"
@@ -3927,8 +4269,7 @@ with stock_check_tab:
                 show_limited_dataframe(issues_display, height=issue_height, limit=1000, show_count=False)
 
 with audit_tab:
-    st.subheader("Audit Checks")
-    st.caption("Review source completeness, balance reconciliation, and demand windows.")
+    tab_page_header("Audit Checks", "Review source completeness, official-row reconciliation, and recent outbound windows.")
 
     audit_df = model["audit_df"].copy()
     audit_review_df = audit_df[audit_df["Audit Status"] != "Pass"].copy()
@@ -3968,7 +4309,7 @@ with audit_tab:
             show_limited_dataframe(model["beginning_balance_df"], height=260, limit=250)
 
 with guide_tab:
-    st.subheader("How to Use")
+    tab_page_header("How to Use", "A compact workflow for loading reports, reviewing shortages, finding DOs, and validating stock.")
     st.markdown(
         f"""
         1. Select the matching **Report Format** in the sidebar.
