@@ -1139,17 +1139,17 @@ st.markdown(
             opacity: .88;
         }
         .st-key-main_navigation button:nth-of-type(1)::before,
-        .st-key-main_navigation [role="radio"]:nth-of-type(1)::before { content: "\\E80F"; }
+        .st-key-main_navigation [role="radio"]:nth-of-type(1)::before { content: "\E80F"; }
         .st-key-main_navigation button:nth-of-type(2)::before,
-        .st-key-main_navigation [role="radio"]:nth-of-type(2)::before { content: "\\E77B"; }
+        .st-key-main_navigation [role="radio"]:nth-of-type(2)::before { content: "\E77B"; }
         .st-key-main_navigation button:nth-of-type(3)::before,
-        .st-key-main_navigation [role="radio"]:nth-of-type(3)::before { content: "\\E721"; }
+        .st-key-main_navigation [role="radio"]:nth-of-type(3)::before { content: "\E721"; }
         .st-key-main_navigation button:nth-of-type(4)::before,
-        .st-key-main_navigation [role="radio"]:nth-of-type(4)::before { content: "\\E9D5"; }
+        .st-key-main_navigation [role="radio"]:nth-of-type(4)::before { content: "\E9D5"; }
         .st-key-main_navigation button:nth-of-type(5)::before,
-        .st-key-main_navigation [role="radio"]:nth-of-type(5)::before { content: "\\E9D9"; }
+        .st-key-main_navigation [role="radio"]:nth-of-type(5)::before { content: "\E9D9"; }
         .st-key-main_navigation button:nth-of-type(6)::before,
-        .st-key-main_navigation [role="radio"]:nth-of-type(6)::before { content: "\\E897"; }
+        .st-key-main_navigation [role="radio"]:nth-of-type(6)::before { content: "\E897"; }
         .st-key-main_navigation button:hover,
         .st-key-main_navigation [role="radio"]:hover {
             color: var(--win-text) !important;
