@@ -53,8 +53,8 @@ st.markdown(
             --layout-top: 6px;
             --layout-x: 24px;
             --sidebar-width: 292px;
-            --sidebar-control-top: 12px;
-            --sidebar-control-size: 38px;
+            --sidebar-control-top: 14px;
+            --sidebar-control-size: 40px;
         }
 
         html { scroll-behavior: smooth; }
@@ -67,20 +67,28 @@ st.markdown(
                 var(--win-bg);
         }
         .stApp { min-height: 100vh; }
-        /* Keep Streamlit's control layer available so the sidebar can always reopen. */
         [data-testid="stHeader"] {
-            display: block;
-            height: 0;
-            min-height: 0;
-            background: transparent;
-            border: 0;
-            box-shadow: none;
-            overflow: visible;
-            pointer-events: none;
+            display: block !important;
+            visibility: visible !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            height: 54px !important;
+            min-height: 54px !important;
+            overflow: visible !important;
+            background: transparent !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            pointer-events: none !important;
+            z-index: 999990 !important;
         }
-        [data-testid="stHeader"] > div { background: transparent; }
-        footer { display: none !important; }
-        #MainMenu { display: none !important; }
+        [data-testid="stHeader"] > div {
+            overflow: visible !important;
+            background: transparent !important;
+        }
+        footer,
+        #MainMenu,
         [data-testid="stAppDeployButton"],
         [data-testid="stMainMenu"],
         [data-testid="stStatusWidget"],
@@ -91,203 +99,180 @@ st.markdown(
         [class*="viewerBadge"],
         [class*="ViewerBadge"],
         [data-testid="stHeader"] a[href*="github.com"],
-        [data-testid="stHeader"] button[aria-label*="Share"],
-        [data-testid="stHeader"] button[title*="Share"],
-        [data-testid="stHeader"] button[aria-label*="Edit"],
-        [data-testid="stHeader"] button[title*="Edit"],
+        [data-testid="stHeader"] button[aria-label*="share" i],
+        [data-testid="stHeader"] button[title*="share" i],
+        [data-testid="stHeader"] button[aria-label*="edit" i],
+        [data-testid="stHeader"] button[title*="edit" i],
         [data-testid="stHeader"] button[aria-label*="favorite" i],
         [data-testid="stHeader"] button[title*="favorite" i] {
             display: none !important;
-            visibility: hidden !important;
-            width: 0 !important;
-            height: 0 !important;
-            min-width: 0 !important;
-            min-height: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: hidden !important;
-            pointer-events: none !important;
-        }
-        [data-testid="stHeader"] {
-            top: 0 !important;
         }
         [data-testid="stToolbar"],
         [data-testid="stHeaderActionElements"] {
             display: flex !important;
             visibility: visible !important;
+            overflow: visible !important;
+            background: transparent !important;
+            pointer-events: none !important;
+        }
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="collapsedControl"] {
+            display: flex !important;
+            visibility: visible !important;
             position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 0 !important;
-            height: 0 !important;
-            min-width: 0 !important;
-            min-height: 0 !important;
+            top: var(--sidebar-control-top) !important;
+            left: 14px !important;
+            z-index: 1000000 !important;
+            width: 108px !important;
+            height: var(--sidebar-control-size) !important;
+            min-width: 108px !important;
+            min-height: var(--sidebar-control-size) !important;
             margin: 0 !important;
             padding: 0 !important;
             overflow: visible !important;
-            background: transparent !important;
             border: 0 !important;
-            box-shadow: none !important;
-            pointer-events: none !important;
-        }
-        [data-testid="stToolbar"] button,
-        [data-testid="stToolbar"] a,
-        [data-testid="stHeaderActionElements"] button,
-        [data-testid="stHeaderActionElements"] a {
-            display: none !important;
-            visibility: hidden !important;
-            pointer-events: none !important;
-        }
-        [data-testid="stToolbar"] [data-testid="stSidebarCollapsedControl"],
-        [data-testid="stToolbar"] [data-testid="collapsedControl"],
-        [data-testid="stHeaderActionElements"] [data-testid="stSidebarCollapsedControl"],
-        [data-testid="stHeaderActionElements"] [data-testid="collapsedControl"] {
-            display: flex !important;
-            visibility: visible !important;
-            overflow: visible !important;
+            background: transparent !important;
             pointer-events: auto !important;
+            opacity: 1 !important;
         }
-        [data-testid="stToolbar"] [data-testid="stSidebarCollapsedControl"] button,
-        [data-testid="stToolbar"] [data-testid="collapsedControl"] button,
-        [data-testid="stHeaderActionElements"] [data-testid="stSidebarCollapsedControl"] button,
-        [data-testid="stHeaderActionElements"] [data-testid="collapsedControl"] button,
+        [data-testid="stSidebarCollapsedControl"] button,
+        [data-testid="collapsedControl"] button,
         button[aria-label*="open sidebar" i],
         button[title*="open sidebar" i] {
+            display: inline-flex !important;
+            visibility: visible !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            gap: 9px !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 14px !important;
+            color: #ffffff !important;
+            font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif !important;
+            font-size: 12px !important;
+            font-weight: 650 !important;
+            line-height: 1 !important;
+            white-space: nowrap !important;
+            border: 1px solid rgba(0, 70, 130, .36) !important;
+            border-radius: 10px !important;
+            background: linear-gradient(180deg, #0a73c9 0%, #0067c0 100%) !important;
+            box-shadow: 0 2px 5px rgba(0, 77, 138, .18), 0 8px 22px rgba(0, 77, 138, .22) !important;
+            pointer-events: auto !important;
+            cursor: pointer !important;
+            opacity: 1 !important;
+            transform: translateZ(0) !important;
+            transition: background var(--win-fast) ease, box-shadow var(--win-normal) var(--win-ease), transform var(--win-fast) ease !important;
+        }
+        [data-testid="stSidebarCollapsedControl"] button svg,
+        [data-testid="collapsedControl"] button svg,
+        button[aria-label*="open sidebar" i] svg,
+        button[title*="open sidebar" i] svg {
+            display: none !important;
+        }
+        [data-testid="stSidebarCollapsedControl"] button::before,
+        [data-testid="collapsedControl"] button::before,
+        button[aria-label*="open sidebar" i]::before,
+        button[title*="open sidebar" i]::before {
+            content: "\E700";
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            color: #ffffff;
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            font-size: 15px;
+            font-weight: 400;
+            flex: 0 0 auto;
+        }
+        [data-testid="stSidebarCollapsedControl"] button::after,
+        [data-testid="collapsedControl"] button::after,
+        button[aria-label*="open sidebar" i]::after,
+        button[title*="open sidebar" i]::after {
+            content: "Filters";
+            color: #ffffff;
+            font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+            font-size: 12px;
+            font-weight: 650;
+            letter-spacing: .01em;
+        }
+        [data-testid="stSidebarCollapsedControl"] button:hover,
+        [data-testid="collapsedControl"] button:hover,
+        button[aria-label*="open sidebar" i]:hover,
+        button[title*="open sidebar" i]:hover {
+            background: linear-gradient(180deg, #087bd9 0%, #005fae 100%) !important;
+            box-shadow: 0 3px 7px rgba(0, 77, 138, .22), 0 11px 28px rgba(0, 77, 138, .27) !important;
+            transform: translateY(-1px) !important;
+        }
+        [data-testid="stSidebarCollapsedControl"] button:active,
+        [data-testid="collapsedControl"] button:active,
+        button[aria-label*="open sidebar" i]:active,
+        button[title*="open sidebar" i]:active {
+            background: var(--win-accent-pressed) !important;
+            box-shadow: 0 1px 4px rgba(0, 77, 138, .22) !important;
+            transform: translateY(0) scale(.985) !important;
+        }
+        [data-testid="stSidebarCollapsedControl"] button:focus-visible,
+        [data-testid="collapsedControl"] button:focus-visible,
+        button[aria-label*="open sidebar" i]:focus-visible,
+        button[title*="open sidebar" i]:focus-visible {
+            outline: 2px solid rgba(0, 103, 192, .72) !important;
+            outline-offset: 3px !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {
             display: flex !important;
             visibility: visible !important;
+            position: absolute !important;
+            top: var(--sidebar-control-top) !important;
+            right: 12px !important;
+            z-index: 30 !important;
+            width: var(--sidebar-control-size) !important;
+            height: var(--sidebar-control-size) !important;
             pointer-events: auto !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            color: var(--win-text-secondary) !important;
+            border: 1px solid var(--win-border-strong) !important;
+            border-radius: 10px !important;
+            background: rgba(255,255,255,.82) !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.07) !important;
+            pointer-events: auto !important;
+            transition: color var(--win-fast) ease, background var(--win-fast) ease, border-color var(--win-fast) ease, box-shadow var(--win-fast) ease, transform var(--win-fast) ease !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button:hover {
+            color: var(--win-text) !important;
+            background: #ffffff !important;
+            border-color: rgba(0,103,192,.28) !important;
+            box-shadow: 0 2px 7px rgba(0,0,0,.10) !important;
+            transform: translateY(-1px);
+        }
+        section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button:active {
+            background: #f4f4f4 !important;
+            transform: translateY(0) scale(.97);
+        }
+        section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button:focus-visible {
+            outline: 2px solid rgba(0,103,192,.62) !important;
+            outline-offset: 2px !important;
         }
         [data-testid="stAppViewContainer"] > .main,
         [data-testid="stMain"] {
             padding-top: 0 !important;
             margin-top: 0 !important;
         }
-
-        /* Sidebar open control — supports current and older Streamlit test IDs. */
-        [data-testid="stSidebarCollapsedControl"],
-        [data-testid="collapsedControl"],
-        button[aria-label*="open sidebar" i],
-        button[title*="open sidebar" i] {
-            display: flex !important;
-            position: fixed !important;
-            top: var(--sidebar-control-top) !important;
-            left: 16px !important;
-            z-index: 1000000 !important;
-            width: var(--sidebar-control-size) !important;
-            height: var(--sidebar-control-size) !important;
-            align-items: center !important;
-            justify-content: center !important;
-            border: 1px solid var(--win-border-strong) !important;
-            border-radius: var(--win-radius-md) !important;
-            background: rgba(255, 255, 255, .82) !important;
-            box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 5px 18px rgba(0,0,0,.09) !important;
-            backdrop-filter: blur(24px) saturate(135%) !important;
-            -webkit-backdrop-filter: blur(24px) saturate(135%) !important;
-            pointer-events: auto !important;
-            opacity: 1 !important;
-            transform: translateZ(0);
-            transition:
-                background var(--win-fast) ease,
-                border-color var(--win-fast) ease,
-                box-shadow var(--win-normal) var(--win-ease),
-                transform var(--win-fast) ease !important;
-        }
-        [data-testid="stSidebarCollapsedControl"] button,
-        [data-testid="collapsedControl"] button {
-            width: 100% !important;
-            height: 100% !important;
-            min-height: 0 !important;
-            padding: 0 !important;
-            border: 0 !important;
-            border-radius: inherit !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            color: var(--win-text) !important;
-            pointer-events: auto !important;
-        }
-        [data-testid="stSidebarCollapsedControl"] svg,
-        [data-testid="collapsedControl"] svg,
-        button[aria-label*="open sidebar" i] svg,
-        button[title*="open sidebar" i] svg {
-            width: 18px !important;
-            height: 18px !important;
-            transition: transform var(--win-normal) var(--win-ease) !important;
-        }
-        [data-testid="stSidebarCollapsedControl"]:hover,
-        [data-testid="collapsedControl"]:hover,
-        button[aria-label*="open sidebar" i]:hover,
-        button[title*="open sidebar" i]:hover {
-            background: rgba(255, 255, 255, .96) !important;
-            border-color: rgba(0, 103, 192, .32) !important;
-            box-shadow: 0 2px 5px rgba(0,0,0,.06), 0 8px 22px rgba(0,0,0,.11) !important;
-            transform: translateY(-1px);
-        }
-        [data-testid="stSidebarCollapsedControl"]:hover svg,
-        [data-testid="collapsedControl"]:hover svg,
-        button[aria-label*="open sidebar" i]:hover svg,
-        button[title*="open sidebar" i]:hover svg {
-            transform: translateX(1px);
-        }
-        [data-testid="stSidebarCollapsedControl"]:active,
-        [data-testid="collapsedControl"]:active,
-        button[aria-label*="open sidebar" i]:active,
-        button[title*="open sidebar" i]:active {
-            background: rgba(245, 245, 245, .98) !important;
-            box-shadow: 0 1px 3px rgba(0,0,0,.07) !important;
-            transform: translateY(0) scale(.97);
-        }
-        [data-testid="stSidebarCollapsedControl"]:focus-within,
-        [data-testid="collapsedControl"]:focus-within,
-        button[aria-label*="open sidebar" i]:focus-visible,
-        button[title*="open sidebar" i]:focus-visible {
-            outline: 2px solid rgba(0, 103, 192, .78);
-            outline-offset: 2px;
-        }
-
-        /* Sidebar close control — visually aligned with the open control. */
-        section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {
-            position: absolute !important;
-            top: var(--sidebar-control-top) !important;
-            right: 12px !important;
-            z-index: 20 !important;
-            width: var(--sidebar-control-size) !important;
-            height: var(--sidebar-control-size) !important;
-            pointer-events: auto !important;
-        }
-        section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {
-            width: var(--sidebar-control-size) !important;
-            height: var(--sidebar-control-size) !important;
-            min-height: 0 !important;
-            padding: 0 !important;
-            border: 1px solid transparent !important;
-            border-radius: var(--win-radius-md) !important;
-            background: transparent !important;
-            color: var(--win-text-secondary) !important;
-            box-shadow: none !important;
-            transition:
-                color var(--win-fast) ease,
-                background var(--win-fast) ease,
-                border-color var(--win-fast) ease,
-                transform var(--win-fast) ease !important;
-        }
-        section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button:hover {
-            color: var(--win-text) !important;
-            background: rgba(0, 0, 0, .045) !important;
-            border-color: var(--win-border) !important;
-        }
-        section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button:active {
-            background: rgba(0, 0, 0, .075) !important;
-            transform: scale(.96);
-        }
-        section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button:focus-visible {
-            outline: 2px solid rgba(0, 103, 192, .78) !important;
-            outline-offset: 2px !important;
-        }
-
-        /* Prevent the floating open button from covering the workspace title. */
         .stApp:has([data-testid="stSidebarCollapsedControl"]) .main .block-container,
         .stApp:has([data-testid="collapsedControl"]) .main .block-container {
-            padding-left: 70px;
+            padding-left: 138px !important;
         }
 
         .main .block-container {
@@ -324,7 +309,7 @@ st.markdown(
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 0 6px;
+            padding: 0 54px 0 6px;
             margin: 0 0 14px;
         }
         .sidebar-brand-copy { min-width: 0; }
