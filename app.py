@@ -851,6 +851,62 @@ st.markdown(
             }
         }
 
+        div[data-testid="stTabs"] {
+            margin-top: .18rem;
+        }
+        div[data-testid="stTabs"] [role="tablist"] {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            display: flex;
+            gap: 6px;
+            width: 100%;
+            padding: 7px;
+            margin: 0 0 .78rem 0;
+            overflow-x: auto;
+            scrollbar-width: none;
+            background: rgba(245,245,247,.94);
+            border: 1px solid rgba(17,24,39,.09);
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(16,24,40,.08);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+        }
+        div[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar {
+            display: none;
+        }
+        div[data-testid="stTabs"] button[role="tab"] {
+            flex: 0 0 auto;
+            min-height: 38px;
+            padding: 8px 14px;
+            border: 0 !important;
+            border-radius: 11px;
+            background: transparent;
+            font-weight: 780;
+            white-space: nowrap;
+        }
+        div[data-testid="stTabs"] button[role="tab"]:hover {
+            background: rgba(255,255,255,.82);
+        }
+        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+            background: #111827 !important;
+            color: #FFFFFF !important;
+            box-shadow: 0 4px 12px rgba(17,24,39,.18);
+        }
+        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] p {
+            color: #FFFFFF !important;
+        }
+        div[data-testid="stTabs"] button[role="tab"] p {
+            font-size: .82rem;
+            font-weight: 780;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+            display: none;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-border"] {
+            display: none;
+        }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -2940,70 +2996,72 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-data_issue_count = int((sku_df["Risk Level"] == "Data Issue").sum())
-critical_count = int((sku_df["Risk Level"] == "Critical").sum())
-warning_count = int((sku_df["Risk Level"] == "Warning").sum())
-watch_count = int((sku_df["Risk Level"] == "Watch").sum())
-healthy_count = int((sku_df["Risk Level"] == "Healthy").sum())
-no_demand_count = int((sku_df["Risk Level"] == "No Recent Demand").sum())
-inactive_count = int((sku_df["Risk Level"] == "Inactive / No Demand").sum())
-active_count = int((sku_df["Demand Status"] == "Active").sum())
-dormant_count = int((sku_df["Demand Status"] == "Dormant").sum())
+website_tab, sku_tab, do_lookup_tab, stock_check_tab, audit_tab, guide_tab = st.tabs(
+    ["Dashboard", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Guide"]
+)
 
-k1, k2, k3, k4 = st.columns(4)
-with k1:
-    metric_card("Total SKUs", fmt_num(len(sku_df)), f"Active: {active_count:,} | Dormant: {dormant_count:,} | Inactive: {inactive_count:,}")
-with k2:
-    metric_card("Critical SKUs", fmt_num(critical_count), f"Data issues: {data_issue_count:,}")
-with k3:
-    metric_card("Warning SKUs", fmt_num(warning_count), "Need ETA / reserve review")
-with k4:
-    metric_card("Watch SKUs", fmt_num(watch_count), "Monitor usage trend")
+with website_tab:
+    data_issue_count = int((sku_df["Risk Level"] == "Data Issue").sum())
+    critical_count = int((sku_df["Risk Level"] == "Critical").sum())
+    warning_count = int((sku_df["Risk Level"] == "Warning").sum())
+    watch_count = int((sku_df["Risk Level"] == "Watch").sum())
+    healthy_count = int((sku_df["Risk Level"] == "Healthy").sum())
+    no_demand_count = int((sku_df["Risk Level"] == "No Recent Demand").sum())
+    inactive_count = int((sku_df["Risk Level"] == "Inactive / No Demand").sum())
+    active_count = int((sku_df["Demand Status"] == "Active").sum())
+    dormant_count = int((sku_df["Demand Status"] == "Dormant").sum())
 
-st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
-st.markdown("<div class='section-subtitle'>Critical applies only to SKUs with outbound demand in the 30-day data window. Inactive SKUs are hidden by default.</div>", unsafe_allow_html=True)
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        metric_card("Total SKUs", fmt_num(len(sku_df)), f"Active: {active_count:,} | Dormant: {dormant_count:,} | Inactive: {inactive_count:,}")
+    with k2:
+        metric_card("Critical SKUs", fmt_num(critical_count), f"Data issues: {data_issue_count:,}")
+    with k3:
+        metric_card("Warning SKUs", fmt_num(warning_count), "Need ETA / reserve review")
+    with k4:
+        metric_card("Watch SKUs", fmt_num(watch_count), "Monitor usage trend")
 
-priority_cols = [
-    "SKU",
-    "Description",
-    "Risk Level",
-    "Ending Balance",
-    "Last Outbound Date",
-    "Avg Daily Usage 30D",
-    "Days Remaining",
-    "Forecast Stockout Date",
-]
-priority_display = prepare_display(priority_filtered[priority_cols])
-show_limited_dataframe(priority_display, height=420, limit=250)
+    st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-subtitle'>Critical applies only to SKUs with outbound demand in the 30-day data window. Inactive SKUs are hidden by default.</div>", unsafe_allow_html=True)
 
-st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
-export_file_name = report_download_filename(format_name, report_end)
-transaction_file_name = transaction_download_filename(format_name, report_end)
-export_col_1, export_col_2 = st.columns(2)
-with export_col_1:
-    st.download_button(
-        "⬇️ Download Inventory Status Report",
-        data=to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION),
-        file_name=export_file_name,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
-    st.caption(f"File name: {export_file_name}")
-with export_col_2:
-    st.download_button(
-        "⬇️ Download Full Transaction History",
-        data=to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION),
-        file_name=transaction_file_name,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
-    st.caption(f"File name: {transaction_file_name}")
+    priority_cols = [
+        "SKU",
+        "Description",
+        "Risk Level",
+        "Ending Balance",
+        "Last Outbound Date",
+        "Avg Daily Usage 30D",
+        "Days Remaining",
+        "Forecast Stockout Date",
+    ]
+    priority_display = prepare_display(priority_filtered[priority_cols])
+    show_limited_dataframe(priority_display, height=420, limit=250)
 
-st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Customer Report Export</div>", unsafe_allow_html=True)
+    export_file_name = report_download_filename(format_name, report_end)
+    transaction_file_name = transaction_download_filename(format_name, report_end)
+    export_col_1, export_col_2 = st.columns(2)
+    with export_col_1:
+        st.download_button(
+            "⬇️ Download Inventory Status Report",
+            data=to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION),
+            file_name=export_file_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+        st.caption(f"File name: {export_file_name}")
+    with export_col_2:
+        st.download_button(
+            "⬇️ Download Full Transaction History",
+            data=to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION),
+            file_name=transaction_file_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+        st.caption(f"File name: {transaction_file_name}")
 
-sku_tab, do_lookup_tab, stock_check_tab, audit_tab, guide_tab = st.tabs(["SKU Detail", "DO Lookup", "Stock Check", "Audit", "Guide"])
 
 with sku_tab:
     if not selected_sku:
