@@ -13,7 +13,7 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
 CUSTOMER_EXPORT_VERSION = "Customer export v12"
-APP_CACHE_VERSION = "inventory-logic-v28-active-dormant-inactive-risk"
+APP_CACHE_VERSION = "inventory-logic-v29-all-report-skus"
 WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
@@ -1353,7 +1353,9 @@ def clean_text(value) -> str:
 def get_cell(row, col_idx):
     if col_idx is None:
         return None
-    return row.iloc[col_idx] if len(row) > col_idx else None
+    if len(row) <= col_idx:
+        return None
+    return row.iloc[col_idx] if hasattr(row, "iloc") else row[col_idx]
 
 
 def first_qty_number(value, default=0.0) -> float:
@@ -1667,13 +1669,13 @@ def extract_report_range(raw: pd.DataFrame):
 
 
 @st.cache_data(show_spinner=False)
-def load_excel_to_raw(file_bytes: bytes) -> pd.DataFrame:
+def load_excel_to_raw(file_bytes: bytes, cache_version: str = APP_CACHE_VERSION) -> pd.DataFrame:
     return pd.read_excel(BytesIO(file_bytes), sheet_name=0, header=None, dtype=object)
 
 
 @st.cache_data(show_spinner=False)
 def process_excel_file(file_bytes: bytes, format_name: str, cache_version: str = APP_CACHE_VERSION) -> dict:
-    raw_df = load_excel_to_raw(file_bytes)
+    raw_df = load_excel_to_raw(file_bytes, cache_version)
     config = FORMAT_CONFIGS[format_name]
     validate_selected_format(raw_df, config)
     return build_inventory_model(raw_df, config, format_name)
@@ -1712,12 +1714,13 @@ def add_business_days(start_date, days):
 def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> dict:
     header_idx = find_header_row(raw)
     report_start, report_end = extract_report_range(raw)
-    rows = raw.iloc[header_idx + 1 :].copy()
+    rows = raw.iloc[header_idx + 1 :]
     cols = config["cols"]
 
     current_sku = ""
     current_desc = ""
     sku_records = {}
+    report_sku_order = []
     transactions = []
     official_total_rows = []
     official_ending_rows = []
@@ -1746,7 +1749,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
         if desc:
             sku_records[sku]["Description"] = desc
 
-    for excel_row_num, row in rows.iterrows():
+    for excel_row_num, row in zip(rows.index, rows.itertuples(index=False, name=None)):
         sku_cell = clean_text(get_cell(row, cols["sku"]))
         desc_cell = clean_text(get_cell(row, cols["description"]))
         activity_raw = get_cell(row, cols["activity_date"])
@@ -1771,6 +1774,8 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
         if sku_cell and sku_lower != "sku" and not is_total_row:
             current_sku = sku_cell
             current_desc = desc_cell
+            if current_sku not in sku_records:
+                report_sku_order.append(current_sku)
             ensure_sku_record(current_sku, current_desc)
             continue
 
@@ -1933,6 +1938,11 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
 
     if sku_df.empty:
         raise ValueError(f"No SKU sections were found in the {format_name} file.")
+    parsed_sku_names = set(sku_df["SKU"].astype(str))
+    missing_report_skus = [sku for sku in report_sku_order if sku not in parsed_sku_names]
+    if missing_report_skus or len(sku_df) != len(report_sku_order):
+        missing_text = ", ".join(missing_report_skus[:10]) or "SKU count mismatch"
+        raise ValueError(f"Not all report SKUs were loaded: {missing_text}")
 
     tx_dates = pd.to_datetime(tx_df["Activity Date"], errors="coerce").dropna() if not tx_df.empty else pd.Series(dtype="datetime64[ns]")
     report_date_source = "File Header"
@@ -1975,12 +1985,13 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
     sku_df["Official Total Row Count"] = sku_df["SKU"].map(total_counts).fillna(0).astype(int)
     sku_df["Official Ending Row Count"] = sku_df["SKU"].map(ending_counts).fillna(0).astype(int)
 
-    positive_outbound_df = tx_df[tx_df["Qty Out"] > 0].copy() if not tx_df.empty else tx_df.copy()
+    positive_outbound_df = tx_df[tx_df["Qty Out"] > 0] if not tx_df.empty else tx_df
+    all_window_dates = last_data_activity_dates(tx_df, report_end, 90, report_start)
     window_dates = {
-        "Outbound Last 90 Days": last_data_activity_dates(tx_df, report_end, 90, report_start),
-        "Outbound Last 30 Days": last_data_activity_dates(tx_df, report_end, 30, report_start),
-        "Outbound Last 14 Days": last_data_activity_dates(tx_df, report_end, 14, report_start),
-        "Outbound Last 7 Days": last_data_activity_dates(tx_df, report_end, 7, report_start),
+        "Outbound Last 90 Days": all_window_dates,
+        "Outbound Last 30 Days": all_window_dates[-30:],
+        "Outbound Last 14 Days": all_window_dates[-14:],
+        "Outbound Last 7 Days": all_window_dates[-7:],
     }
     windows = {
         label: (dates[0], dates[-1]) if dates else (pd.NaT, pd.NaT)
@@ -2133,6 +2144,7 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
 
     return {
         "format_name": format_name,
+        "source_sku_count": len(report_sku_order),
         "sku_df": sku_df,
         "tx_df": tx_df,
         "trend_df": trend_df,
@@ -2858,6 +2870,8 @@ def build_temporary_balance_table(sku_df: pd.DataFrame, detail_df: pd.DataFrame)
         ["Impact Sort", "Status Sort", "Temporary Balance", "SKU"],
         ascending=[True, True, True, True],
     ).reset_index(drop=True)
+    if len(balance_df) != len(sku_df):
+        raise ValueError("Not all report SKUs were included in the temporary balance.")
 
     return balance_df[
         [
@@ -3435,16 +3449,45 @@ else:
     file_hash = saved_upload.get("sha256") or stable_file_hash(file_bytes)
     using_saved_report = True
 
-report_source_slot.markdown(
-    f'<div class="data-source-card"><span>{html.escape("Saved" if using_saved_report else "Uploaded")}: {html.escape(active_file_name)}</span></div>',
-    unsafe_allow_html=True,
-)
+with report_source_slot.container():
+    report_source_col, report_refresh_col = st.columns([5, 1], gap="small")
+    with report_source_col:
+        st.markdown(
+            f'<div class="data-source-card"><span>{html.escape("Saved" if using_saved_report else "Uploaded")}: {html.escape(active_file_name)}</span></div>',
+            unsafe_allow_html=True,
+        )
+    with report_refresh_col:
+        refresh_report_clicked = st.button(
+            "↻",
+            help="Refresh full report",
+            key=f"refresh_full_report_{site_key}",
+            use_container_width=True,
+        )
+
+report_refresh_version_key = f"_report_refresh_version_{site_key}"
+if refresh_report_clicked:
+    st.session_state[report_refresh_version_key] = int(st.session_state.get(report_refresh_version_key, 0)) + 1
+    refresh_keys = [
+        saved_upload_cache_key,
+        uploaded_hash_cache_key,
+        saved_upload_identity_key,
+        f"_inventory_model_{site_key}",
+        f"_inventory_model_source_{site_key}",
+        f"_do_search_text_{site_key}",
+        f"_stock_do_tables_{site_key}",
+        "last_upload_effect_key",
+    ]
+    for key in refresh_keys:
+        st.session_state.pop(key, None)
+    st.rerun()
 
 uploaded_key = f"{format_name}|{active_file_name}|{len(file_bytes)}|{file_hash}"
 show_upload_effect = uploaded is not None and st.session_state.get("last_upload_effect_key") != uploaded_key
 model_cache_key = f"_inventory_model_{site_key}"
 model_source_key = f"_inventory_model_source_{site_key}"
-model_source_value = f"{uploaded_key}|{APP_CACHE_VERSION}"
+report_refresh_version = int(st.session_state.get(report_refresh_version_key, 0))
+model_cache_version = f"{APP_CACHE_VERSION}|refresh-{report_refresh_version}"
+model_source_value = f"{uploaded_key}|{model_cache_version}"
 
 try:
     if show_upload_effect:
@@ -3468,7 +3511,7 @@ try:
     if st.session_state.get(model_source_key) == model_source_value and isinstance(st.session_state.get(model_cache_key), dict):
         model = st.session_state[model_cache_key]
     else:
-        model = process_excel_file(file_bytes, format_name, APP_CACHE_VERSION)
+        model = process_excel_file(file_bytes, format_name, model_cache_version)
         st.session_state[model_cache_key] = model
         st.session_state[model_source_key] = model_source_value
 
@@ -4283,6 +4326,7 @@ elif selected_page == "Stock Check":
     stock_saved_table_key = f"stock_check_table_data_{site_key}"
     stock_run_input_key = f"stock_check_run_input_{site_key}"
     stock_rma_excluded_key = f"stock_check_rma_excluded_{site_key}"
+    stock_result_model_key = f"stock_check_result_model_{site_key}"
     st.session_state.setdefault(stock_table_version_key, 0)
     stock_table_key = f"stock_check_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
     default_stock_table_df = pd.DataFrame(
@@ -4326,7 +4370,7 @@ elif selected_page == "Stock Check":
 
     if stock_reset_clicked:
         st.session_state[stock_table_version_key] += 1
-        keys_to_clear = [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key, stock_saved_table_key, stock_run_input_key, stock_rma_excluded_key]
+        keys_to_clear = [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key, stock_saved_table_key, stock_run_input_key, stock_rma_excluded_key, stock_result_model_key]
         for key in keys_to_clear:
             st.session_state.pop(key, None)
         update_persistent_app_state(remove_keys=keys_to_clear)
@@ -4368,6 +4412,7 @@ elif selected_page == "Stock Check":
             st.session_state[stock_temp_result_key] = temporary_balance_df
             st.session_state[stock_run_input_key] = calculation_input_df.copy()
             st.session_state[stock_rma_excluded_key] = excluded_rma_dos
+            st.session_state[stock_result_model_key] = model_source_value
             persistent_stock_values.update(
                 {
                     stock_result_signature_key: stock_current_signature,
@@ -4377,6 +4422,7 @@ elif selected_page == "Stock Check":
                     stock_temp_result_key: temporary_balance_df,
                     stock_run_input_key: calculation_input_df,
                     stock_rma_excluded_key: excluded_rma_dos,
+                    stock_result_model_key: model_source_value,
                 }
             )
             stock_has_saved_result = True
@@ -4389,6 +4435,7 @@ elif selected_page == "Stock Check":
         temporary_balance_df = st.session_state.get(stock_temp_result_key, pd.DataFrame())
         result_input_df = st.session_state.get(stock_run_input_key, pd.DataFrame())
         excluded_rma_dos = st.session_state.get(stock_rma_excluded_key, [])
+        stock_result_model = st.session_state.get(stock_result_model_key, "")
     else:
         detail_df = pd.DataFrame()
         overview_df = pd.DataFrame()
@@ -4396,6 +4443,10 @@ elif selected_page == "Stock Check":
         temporary_balance_df = pd.DataFrame()
         result_input_df = pd.DataFrame()
         excluded_rma_dos = []
+        stock_result_model = ""
+
+    if stock_has_saved_result and stock_result_model and stock_result_model != model_source_value:
+        st.warning(f"Report changed or refreshed. Click Run Stock Check to include all {len(sku_df):,} current SKUs.")
 
     if stock_has_saved_result and excluded_rma_dos:
         st.warning(f"Excluded {len(excluded_rma_dos):,} RMA DO(s): {', '.join(str(value) for value in excluded_rma_dos)}")
