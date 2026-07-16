@@ -1396,6 +1396,8 @@ class WrongFileFormatError(ValueError):
 
 PERSISTENT_UPLOAD_DIR = Path.home() / ".inventory_dashboard_uploads"
 PERSISTENT_APP_STATE_PATH = PERSISTENT_UPLOAD_DIR / "app_state.json"
+PERSISTENT_APP_STATE_CACHE_KEY = "_inventory_dashboard_app_state_raw"
+PERSISTENT_APP_STATE_RESTORED_KEY = "_inventory_dashboard_app_state_restored"
 
 
 def encode_persistent_value(value):
@@ -1462,36 +1464,55 @@ def decode_persistent_value(value):
 def load_persistent_app_state() -> dict:
     try:
         if not PERSISTENT_APP_STATE_PATH.exists():
+            st.session_state[PERSISTENT_APP_STATE_CACHE_KEY] = {}
             return {}
         raw_state = json.loads(PERSISTENT_APP_STATE_PATH.read_text(encoding="utf-8"))
+        st.session_state[PERSISTENT_APP_STATE_CACHE_KEY] = raw_state
         return {key: decode_persistent_value(value) for key, value in raw_state.items()}
     except Exception:
+        st.session_state[PERSISTENT_APP_STATE_CACHE_KEY] = {}
         return {}
 
 
 def update_persistent_app_state(values=None, remove_keys=None) -> None:
     try:
         PERSISTENT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        raw_state = {}
-        if PERSISTENT_APP_STATE_PATH.exists():
+        cached_state = st.session_state.get(PERSISTENT_APP_STATE_CACHE_KEY)
+        if isinstance(cached_state, dict):
+            raw_state = dict(cached_state)
+        elif PERSISTENT_APP_STATE_PATH.exists():
             loaded = json.loads(PERSISTENT_APP_STATE_PATH.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                raw_state = loaded
+            raw_state = loaded if isinstance(loaded, dict) else {}
+        else:
+            raw_state = {}
+        changed = False
         for key in remove_keys or []:
-            raw_state.pop(key, None)
+            if key in raw_state:
+                raw_state.pop(key, None)
+                changed = True
         for key, value in (values or {}).items():
-            raw_state[key] = encode_persistent_value(value)
+            encoded_value = encode_persistent_value(value)
+            if key not in raw_state or raw_state[key] != encoded_value:
+                raw_state[key] = encoded_value
+                changed = True
+        if not changed:
+            st.session_state[PERSISTENT_APP_STATE_CACHE_KEY] = raw_state
+            return
         temp_path = PERSISTENT_APP_STATE_PATH.with_suffix(".tmp")
         temp_path.write_text(json.dumps(raw_state, ensure_ascii=False), encoding="utf-8")
         temp_path.replace(PERSISTENT_APP_STATE_PATH)
+        st.session_state[PERSISTENT_APP_STATE_CACHE_KEY] = raw_state
     except Exception:
         pass
 
 
 def restore_persistent_app_state() -> None:
+    if st.session_state.get(PERSISTENT_APP_STATE_RESTORED_KEY):
+        return
     for key, value in load_persistent_app_state().items():
         if key not in st.session_state:
             st.session_state[key] = value
+    st.session_state[PERSISTENT_APP_STATE_RESTORED_KEY] = True
 
 
 def stable_file_hash(file_bytes: bytes) -> str:
@@ -1509,16 +1530,25 @@ def persistent_upload_paths(format_name: str) -> tuple[Path, Path]:
         PERSISTENT_UPLOAD_DIR / f"{slug}_upload.json",
     )
 
-def save_persistent_upload(format_name: str, file_name: str, file_bytes: bytes) -> None:
+def save_persistent_upload(format_name: str, file_name: str, file_bytes: bytes, file_hash: str = "") -> None:
     try:
         PERSISTENT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         data_path, meta_path = persistent_upload_paths(format_name)
+        resolved_hash = file_hash or stable_file_hash(file_bytes)
+        if data_path.exists() and meta_path.exists() and data_path.stat().st_size == len(file_bytes):
+            existing_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            if (
+                existing_meta.get("file_name") == file_name
+                and existing_meta.get("size") == len(file_bytes)
+                and existing_meta.get("sha256") == resolved_hash
+            ):
+                return
         data_path.write_bytes(file_bytes)
         meta = {
             "last_selected_format": format_name,
             "file_name": file_name,
             "size": len(file_bytes),
-            "sha256": stable_file_hash(file_bytes),
+            "sha256": resolved_hash,
             "saved_at": datetime.now().isoformat(timespec="seconds"),
         }
         meta_path.write_text(json.dumps(meta), encoding="utf-8")
@@ -1540,6 +1570,7 @@ def load_persistent_upload(format_name: str):
             "file_bytes": file_bytes,
             "file_name": meta.get("file_name", "Saved report.xlsx"),
             "size": meta.get("size", len(file_bytes)),
+            "sha256": meta.get("sha256", ""),
             "saved_at": meta.get("saved_at", ""),
             "last_selected_format": meta.get("last_selected_format", ""),
         }
@@ -2482,21 +2513,30 @@ def build_existing_do_tables(tx_df: pd.DataFrame) -> tuple[set, dict, dict]:
         return set(), {}, {}
 
     source_rows = []
+    source_data_cols = ["SKU", "Description", "Qty Out", "Qty In", "Activity Date", "Excel Row"]
     for source_col in ["Ref #", "Trans. #"]:
         if source_col not in tx_df.columns:
             continue
-        tmp = tx_df.copy()
-        tmp["DO Key"] = tmp[source_col].astype(str).map(normalize_lookup_key)
-        tmp = tmp[tmp["DO Key"] != ""].copy()
+        source_values = tx_df[source_col].astype(str)
+        do_keys = source_values.map(normalize_lookup_key)
+        valid_mask = do_keys != ""
+        if not valid_mask.any():
+            continue
+        available_cols = [col for col in source_data_cols if col in tx_df.columns]
+        tmp = tx_df.loc[valid_mask, available_cols].copy()
+        for col in source_data_cols:
+            if col not in tmp.columns:
+                tmp[col] = np.nan
+        tmp["DO Key"] = do_keys.loc[valid_mask].to_numpy()
         if tmp.empty:
             continue
-        tmp["DO #"] = tmp[source_col].astype(str).map(clean_text)
+        tmp["DO #"] = source_values.loc[valid_mask].map(clean_text).to_numpy()
         source_rows.append(tmp)
 
     if not source_rows:
         return set(), {}, {}
 
-    all_do_df = pd.concat(source_rows, ignore_index=True).drop_duplicates(subset=["DO Key", "SKU", "Excel Row"])
+    all_do_df = pd.concat(source_rows, ignore_index=True, copy=False).drop_duplicates(subset=["DO Key", "SKU", "Excel Row"])
     all_do_df["SKU Key"] = all_do_df["SKU"].astype(str).map(normalize_lookup_key)
     all_do_df["Qty Out"] = pd.to_numeric(all_do_df.get("Qty Out", 0), errors="coerce").fillna(0)
     all_do_df["Qty In"] = pd.to_numeric(all_do_df.get("Qty In", 0), errors="coerce").fillna(0)
@@ -2529,12 +2569,12 @@ def build_existing_do_tables(tx_df: pd.DataFrame) -> tuple[set, dict, dict]:
     )
 
     existing_do_keys = set(do_df["DO Key"].astype(str))
-    existing_item_lookup = {(row["DO Key"], row["SKU Key"]): row.to_dict() for _, row in item_df.iterrows()}
-    existing_do_lookup = {row["DO Key"]: row.to_dict() for _, row in do_df.iterrows()}
+    existing_item_lookup = item_df.set_index(["DO Key", "SKU Key"]).to_dict("index")
+    existing_do_lookup = do_df.set_index("DO Key").to_dict("index")
     return existing_do_keys, existing_item_lookup, existing_do_lookup
 
 
-def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame, tx_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame, tx_df: pd.DataFrame, existing_do_tables=None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if input_df.empty:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
@@ -2556,7 +2596,10 @@ def build_stock_check_tables(input_df: pd.DataFrame, sku_df: pd.DataFrame, tx_df
     stock_df["SKU Key"] = stock_df["SKU"].astype(str).map(normalize_lookup_key)
     stock_df = stock_df.drop_duplicates("SKU Key", keep="first")
     stock_lookup = stock_df.set_index("SKU Key").to_dict("index")
-    existing_do_keys, existing_item_lookup, existing_do_lookup = build_existing_do_tables(tx_df)
+    if existing_do_tables is None:
+        existing_do_keys, existing_item_lookup, existing_do_lookup = build_existing_do_tables(tx_df)
+    else:
+        existing_do_keys, existing_item_lookup, existing_do_lookup = existing_do_tables
     remaining = {}
     detail_rows = []
 
@@ -3123,24 +3166,26 @@ def show_temporary_balance_dataframe(df: pd.DataFrame, height: int = 420, limit:
 
     display_df = prepare_stock_check_display(df.head(limit))
 
-    def highlight_temporary_balance(row):
-        styles = ["" for _ in row]
-        if "Temporary Balance" not in row.index:
-            return styles
-        value = pd.to_numeric(pd.Series([row.get("Temporary Balance")]), errors="coerce").iloc[0]
-        qty_to_check = pd.to_numeric(pd.Series([row.get("Total Qty To Check", 0)]), errors="coerce").fillna(0).iloc[0]
-        temp_idx = list(row.index).index("Temporary Balance")
-        if pd.isna(value):
-            styles[temp_idx] = "background-color: #F3F4F6; color: #4B5563; font-weight: 850; text-align: right;"
-        elif value < 0:
-            styles[temp_idx] = "background-color: #FDE2E1; color: #B42318; font-weight: 900; text-align: right;"
-        elif qty_to_check > 0:
-            styles[temp_idx] = "background-color: #DFF3E3; color: #067647; font-weight: 900; text-align: right;"
-        else:
-            styles[temp_idx] = "background-color: #F3F4F6; color: #4B5563; font-weight: 850; text-align: right;"
-        return styles
+    style_df = pd.DataFrame("", index=display_df.index, columns=display_df.columns)
+    if "Temporary Balance" in display_df.columns:
+        balance_values = pd.to_numeric(display_df["Temporary Balance"], errors="coerce")
+        qty_source = display_df["Total Qty To Check"] if "Total Qty To Check" in display_df.columns else pd.Series(0, index=display_df.index)
+        qty_values = pd.to_numeric(qty_source, errors="coerce").fillna(0)
+        style_df["Temporary Balance"] = np.select(
+            [
+                balance_values.isna().to_numpy(dtype=bool),
+                (balance_values < 0).fillna(False).to_numpy(dtype=bool),
+                (qty_values > 0).fillna(False).to_numpy(dtype=bool),
+            ],
+            [
+                "background-color: #F3F4F6; color: #4B5563; font-weight: 850; text-align: right;",
+                "background-color: #FDE2E1; color: #B42318; font-weight: 900; text-align: right;",
+                "background-color: #DFF3E3; color: #067647; font-weight: 900; text-align: right;",
+            ],
+            default="background-color: #F3F4F6; color: #4B5563; font-weight: 850; text-align: right;",
+        )
 
-    styled_df = display_df.style.apply(highlight_temporary_balance, axis=1)
+    styled_df = display_df.style.apply(lambda _: style_df, axis=None)
     numeric_subset = [col for col in ["Current Ending Balance", "Total Qty To Check", "Temporary Balance", "Shortage Qty"] if col in display_df.columns]
     if numeric_subset:
         styled_df = styled_df.set_properties(subset=numeric_subset, **{"text-align": "right"})
@@ -3168,27 +3213,26 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
         if col in display_df.columns:
             display_df[col] = display_df[col].fillna(False).astype(bool)
 
-    def highlight_transaction_type(row):
-        styles = ["" for _ in row]
-        if "Transaction Type" not in row.index:
-            return styles
-        tx_type = str(row["Transaction Type"]).lower()
-        if "inbound" in tx_type and "outbound" not in tx_type:
-            style = "background-color: #DFF3E3; color: #067647; font-weight: 700; text-align: center;"
-        elif "outbound" in tx_type and "inbound" not in tx_type:
-            style = "background-color: #FDE2E1; color: #B42318; font-weight: 700; text-align: center;"
-        elif "inbound" in tx_type and "outbound" in tx_type:
-            style = "background-color: #E0F2FE; color: #026AA2; font-weight: 700; text-align: center;"
-        else:
-            style = "background-color: #F3F4F6; color: #4B5563; font-weight: 700; text-align: center;"
-        styles[list(row.index).index("Transaction Type")] = style
-        return styles
-
     numeric_subset = [col for col in ["Excel Row", "Qty In", "Qty Out", "Balance After Transaction"] if col in display_df.columns]
     center_subset = [col for col in ["Activity Date", "Transaction Type", "Is Not Shipped", "Is Cancelled"] if col in display_df.columns]
     left_subset = [col for col in ["Trans. #", "Ref #"] if col in display_df.columns]
 
-    styled_df = display_df.style.apply(highlight_transaction_type, axis=1)
+    style_df = pd.DataFrame("", index=display_df.index, columns=display_df.columns)
+    if "Transaction Type" in display_df.columns:
+        transaction_types = display_df["Transaction Type"].astype(str).str.lower()
+        has_inbound = transaction_types.str.contains("inbound", na=False)
+        has_outbound = transaction_types.str.contains("outbound", na=False)
+        style_df["Transaction Type"] = np.select(
+            [has_inbound & ~has_outbound, has_outbound & ~has_inbound, has_inbound & has_outbound],
+            [
+                "background-color: #DFF3E3; color: #067647; font-weight: 700; text-align: center;",
+                "background-color: #FDE2E1; color: #B42318; font-weight: 700; text-align: center;",
+                "background-color: #E0F2FE; color: #026AA2; font-weight: 700; text-align: center;",
+            ],
+            default="background-color: #F3F4F6; color: #4B5563; font-weight: 700; text-align: center;",
+        )
+
+    styled_df = display_df.style.apply(lambda _: style_df, axis=None)
     if numeric_subset:
         styled_df = styled_df.set_properties(subset=numeric_subset, **{"text-align": "right"})
     if center_subset:
@@ -3306,13 +3350,56 @@ status_box = st.empty()
 
 using_saved_report = False
 active_file_name = ""
+saved_upload_cache_key = f"_saved_upload_cache_{site_key}"
+uploaded_hash_cache_key = f"_uploaded_hash_cache_{site_key}"
+saved_upload_identity_key = f"_saved_upload_identity_{site_key}"
 
 if uploaded is not None:
     file_bytes = uploaded.getvalue()
     active_file_name = uploaded.name
-    save_persistent_upload(format_name, active_file_name, file_bytes)
+    uploaded_file_id = clean_text(getattr(uploaded, "file_id", ""))
+    uploaded_hash_cache = st.session_state.get(uploaded_hash_cache_key, {})
+    if (
+        uploaded_file_id
+        and isinstance(uploaded_hash_cache, dict)
+        and uploaded_hash_cache.get("file_id") == uploaded_file_id
+        and uploaded_hash_cache.get("file_name") == active_file_name
+        and uploaded_hash_cache.get("size") == len(file_bytes)
+    ):
+        file_hash = uploaded_hash_cache.get("sha256", "")
+    else:
+        file_hash = stable_file_hash(file_bytes)
+        st.session_state[uploaded_hash_cache_key] = {
+            "file_id": uploaded_file_id,
+            "file_name": active_file_name,
+            "size": len(file_bytes),
+            "sha256": file_hash,
+        }
+    if not file_hash:
+        file_hash = stable_file_hash(file_bytes)
+        st.session_state[uploaded_hash_cache_key] = {
+            "file_id": uploaded_file_id,
+            "file_name": active_file_name,
+            "size": len(file_bytes),
+            "sha256": file_hash,
+        }
+    upload_identity = f"{active_file_name}|{len(file_bytes)}|{file_hash}"
+    if st.session_state.get(saved_upload_identity_key) != upload_identity:
+        save_persistent_upload(format_name, active_file_name, file_bytes, file_hash)
+        st.session_state[saved_upload_identity_key] = upload_identity
+    st.session_state[saved_upload_cache_key] = {
+        "file_bytes": file_bytes,
+        "file_name": active_file_name,
+        "size": len(file_bytes),
+        "sha256": file_hash,
+        "last_selected_format": format_name,
+    }
 else:
-    saved_upload = load_persistent_upload(format_name)
+    saved_upload = st.session_state.get(saved_upload_cache_key)
+    if not isinstance(saved_upload, dict):
+        saved_upload = load_persistent_upload(format_name)
+        if saved_upload is not None:
+            st.session_state[saved_upload_cache_key] = saved_upload
     if saved_upload is None:
         st.markdown(
             f"""
@@ -3330,6 +3417,7 @@ else:
         st.stop()
     file_bytes = saved_upload["file_bytes"]
     active_file_name = saved_upload["file_name"]
+    file_hash = saved_upload.get("sha256") or stable_file_hash(file_bytes)
     using_saved_report = True
 
 report_source_slot.markdown(
@@ -3337,8 +3425,11 @@ report_source_slot.markdown(
     unsafe_allow_html=True,
 )
 
-uploaded_key = f"{format_name}|{active_file_name}|{len(file_bytes)}|{stable_file_hash(file_bytes)}"
+uploaded_key = f"{format_name}|{active_file_name}|{len(file_bytes)}|{file_hash}"
 show_upload_effect = uploaded is not None and st.session_state.get("last_upload_effect_key") != uploaded_key
+model_cache_key = f"_inventory_model_{site_key}"
+model_source_key = f"_inventory_model_source_{site_key}"
+model_source_value = f"{uploaded_key}|{APP_CACHE_VERSION}"
 
 try:
     if show_upload_effect:
@@ -3359,7 +3450,12 @@ try:
             unsafe_allow_html=True,
         )
 
-    model = process_excel_file(file_bytes, format_name, APP_CACHE_VERSION)
+    if st.session_state.get(model_source_key) == model_source_value and isinstance(st.session_state.get(model_cache_key), dict):
+        model = st.session_state[model_cache_key]
+    else:
+        model = process_excel_file(file_bytes, format_name, APP_CACHE_VERSION)
+        st.session_state[model_cache_key] = model
+        st.session_state[model_source_key] = model_source_value
 
     if not show_upload_effect:
         status_box.empty()
@@ -3397,9 +3493,9 @@ except Exception:
     )
     st.stop()
 
-sku_df = model["sku_df"].copy()
+sku_df = model["sku_df"]
 
-sku_option_source = sku_df.copy()
+sku_option_source = sku_df
 if show_risks:
     sku_option_source = sku_option_source[sku_option_source["Risk Level"].isin(show_risks)]
 sku_option_source = sku_option_source[sku_option_source["Outbound Last 30 Days"] >= min_usage]
@@ -3497,8 +3593,8 @@ if selected_page == "Overview":
     transaction_file_name = transaction_download_filename(format_name, report_end)
     report_export_key = f"report_export_{uploaded_key}"
     transaction_export_key = f"transaction_export_{uploaded_key}"
-    report_export_data = to_excel_bytes(model, format_name, CUSTOMER_EXPORT_VERSION)
-    transaction_export_data = to_transaction_excel_bytes(model, format_name, APP_CACHE_VERSION)
+    report_export_data = lambda export_model=model, export_format=format_name: to_excel_bytes(export_model, export_format, CUSTOMER_EXPORT_VERSION)
+    transaction_export_data = lambda export_model=model, export_format=format_name: to_transaction_excel_bytes(export_model, export_format, APP_CACHE_VERSION)
     heading_col, export_col_1, export_col_2 = st.columns([3.4, 1.25, 1.25])
     with heading_col:
         tab_page_header("Overview", "Review inventory risk first, then move into SKU, DO, or stock validation workflows.")
@@ -3624,9 +3720,9 @@ elif selected_page == "SKU Detail":
         )
         st.dataframe(detail, use_container_width=True)
 
-        tx_sku = model["tx_df"].copy()
-        if not tx_sku.empty:
-            tx_sku = tx_sku[tx_sku["SKU"] == selected_sku].copy()
+        tx_source = model["tx_df"]
+        if not tx_source.empty:
+            tx_sku = tx_source.loc[tx_source["SKU"] == selected_sku].copy()
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
             st.markdown('<div class="section-title">Transaction history</div>', unsafe_allow_html=True)
             st.markdown('<div class="section-subtitle">Search references or filter activity dates without leaving this SKU.</div>', unsafe_allow_html=True)
@@ -3670,7 +3766,7 @@ elif selected_page == "SKU Detail":
                 st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
 
                 sku_filter_key = re.sub(r"[^A-Za-z0-9_]+", "_", f"{format_name}_{selected_sku}")[:55]
-                tx_filtered = tx_sku.copy()
+                tx_filtered = tx_sku
                 tx_search_key = f"tx_search_{sku_filter_key}"
                 tx_mode_key = f"tx_date_mode_{sku_filter_key}"
                 tx_date_key = f"tx_date_{sku_filter_key}"
@@ -3924,7 +4020,7 @@ elif selected_page == "SKU Detail":
 elif selected_page == "DO Lookup":
     tab_page_header("DO Lookup", "Paste one or multiple DO numbers to find matching items across every SKU and review results by DO.")
 
-    do_tx = model["tx_df"].copy()
+    do_tx = model["tx_df"]
     do_lookup_key = f"do_lookup_{site_key}"
     do_clear_key = f"clear_do_lookup_{site_key}"
 
@@ -3969,7 +4065,10 @@ elif selected_page == "DO Lookup":
             unsafe_allow_html=True,
         )
     else:
-        for col in ["Ref #", "Trans. #", "SKU", "Description", "Activity Date", "Transaction Type", "Qty In", "Qty Out", "Balance After Transaction", "Is Not Shipped", "Is Cancelled", "Excel Row"]:
+        do_required_cols = ["Ref #", "Trans. #", "SKU", "Description", "Activity Date", "Transaction Type", "Qty In", "Qty Out", "Balance After Transaction", "Is Not Shipped", "Is Cancelled", "Excel Row"]
+        if any(col not in do_tx.columns for col in do_required_cols):
+            do_tx = do_tx.copy()
+        for col in do_required_cols:
             if col not in do_tx.columns:
                 if col in ["Qty In", "Qty Out", "Balance After Transaction"]:
                     do_tx[col] = 0.0
@@ -3980,11 +4079,13 @@ elif selected_page == "DO Lookup":
                 else:
                     do_tx[col] = ""
 
-        do_search_text = (
-            do_tx["Ref #"].astype(str).str.lower()
-            + " "
-            + do_tx["Trans. #"].astype(str).str.lower()
-        )
+        do_search_cache_key = f"_do_search_text_{site_key}"
+        do_search_cache = st.session_state.get(do_search_cache_key, {})
+        if isinstance(do_search_cache, dict) and do_search_cache.get("source") == model_source_value and isinstance(do_search_cache.get("values"), pd.Series):
+            do_search_text = do_search_cache["values"]
+        else:
+            do_search_text = do_tx["Ref #"].astype(str).str.lower() + " " + do_tx["Trans. #"].astype(str).str.lower()
+            st.session_state[do_search_cache_key] = {"source": model_source_value, "values": do_search_text}
 
         do_found_terms = []
         do_missing_terms = []
@@ -4165,17 +4266,8 @@ elif selected_page == "Stock Check":
     stock_temp_result_key = f"stock_check_temp_balance_result_{site_key}"
     stock_temp_filter_key = f"temp_balance_sku_select_{site_key}"
     stock_saved_table_key = f"stock_check_table_data_{site_key}"
+    stock_run_input_key = f"stock_check_run_input_{site_key}"
     st.session_state.setdefault(stock_table_version_key, 0)
-    reset_col_1, reset_col_2 = st.columns([1, 5])
-    with reset_col_1:
-        if st.button("Reset", use_container_width=True, key=f"stock_check_reset_{site_key}"):
-            st.session_state[stock_table_version_key] += 1
-            keys_to_clear = [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key, stock_saved_table_key]
-            for key in keys_to_clear:
-                st.session_state.pop(key, None)
-            update_persistent_app_state(remove_keys=keys_to_clear)
-            st.rerun()
-
     stock_table_key = f"stock_check_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
     default_stock_table_df = pd.DataFrame(
         {
@@ -4189,85 +4281,109 @@ elif selected_page == "Stock Check":
         stock_template_df = saved_stock_table_df[["DO #", "Item Code / SKU", "Qty"]].copy()
     else:
         stock_template_df = default_stock_table_df
-    stock_table_df = st.data_editor(
-        stock_template_df,
-        use_container_width=True,
-        hide_index=True,
-        height=342,
-        num_rows="dynamic",
-        key=stock_table_key,
-        column_config={
-            "DO #": st.column_config.TextColumn("DO #", help="Paste or enter the DO number."),
-            "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU", help="Paste or enter the item code/SKU."),
-            "Qty": st.column_config.TextColumn("Qty", help="Paste or enter the requested quantity."),
-        },
-    )
-    run_spacer_col, run_button_col = st.columns([5, 1])
-    with run_button_col:
-        stock_run_clicked = st.button(
-            "Run Stock Check",
-            type="primary",
+    with st.form(key=f"stock_check_form_{site_key}", clear_on_submit=False):
+        reset_col, run_col, action_spacer_col = st.columns([1, 1.5, 4.5])
+        with reset_col:
+            stock_reset_clicked = st.form_submit_button(
+                "Reset",
+                use_container_width=True,
+            )
+        with run_col:
+            stock_run_clicked = st.form_submit_button(
+                "Run Stock Check",
+                type="primary",
+                use_container_width=True,
+            )
+        stock_table_df = st.data_editor(
+            stock_template_df,
             use_container_width=True,
-            key=f"stock_check_run_{site_key}",
+            hide_index=True,
+            height=342,
+            num_rows="dynamic",
+            key=stock_table_key,
+            column_config={
+                "DO #": st.column_config.TextColumn("DO #", help="Paste or enter the DO number."),
+                "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU", help="Paste or enter the item code/SKU."),
+                "Qty": st.column_config.TextColumn("Qty", help="Paste or enter the requested quantity."),
+            },
         )
-    st.session_state[stock_saved_table_key] = stock_table_df.copy()
-    update_persistent_app_state(values={stock_saved_table_key: stock_table_df})
 
-    input_df = parse_stock_check_table(stock_table_df)
-    input_has_values = not input_df.empty
+    if stock_reset_clicked:
+        st.session_state[stock_table_version_key] += 1
+        keys_to_clear = [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key, stock_saved_table_key, stock_run_input_key]
+        for key in keys_to_clear:
+            st.session_state.pop(key, None)
+        update_persistent_app_state(remove_keys=keys_to_clear)
+        st.rerun()
+
     row_count_mismatch = False
+    stock_has_saved_result = stock_result_signature_key in st.session_state
 
-    if input_has_values:
-        valid_rows = input_df[input_df["Issue"].astype(str) == ""]
-        issue_rows = input_df[input_df["Issue"].astype(str) != ""]
+    if stock_run_clicked:
+        st.session_state[stock_saved_table_key] = stock_table_df.copy()
+        persistent_stock_values = {stock_saved_table_key: stock_table_df}
+        input_df = parse_stock_check_table(stock_table_df)
+        if not input_df.empty:
+            input_signature_source = input_df.fillna("").astype(str).to_json(orient="records")
+            stock_current_signature = hashlib.sha256(f"{uploaded_key}|{input_signature_source}".encode("utf-8")).hexdigest()
+            stock_do_cache_key = f"_stock_do_tables_{site_key}"
+            stock_do_cache = st.session_state.get(stock_do_cache_key, {})
+            if isinstance(stock_do_cache, dict) and stock_do_cache.get("source") == model_source_value and isinstance(stock_do_cache.get("tables"), tuple):
+                existing_do_tables = stock_do_cache["tables"]
+            else:
+                existing_do_tables = build_existing_do_tables(model.get("tx_df", pd.DataFrame()))
+                st.session_state[stock_do_cache_key] = {"source": model_source_value, "tables": existing_do_tables}
+            detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, model.get("tx_df", pd.DataFrame()), existing_do_tables)
+            temporary_balance_df = build_temporary_balance_table(sku_df, detail_df) if not detail_df.empty else pd.DataFrame()
+            st.session_state[stock_result_signature_key] = stock_current_signature
+            st.session_state[stock_detail_result_key] = detail_df
+            st.session_state[stock_overview_result_key] = overview_df
+            st.session_state[stock_issues_result_key] = issues_df
+            st.session_state[stock_temp_result_key] = temporary_balance_df
+            st.session_state[stock_run_input_key] = input_df.copy()
+            persistent_stock_values.update(
+                {
+                    stock_result_signature_key: stock_current_signature,
+                    stock_detail_result_key: detail_df,
+                    stock_overview_result_key: overview_df,
+                    stock_issues_result_key: issues_df,
+                    stock_temp_result_key: temporary_balance_df,
+                    stock_run_input_key: input_df,
+                }
+            )
+            stock_has_saved_result = True
+        update_persistent_app_state(values=persistent_stock_values)
+
+    if stock_has_saved_result:
+        detail_df = st.session_state.get(stock_detail_result_key, pd.DataFrame())
+        overview_df = st.session_state.get(stock_overview_result_key, pd.DataFrame())
+        issues_df = st.session_state.get(stock_issues_result_key, pd.DataFrame())
+        temporary_balance_df = st.session_state.get(stock_temp_result_key, pd.DataFrame())
+        result_input_df = st.session_state.get(stock_run_input_key, pd.DataFrame())
+    else:
+        detail_df = pd.DataFrame()
+        overview_df = pd.DataFrame()
+        issues_df = pd.DataFrame()
+        temporary_balance_df = pd.DataFrame()
+        result_input_df = pd.DataFrame()
+
+    if stock_has_saved_result and not result_input_df.empty and "Issue" in result_input_df.columns:
+        valid_rows = result_input_df[result_input_df["Issue"].astype(str) == ""]
+        issue_rows = result_input_df[result_input_df["Issue"].astype(str) != ""]
         input_count_col_1, input_count_col_2, input_count_col_3 = st.columns(3)
         with input_count_col_1:
-            st.caption(f"Rows entered: {len(input_df):,}")
+            st.caption(f"Rows entered: {len(result_input_df):,}")
         with input_count_col_2:
             st.caption(f"Valid rows: {len(valid_rows):,}")
         with input_count_col_3:
             st.caption(f"Input issue rows: {len(issue_rows):,}")
 
-    input_signature_source = input_df.fillna("").astype(str).to_json(orient="records") if not input_df.empty else ""
-    stock_current_signature = hashlib.sha256(f"{uploaded_key}|{input_signature_source}".encode("utf-8")).hexdigest()
-    stock_has_current_result = st.session_state.get(stock_result_signature_key) == stock_current_signature
-
-    if input_df.empty:
-        detail_df = pd.DataFrame()
-        overview_df = pd.DataFrame()
-        issues_df = pd.DataFrame()
-        temporary_balance_df = pd.DataFrame()
-        for key in [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key]:
-            st.session_state.pop(key, None)
-        stock_has_current_result = False
-    elif stock_run_clicked:
-        detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, model.get("tx_df", pd.DataFrame()))
-        temporary_balance_df = build_temporary_balance_table(sku_df, detail_df) if not detail_df.empty else pd.DataFrame()
-        st.session_state[stock_result_signature_key] = stock_current_signature
-        st.session_state[stock_detail_result_key] = detail_df
-        st.session_state[stock_overview_result_key] = overview_df
-        st.session_state[stock_issues_result_key] = issues_df
-        st.session_state[stock_temp_result_key] = temporary_balance_df
-        stock_has_current_result = True
-    elif stock_has_current_result:
-        detail_df = st.session_state.get(stock_detail_result_key, pd.DataFrame())
-        overview_df = st.session_state.get(stock_overview_result_key, pd.DataFrame())
-        issues_df = st.session_state.get(stock_issues_result_key, pd.DataFrame())
-        temporary_balance_df = st.session_state.get(stock_temp_result_key, pd.DataFrame())
-    else:
-        detail_df = pd.DataFrame()
-        overview_df = pd.DataFrame()
-        issues_df = pd.DataFrame()
-        temporary_balance_df = pd.DataFrame()
-
-    if input_df.empty:
-        st.info("Paste values under DO #, Item Code / SKU, and Qty to check stock availability.")
-    elif not stock_has_current_result:
-        st.info("Click Run Stock Check after entering all values.")
+    if not stock_has_saved_result:
+        st.info("Paste values under DO #, Item Code / SKU, and Qty, then click Run Stock Check.")
     elif row_count_mismatch:
         pass
     else:
-        valid_line_count = len(input_df[input_df["Issue"].astype(str) == ""])
+        valid_line_count = len(result_input_df[result_input_df["Issue"].astype(str) == ""]) if not result_input_df.empty and "Issue" in result_input_df.columns else 0
         do_checked_count = overview_df["DO #"].nunique() if not overview_df.empty and "DO #" in overview_df.columns else 0
         existing_do_count = int((overview_df["Report DO Status"] == "Existing DO").sum()) if not overview_df.empty and "Report DO Status" in overview_df.columns else 0
         new_do_count = int((overview_df["Report DO Status"] == "New DO").sum()) if not overview_df.empty and "Report DO Status" in overview_df.columns else 0
@@ -4379,34 +4495,34 @@ elif selected_page == "Stock Check":
                 temp_height = min(560, max(190, 76 + (min(len(temp_display), 14) * 31)))
                 show_temporary_balance_dataframe(temp_display, height=temp_height, limit=2000, show_count=True)
 
-            export_stock_df = prepare_stock_check_display(detail_df.drop(columns=["Input Order"], errors="ignore"))
-            export_overview_df = prepare_stock_check_display(overview_df)
-            export_temp_df = prepare_stock_check_display(temporary_balance_df.drop(columns=["Impact Sort", "Status Sort"], errors="ignore")) if not temporary_balance_df.empty else pd.DataFrame()
             download_col_1, download_col_2, download_col_3 = st.columns(3)
             with download_col_1:
                 st.download_button(
                     "Export detail CSV",
-                    data=export_stock_df.to_csv(index=False).encode("utf-8-sig"),
+                    data=lambda export_df=detail_df: prepare_stock_check_display(export_df.drop(columns=["Input Order"], errors="ignore")).to_csv(index=False).encode("utf-8-sig"),
                     file_name=f"{safe_format_slug(format_name)}_Stock_Check_Detail_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
                     mime="text/csv",
                     use_container_width=True,
+                    on_click="ignore",
                 )
             with download_col_2:
                 st.download_button(
                     "Export overview CSV",
-                    data=export_overview_df.to_csv(index=False).encode("utf-8-sig"),
+                    data=lambda export_df=overview_df: prepare_stock_check_display(export_df).to_csv(index=False).encode("utf-8-sig"),
                     file_name=f"{safe_format_slug(format_name)}_Stock_Check_Overview_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
                     mime="text/csv",
                     use_container_width=True,
+                    on_click="ignore",
                 )
             with download_col_3:
-                if not export_temp_df.empty:
+                if not temporary_balance_df.empty:
                     st.download_button(
                         "Export temporary balance CSV",
-                        data=export_temp_df.to_csv(index=False).encode("utf-8-sig"),
+                        data=lambda export_df=temporary_balance_df: prepare_stock_check_display(export_df.drop(columns=["Impact Sort", "Status Sort"], errors="ignore")).to_csv(index=False).encode("utf-8-sig"),
                         file_name=f"{safe_format_slug(format_name)}_Temporary_Balance_{pd.to_datetime(report_end).strftime('%m%d%Y')}.csv",
                         mime="text/csv",
                         use_container_width=True,
+                        on_click="ignore",
                     )
 
         if not issues_df.empty:
@@ -4420,8 +4536,8 @@ elif selected_page == "Stock Check":
 elif selected_page == "Audit":
     tab_page_header("Audit Checks", "Review source completeness, official-row reconciliation, and recent outbound windows.")
 
-    audit_df = model["audit_df"].copy()
-    audit_review_df = audit_df[audit_df["Audit Status"] != "Pass"].copy()
+    audit_df = model["audit_df"]
+    audit_review_df = audit_df[audit_df["Audit Status"] != "Pass"]
     if audit_review_df.empty:
         st.success("All available audit checks passed.")
     else:
