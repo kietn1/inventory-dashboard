@@ -2504,6 +2504,21 @@ def parse_stock_check_table(table_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["Input Order", "DO #", "SKU", "Requested Qty", "Issue"])
 
 
+def exclude_rma_stock_check_rows(input_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
+    if input_df is None or input_df.empty or "DO #" not in input_df.columns:
+        return input_df.copy() if isinstance(input_df, pd.DataFrame) else pd.DataFrame(), []
+    rma_mask = input_df["DO #"].astype(str).str.contains("RMA", case=False, regex=False, na=False)
+    excluded_dos = []
+    seen_dos = set()
+    for value in input_df.loc[rma_mask, "DO #"]:
+        do_no = clean_text(value)
+        do_key = do_no.upper()
+        if do_no and do_key not in seen_dos:
+            excluded_dos.append(do_no)
+            seen_dos.add(do_key)
+    return input_df.loc[~rma_mask].copy(), excluded_dos
+
+
 def normalize_lookup_key(value) -> str:
     return clean_text(value).upper()
 
@@ -4267,6 +4282,7 @@ elif selected_page == "Stock Check":
     stock_temp_filter_key = f"temp_balance_sku_select_{site_key}"
     stock_saved_table_key = f"stock_check_table_data_{site_key}"
     stock_run_input_key = f"stock_check_run_input_{site_key}"
+    stock_rma_excluded_key = f"stock_check_rma_excluded_{site_key}"
     st.session_state.setdefault(stock_table_version_key, 0)
     stock_table_key = f"stock_check_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
     default_stock_table_df = pd.DataFrame(
@@ -4310,7 +4326,7 @@ elif selected_page == "Stock Check":
 
     if stock_reset_clicked:
         st.session_state[stock_table_version_key] += 1
-        keys_to_clear = [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key, stock_saved_table_key, stock_run_input_key]
+        keys_to_clear = [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key, stock_saved_table_key, stock_run_input_key, stock_rma_excluded_key]
         for key in keys_to_clear:
             st.session_state.pop(key, None)
         update_persistent_app_state(remove_keys=keys_to_clear)
@@ -4326,21 +4342,32 @@ elif selected_page == "Stock Check":
         if not input_df.empty:
             input_signature_source = input_df.fillna("").astype(str).to_json(orient="records")
             stock_current_signature = hashlib.sha256(f"{uploaded_key}|{input_signature_source}".encode("utf-8")).hexdigest()
-            stock_do_cache_key = f"_stock_do_tables_{site_key}"
-            stock_do_cache = st.session_state.get(stock_do_cache_key, {})
-            if isinstance(stock_do_cache, dict) and stock_do_cache.get("source") == model_source_value and isinstance(stock_do_cache.get("tables"), tuple):
-                existing_do_tables = stock_do_cache["tables"]
+            calculation_input_df, excluded_rma_dos = exclude_rma_stock_check_rows(input_df)
+            if calculation_input_df.empty:
+                detail_df = pd.DataFrame()
+                overview_df = pd.DataFrame()
+                issues_df = pd.DataFrame()
+                temporary_balance_df = pd.DataFrame()
             else:
-                existing_do_tables = build_existing_do_tables(model.get("tx_df", pd.DataFrame()))
-                st.session_state[stock_do_cache_key] = {"source": model_source_value, "tables": existing_do_tables}
-            detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, model.get("tx_df", pd.DataFrame()), existing_do_tables)
-            temporary_balance_df = build_temporary_balance_table(sku_df, detail_df) if not detail_df.empty else pd.DataFrame()
+                if (calculation_input_df["Issue"].astype(str) == "").any():
+                    stock_do_cache_key = f"_stock_do_tables_{site_key}"
+                    stock_do_cache = st.session_state.get(stock_do_cache_key, {})
+                    if isinstance(stock_do_cache, dict) and stock_do_cache.get("source") == model_source_value and isinstance(stock_do_cache.get("tables"), tuple):
+                        existing_do_tables = stock_do_cache["tables"]
+                    else:
+                        existing_do_tables = build_existing_do_tables(model.get("tx_df", pd.DataFrame()))
+                        st.session_state[stock_do_cache_key] = {"source": model_source_value, "tables": existing_do_tables}
+                else:
+                    existing_do_tables = (set(), {}, {})
+                detail_df, overview_df, issues_df = build_stock_check_tables(calculation_input_df, sku_df, model.get("tx_df", pd.DataFrame()), existing_do_tables)
+                temporary_balance_df = build_temporary_balance_table(sku_df, detail_df) if not detail_df.empty else pd.DataFrame()
             st.session_state[stock_result_signature_key] = stock_current_signature
             st.session_state[stock_detail_result_key] = detail_df
             st.session_state[stock_overview_result_key] = overview_df
             st.session_state[stock_issues_result_key] = issues_df
             st.session_state[stock_temp_result_key] = temporary_balance_df
-            st.session_state[stock_run_input_key] = input_df.copy()
+            st.session_state[stock_run_input_key] = calculation_input_df.copy()
+            st.session_state[stock_rma_excluded_key] = excluded_rma_dos
             persistent_stock_values.update(
                 {
                     stock_result_signature_key: stock_current_signature,
@@ -4348,7 +4375,8 @@ elif selected_page == "Stock Check":
                     stock_overview_result_key: overview_df,
                     stock_issues_result_key: issues_df,
                     stock_temp_result_key: temporary_balance_df,
-                    stock_run_input_key: input_df,
+                    stock_run_input_key: calculation_input_df,
+                    stock_rma_excluded_key: excluded_rma_dos,
                 }
             )
             stock_has_saved_result = True
@@ -4360,12 +4388,17 @@ elif selected_page == "Stock Check":
         issues_df = st.session_state.get(stock_issues_result_key, pd.DataFrame())
         temporary_balance_df = st.session_state.get(stock_temp_result_key, pd.DataFrame())
         result_input_df = st.session_state.get(stock_run_input_key, pd.DataFrame())
+        excluded_rma_dos = st.session_state.get(stock_rma_excluded_key, [])
     else:
         detail_df = pd.DataFrame()
         overview_df = pd.DataFrame()
         issues_df = pd.DataFrame()
         temporary_balance_df = pd.DataFrame()
         result_input_df = pd.DataFrame()
+        excluded_rma_dos = []
+
+    if stock_has_saved_result and excluded_rma_dos:
+        st.warning(f"Excluded {len(excluded_rma_dos):,} RMA DO(s): {', '.join(str(value) for value in excluded_rma_dos)}")
 
     if stock_has_saved_result and not result_input_df.empty and "Issue" in result_input_df.columns:
         valid_rows = result_input_df[result_input_df["Issue"].astype(str) == ""]
