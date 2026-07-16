@@ -401,6 +401,27 @@ st.markdown(
             border-color: var(--win-border);
         }
         .data-source-card-empty::before { content: "\E946"; color: var(--win-text-secondary); }
+        section[data-testid="stSidebar"] div[class*="st-key-refresh_full_report_"] {
+            margin-top: 8px !important;
+        }
+        section[data-testid="stSidebar"] div[class*="st-key-refresh_full_report_"] div[data-testid="stButton"] {
+            display: flex;
+            justify-content: flex-end;
+            width: 100%;
+            margin-top: 0 !important;
+        }
+        section[data-testid="stSidebar"] div[class*="st-key-refresh_full_report_"] button {
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            width: 34px !important;
+            min-width: 34px !important;
+            max-width: 34px !important;
+            height: 34px !important;
+            min-height: 34px !important;
+            padding: 0 !important;
+            line-height: 1 !important;
+        }
 
         section[data-testid="stSidebar"] label {
             color: var(--win-text-secondary) !important;
