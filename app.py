@@ -4202,6 +4202,14 @@ elif selected_page == "Stock Check":
             "Qty": st.column_config.TextColumn("Qty", help="Paste or enter the requested quantity."),
         },
     )
+    run_spacer_col, run_button_col = st.columns([5, 1])
+    with run_button_col:
+        stock_run_clicked = st.button(
+            "Run Stock Check",
+            type="primary",
+            use_container_width=True,
+            key=f"stock_check_run_{site_key}",
+        )
     st.session_state[stock_saved_table_key] = stock_table_df.copy()
     update_persistent_app_state(values={stock_saved_table_key: stock_table_df})
 
@@ -4222,6 +4230,7 @@ elif selected_page == "Stock Check":
 
     input_signature_source = input_df.fillna("").astype(str).to_json(orient="records") if not input_df.empty else ""
     stock_current_signature = hashlib.sha256(f"{uploaded_key}|{input_signature_source}".encode("utf-8")).hexdigest()
+    stock_has_current_result = st.session_state.get(stock_result_signature_key) == stock_current_signature
 
     if input_df.empty:
         detail_df = pd.DataFrame()
@@ -4230,12 +4239,8 @@ elif selected_page == "Stock Check":
         temporary_balance_df = pd.DataFrame()
         for key in [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key]:
             st.session_state.pop(key, None)
-    elif st.session_state.get(stock_result_signature_key) == stock_current_signature:
-        detail_df = st.session_state.get(stock_detail_result_key, pd.DataFrame())
-        overview_df = st.session_state.get(stock_overview_result_key, pd.DataFrame())
-        issues_df = st.session_state.get(stock_issues_result_key, pd.DataFrame())
-        temporary_balance_df = st.session_state.get(stock_temp_result_key, pd.DataFrame())
-    else:
+        stock_has_current_result = False
+    elif stock_run_clicked:
         detail_df, overview_df, issues_df = build_stock_check_tables(input_df, sku_df, model.get("tx_df", pd.DataFrame()))
         temporary_balance_df = build_temporary_balance_table(sku_df, detail_df) if not detail_df.empty else pd.DataFrame()
         st.session_state[stock_result_signature_key] = stock_current_signature
@@ -4243,9 +4248,22 @@ elif selected_page == "Stock Check":
         st.session_state[stock_overview_result_key] = overview_df
         st.session_state[stock_issues_result_key] = issues_df
         st.session_state[stock_temp_result_key] = temporary_balance_df
+        stock_has_current_result = True
+    elif stock_has_current_result:
+        detail_df = st.session_state.get(stock_detail_result_key, pd.DataFrame())
+        overview_df = st.session_state.get(stock_overview_result_key, pd.DataFrame())
+        issues_df = st.session_state.get(stock_issues_result_key, pd.DataFrame())
+        temporary_balance_df = st.session_state.get(stock_temp_result_key, pd.DataFrame())
+    else:
+        detail_df = pd.DataFrame()
+        overview_df = pd.DataFrame()
+        issues_df = pd.DataFrame()
+        temporary_balance_df = pd.DataFrame()
 
     if input_df.empty:
         st.info("Paste values under DO #, Item Code / SKU, and Qty to check stock availability.")
+    elif not stock_has_current_result:
+        st.info("Click Run Stock Check after entering all values.")
     elif row_count_mismatch:
         pass
     else:
@@ -4474,4 +4492,3 @@ if show_upload_effect:
     )
     st.session_state["last_upload_effect_key"] = uploaded_key
     st.toast("Report loaded successfully.")
-
