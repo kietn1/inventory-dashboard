@@ -3449,6 +3449,11 @@ else:
     file_hash = saved_upload.get("sha256") or stable_file_hash(file_bytes)
     using_saved_report = True
 
+report_refresh_version_key = f"_report_refresh_version_{site_key}"
+report_refresh_pending_key = f"_report_refresh_pending_{site_key}"
+report_refresh_success_key = f"_report_refresh_success_{site_key}"
+show_refresh_effect = bool(st.session_state.get(report_refresh_pending_key))
+
 with report_source_slot.container():
     report_source_col, report_refresh_col = st.columns([5, 1], gap="small")
     with report_source_col:
@@ -3459,14 +3464,48 @@ with report_source_slot.container():
     with report_refresh_col:
         refresh_report_clicked = st.button(
             "↻",
-            help="Refresh full report",
+            help="Refreshing full report" if show_refresh_effect else "Refresh full report",
             key=f"refresh_full_report_{site_key}",
             use_container_width=True,
+            disabled=show_refresh_effect,
         )
+        if show_refresh_effect:
+            st.markdown(
+                f"""
+                <style>
+                .st-key-refresh_full_report_{site_key} button p {{
+                    display: inline-block;
+                    animation: uploadSpin .75s linear infinite;
+                }}
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
 
-report_refresh_version_key = f"_report_refresh_version_{site_key}"
+refresh_success_count = st.session_state.pop(report_refresh_success_key, None)
+if refresh_success_count is not None:
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stToast"] {
+            background: rgba(247,253,248,.98);
+            border: 1px solid rgba(16,124,16,.28);
+            color: #0b5a0b;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.toast(
+        f"Report refreshed — {int(refresh_success_count):,} SKUs loaded.",
+        icon="✅",
+        duration="short",
+    )
+
 if refresh_report_clicked:
     st.session_state[report_refresh_version_key] = int(st.session_state.get(report_refresh_version_key, 0)) + 1
+    st.session_state[report_refresh_pending_key] = True
+    st.session_state.pop(report_refresh_success_key, None)
     refresh_keys = [
         saved_upload_cache_key,
         uploaded_hash_cache_key,
@@ -3475,7 +3514,6 @@ if refresh_report_clicked:
         f"_inventory_model_source_{site_key}",
         f"_do_search_text_{site_key}",
         f"_stock_do_tables_{site_key}",
-        "last_upload_effect_key",
     ]
     for key in refresh_keys:
         st.session_state.pop(key, None)
@@ -3490,15 +3528,21 @@ model_cache_version = f"{APP_CACHE_VERSION}|refresh-{report_refresh_version}"
 model_source_value = f"{uploaded_key}|{model_cache_version}"
 
 try:
-    if show_upload_effect:
+    if show_upload_effect or show_refresh_effect:
+        loading_title = "Refreshing report…" if show_refresh_effect else "Loading Item Activity Report"
+        loading_subtitle = (
+            "Reading the full workbook and rebuilding all SKU data."
+            if show_refresh_effect
+            else f"Reading the workbook, validating the {format_name} format, and building the inventory model."
+        )
         status_box.markdown(
             f"""
             <div class="loading-stage-card">
                 <div class="loading-row">
                     <div class="loader-ring"></div>
                     <div class="stage-copy">
-                        <div class="stage-title">Loading Item Activity Report</div>
-                        <div class="stage-subtitle">Reading the workbook, validating the {html.escape(format_name)} format, and building the inventory model.</div>
+                        <div class="stage-title">{html.escape(loading_title)}</div>
+                        <div class="stage-subtitle">{html.escape(loading_subtitle)}</div>
                         <div class="stage-meta">{html.escape(active_file_name)}</div>
                     </div>
                 </div>
@@ -3515,9 +3559,21 @@ try:
         st.session_state[model_cache_key] = model
         st.session_state[model_source_key] = model_source_value
 
+    if show_refresh_effect:
+        st.session_state.pop(report_refresh_pending_key, None)
+        st.session_state[report_refresh_success_key] = len(model.get("sku_df", pd.DataFrame()))
+        st.session_state["last_upload_effect_key"] = uploaded_key
+        st.rerun()
+
     if not show_upload_effect:
         status_box.empty()
 except WrongFileFormatError as exc:
+    st.session_state.pop(report_refresh_pending_key, None)
+    if show_refresh_effect:
+        st.markdown(
+            f"<style>.st-key-refresh_full_report_{site_key} button p {{ animation: none !important; }}</style>",
+            unsafe_allow_html=True,
+        )
     status_box.markdown(
         f"""
         <div class="error-stage-card">
@@ -3535,6 +3591,12 @@ except WrongFileFormatError as exc:
     )
     st.stop()
 except Exception:
+    st.session_state.pop(report_refresh_pending_key, None)
+    if show_refresh_effect:
+        st.markdown(
+            f"<style>.st-key-refresh_full_report_{site_key} button p {{ animation: none !important; }}</style>",
+            unsafe_allow_html=True,
+        )
     status_box.markdown(
         """
         <div class="error-stage-card">
