@@ -3315,13 +3315,26 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
 
 def reset_sidebar_filters(site_key):
     values = {
-        f"{site_key}_filter_risk_levels": ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
+        f"{site_key}_filter_risk_levels": ["Select all"],
         f"{site_key}_filter_min_usage": 0,
         f"{site_key}_sku_select_combined": "",
     }
     for key, value in values.items():
         st.session_state[key] = value
     update_persistent_app_state(values=values)
+
+
+def update_risk_filter_selection(filter_key, previous_key, select_all_label, level_options):
+    valid_options = [select_all_label, *level_options]
+    selected = [value for value in st.session_state.get(filter_key, []) if value in valid_options]
+    previous = [value for value in st.session_state.get(previous_key, []) if value in valid_options]
+    if select_all_label in selected:
+        if select_all_label not in previous:
+            selected = [select_all_label]
+        else:
+            selected = [value for value in selected if value != select_all_label]
+    st.session_state[filter_key] = selected
+    st.session_state[previous_key] = selected
 
 
 def reset_transaction_filters(search_key, mode_key, date_key, range_key):
@@ -3375,14 +3388,26 @@ report_source_slot = st.sidebar.empty()
 st.sidebar.markdown('<div class="sidebar-section-title">Inventory filters</div>', unsafe_allow_html=True)
 st.sidebar.markdown('<div class="sidebar-section-help">Filters apply to Overview and the SKU selector.</div>', unsafe_allow_html=True)
 risk_options = ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand", "Inactive / No Demand"]
+risk_select_all_label = "Select all"
+risk_filter_previous_key = f"_{risk_filter_key}_previous"
 if risk_filter_key in st.session_state:
-    st.session_state[risk_filter_key] = [value for value in st.session_state[risk_filter_key] if value in risk_options]
-show_risks = st.sidebar.multiselect(
-    "Risk Level",
-    options=risk_options,
-    default=["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
-    key=risk_filter_key,
+    st.session_state[risk_filter_key] = [
+        value
+        for value in st.session_state[risk_filter_key]
+        if value == risk_select_all_label or value in risk_options
+    ]
+st.session_state[risk_filter_previous_key] = list(
+    st.session_state.get(risk_filter_key, [risk_select_all_label])
 )
+risk_selection = st.sidebar.multiselect(
+    "Risk Level",
+    options=[risk_select_all_label, *risk_options],
+    default=[risk_select_all_label],
+    key=risk_filter_key,
+    on_change=update_risk_filter_selection,
+    args=(risk_filter_key, risk_filter_previous_key, risk_select_all_label, risk_options),
+)
+show_risks = list(risk_options) if risk_select_all_label in risk_selection else risk_selection
 min_usage = st.sidebar.number_input(
     "Min 30D Outbound",
     min_value=0,
@@ -3390,7 +3415,7 @@ min_usage = st.sidebar.number_input(
     step=1,
     key=min_usage_filter_key,
 )
-update_persistent_app_state(values={risk_filter_key: show_risks, min_usage_filter_key: min_usage})
+update_persistent_app_state(values={risk_filter_key: risk_selection, min_usage_filter_key: min_usage})
 
 sku_sidebar_slot = st.sidebar.empty()
 st.sidebar.button("Clear filters", use_container_width=True, on_click=reset_sidebar_filters, args=(site_key,))
