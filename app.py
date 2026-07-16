@@ -1007,16 +1007,6 @@ st.markdown(
             -webkit-backdrop-filter: blur(20px) saturate(125%);
             animation: uploadCardIn .26s var(--win-ease) both;
         }
-        .refresh-stage-card {
-            min-height: 68px;
-            padding: 13px 14px;
-            background: rgba(252,252,252,.88);
-            border-color: rgba(0,0,0,.10);
-            border-radius: 8px;
-            box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.08);
-            backdrop-filter: blur(30px) saturate(135%);
-            -webkit-backdrop-filter: blur(30px) saturate(135%);
-        }
         .loading-row, .ready-row, .error-row {
             position: relative;
             z-index: 1;
@@ -1025,15 +1015,13 @@ st.markdown(
             gap: 12px;
         }
         .loader-ring {
-            width: 24px;
-            height: 24px;
+            width: 28px;
+            height: 28px;
             flex: 0 0 auto;
-            border: 0;
+            border: 2.5px solid rgba(0,103,192,.14);
+            border-top-color: var(--win-accent);
             border-radius: 50%;
-            background: conic-gradient(from 0deg, transparent 0 34%, rgba(0,103,192,.18) 54%, var(--win-accent) 86%, transparent 100%);
-            -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.25px), #000 calc(100% - 1.75px));
-            mask: radial-gradient(farthest-side, transparent calc(100% - 2.25px), #000 calc(100% - 1.75px));
-            animation: fluentProgressRing 1.05s cubic-bezier(.45,.05,.55,.95) infinite;
+            animation: uploadSpin .9s linear infinite;
         }
         .ready-check, .error-mark {
             width: 28px;
@@ -1060,20 +1048,20 @@ st.markdown(
         .animated-progress {
             position: relative;
             z-index: 1;
-            height: 2px;
-            margin-top: 12px;
+            height: 3px;
+            margin-top: 13px;
             overflow: hidden;
-            background: rgba(0,0,0,.07);
+            background: rgba(0,103,192,.10);
             border-radius: 999px;
         }
         .animated-progress::before {
             content: "";
             position: absolute;
             inset: 0;
-            width: 28%;
+            width: 34%;
             border-radius: inherit;
-            background: var(--win-accent);
-            animation: uploadProgress 1.45s cubic-bezier(.1,.9,.2,1) infinite;
+            background: linear-gradient(90deg, transparent, var(--win-accent), transparent);
+            animation: uploadProgress 1.35s var(--win-ease) infinite;
         }
         .ready-stage-card {
             border-color: rgba(16,124,16,.16);
@@ -1109,20 +1097,9 @@ st.markdown(
         @keyframes uploadSpin {
             to { transform: rotate(360deg); }
         }
-        @keyframes fluentProgressRing {
-            0% { transform: rotate(0deg); }
-            45% { transform: rotate(165deg); }
-            100% { transform: rotate(360deg); }
-        }
-        @keyframes fluentRefreshSpin {
-            0% { transform: rotate(0deg); }
-            42% { transform: rotate(155deg); }
-            100% { transform: rotate(360deg); }
-        }
         @keyframes uploadProgress {
-            0% { transform: translateX(-140%) scaleX(.62); }
-            48% { transform: translateX(125%) scaleX(1); }
-            100% { transform: translateX(430%) scaleX(.72); }
+            from { transform: translateX(-130%); }
+            to { transform: translateX(390%); }
         }
         @keyframes uploadCardIn {
             from { opacity: 0; transform: translateY(4px); }
@@ -1303,61 +1280,6 @@ st.markdown(
             .st-key-main_navigation { top: 6px; }
             .st-key-main_navigation button,
             .st-key-main_navigation [role="radio"] { padding: 0 12px !important; }
-        }
-
-        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] {
-            margin-top: 8px !important;
-        }
-        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button {
-            width: 100%;
-            min-width: 34px;
-            min-height: 34px;
-            padding: 0 !important;
-            color: var(--win-text-secondary);
-            background: rgba(255,255,255,.72);
-            border: 1px solid rgba(0,0,0,.10);
-            border-radius: 8px;
-            box-shadow: 0 1px 2px rgba(0,0,0,.035);
-            backdrop-filter: blur(20px) saturate(125%);
-            -webkit-backdrop-filter: blur(20px) saturate(125%);
-            transition: color var(--win-fast) ease, background var(--win-fast) ease, border-color var(--win-fast) ease, box-shadow var(--win-normal) var(--win-ease), transform 80ms ease;
-        }
-        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button:hover:not(:disabled) {
-            color: var(--win-text);
-            background: rgba(255,255,255,.96);
-            border-color: rgba(0,0,0,.16);
-            box-shadow: 0 2px 6px rgba(0,0,0,.08);
-        }
-        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button:active:not(:disabled) {
-            color: var(--win-accent-pressed);
-            background: rgba(0,0,0,.045);
-            transform: scale(.96);
-            box-shadow: none;
-        }
-        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button:disabled {
-            color: var(--win-accent);
-            background: rgba(0,103,192,.075);
-            border-color: rgba(0,103,192,.16);
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,.44);
-            opacity: 1;
-        }
-        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button p {
-            width: 100%;
-            height: 100%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 !important;
-            color: inherit !important;
-            font-size: 0 !important;
-            line-height: 1 !important;
-        }
-        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button p::before {
-            content: "\E72C";
-            color: inherit;
-            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
-            font-size: 14px;
-            font-weight: 400;
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -3372,7 +3294,7 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
 
 def reset_sidebar_filters(site_key):
     values = {
-        f"{site_key}_filter_risk_levels": ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand", "Inactive / No Demand"],
+        f"{site_key}_filter_risk_levels": ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
         f"{site_key}_filter_min_usage": 0,
         f"{site_key}_sku_select_combined": "",
     }
@@ -3434,12 +3356,10 @@ st.sidebar.markdown('<div class="sidebar-section-help">Filters apply to Overview
 risk_options = ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand", "Inactive / No Demand"]
 if risk_filter_key in st.session_state:
     st.session_state[risk_filter_key] = [value for value in st.session_state[risk_filter_key] if value in risk_options]
-    if st.session_state[risk_filter_key] == risk_options[:-1]:
-        st.session_state[risk_filter_key] = risk_options.copy()
 show_risks = st.sidebar.multiselect(
     "Risk Level",
     options=risk_options,
-    default=risk_options,
+    default=["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
     key=risk_filter_key,
 )
 min_usage = st.sidebar.number_input(
@@ -3529,11 +3449,6 @@ else:
     file_hash = saved_upload.get("sha256") or stable_file_hash(file_bytes)
     using_saved_report = True
 
-report_refresh_version_key = f"_report_refresh_version_{site_key}"
-report_refresh_pending_key = f"_report_refresh_pending_{site_key}"
-report_refresh_success_key = f"_report_refresh_success_{site_key}"
-show_refresh_effect = bool(st.session_state.get(report_refresh_pending_key))
-
 with report_source_slot.container():
     report_source_col, report_refresh_col = st.columns([5, 1], gap="small")
     with report_source_col:
@@ -3544,57 +3459,14 @@ with report_source_slot.container():
     with report_refresh_col:
         refresh_report_clicked = st.button(
             "↻",
-            help="Refreshing full report" if show_refresh_effect else "Refresh full report",
+            help="Refresh full report",
             key=f"refresh_full_report_{site_key}",
             use_container_width=True,
-            disabled=show_refresh_effect,
         )
-        if show_refresh_effect:
-            st.markdown(
-                f"""
-                <style>
-                .st-key-refresh_full_report_{site_key} button {{
-                    color: var(--win-accent) !important;
-                    background: rgba(0,103,192,.075) !important;
-                    border-color: rgba(0,103,192,.16) !important;
-                }}
-                .st-key-refresh_full_report_{site_key} button p {{
-                    display: inline-flex;
-                    animation: fluentRefreshSpin 1.05s cubic-bezier(.45,.05,.55,.95) infinite;
-                }}
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
 
-refresh_success_count = st.session_state.pop(report_refresh_success_key, None)
-if refresh_success_count is not None:
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stToast"] {
-            background: rgba(252,252,252,.94);
-            border: 1px solid rgba(0,0,0,.12);
-            border-radius: 8px;
-            box-shadow: 0 8px 28px rgba(0,0,0,.14), 0 2px 6px rgba(0,0,0,.07);
-            color: var(--win-text);
-            backdrop-filter: blur(30px) saturate(135%);
-            -webkit-backdrop-filter: blur(30px) saturate(135%);
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.toast(
-        f"Report refreshed — {int(refresh_success_count):,} SKUs loaded.",
-        icon="✅",
-        duration="short",
-    )
-
+report_refresh_version_key = f"_report_refresh_version_{site_key}"
 if refresh_report_clicked:
     st.session_state[report_refresh_version_key] = int(st.session_state.get(report_refresh_version_key, 0)) + 1
-    st.session_state[report_refresh_pending_key] = True
-    st.session_state.pop(report_refresh_success_key, None)
     refresh_keys = [
         saved_upload_cache_key,
         uploaded_hash_cache_key,
@@ -3603,6 +3475,7 @@ if refresh_report_clicked:
         f"_inventory_model_source_{site_key}",
         f"_do_search_text_{site_key}",
         f"_stock_do_tables_{site_key}",
+        "last_upload_effect_key",
     ]
     for key in refresh_keys:
         st.session_state.pop(key, None)
@@ -3617,21 +3490,15 @@ model_cache_version = f"{APP_CACHE_VERSION}|refresh-{report_refresh_version}"
 model_source_value = f"{uploaded_key}|{model_cache_version}"
 
 try:
-    if show_upload_effect or show_refresh_effect:
-        loading_title = "Refreshing report…" if show_refresh_effect else "Loading Item Activity Report"
-        loading_subtitle = (
-            "Reading the full workbook and rebuilding all SKU data."
-            if show_refresh_effect
-            else f"Reading the workbook, validating the {format_name} format, and building the inventory model."
-        )
+    if show_upload_effect:
         status_box.markdown(
             f"""
-            <div class="loading-stage-card{' refresh-stage-card' if show_refresh_effect else ''}" role="status" aria-live="polite">
+            <div class="loading-stage-card">
                 <div class="loading-row">
                     <div class="loader-ring"></div>
                     <div class="stage-copy">
-                        <div class="stage-title">{html.escape(loading_title)}</div>
-                        <div class="stage-subtitle">{html.escape(loading_subtitle)}</div>
+                        <div class="stage-title">Loading Item Activity Report</div>
+                        <div class="stage-subtitle">Reading the workbook, validating the {html.escape(format_name)} format, and building the inventory model.</div>
                         <div class="stage-meta">{html.escape(active_file_name)}</div>
                     </div>
                 </div>
@@ -3648,21 +3515,9 @@ try:
         st.session_state[model_cache_key] = model
         st.session_state[model_source_key] = model_source_value
 
-    if show_refresh_effect:
-        st.session_state.pop(report_refresh_pending_key, None)
-        st.session_state[report_refresh_success_key] = len(model.get("sku_df", pd.DataFrame()))
-        st.session_state["last_upload_effect_key"] = uploaded_key
-        st.rerun()
-
     if not show_upload_effect:
         status_box.empty()
 except WrongFileFormatError as exc:
-    st.session_state.pop(report_refresh_pending_key, None)
-    if show_refresh_effect:
-        st.markdown(
-            f"<style>.st-key-refresh_full_report_{site_key} button p {{ animation: none !important; }}</style>",
-            unsafe_allow_html=True,
-        )
     status_box.markdown(
         f"""
         <div class="error-stage-card">
@@ -3680,12 +3535,6 @@ except WrongFileFormatError as exc:
     )
     st.stop()
 except Exception:
-    st.session_state.pop(report_refresh_pending_key, None)
-    if show_refresh_effect:
-        st.markdown(
-            f"<style>.st-key-refresh_full_report_{site_key} button p {{ animation: none !important; }}</style>",
-            unsafe_allow_html=True,
-        )
     status_box.markdown(
         """
         <div class="error-stage-card">
@@ -3844,7 +3693,7 @@ if selected_page == "Overview":
     st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
     st.markdown(
-        f"<div class='section-subtitle'>Showing {len(priority_filtered):,} of {len(sku_df):,} SKUs. All risk levels are shown by default; Critical applies only to active 30-day demand.</div>",
+        f"<div class='section-subtitle'>Showing {len(priority_filtered):,} of {len(sku_df):,} SKUs. Critical applies only to active 30-day demand; inactive SKUs are hidden by default.</div>",
         unsafe_allow_html=True,
     )
 
