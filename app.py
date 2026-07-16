@@ -1007,6 +1007,16 @@ st.markdown(
             -webkit-backdrop-filter: blur(20px) saturate(125%);
             animation: uploadCardIn .26s var(--win-ease) both;
         }
+        .refresh-stage-card {
+            min-height: 68px;
+            padding: 13px 14px;
+            background: rgba(252,252,252,.88);
+            border-color: rgba(0,0,0,.10);
+            border-radius: 8px;
+            box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.08);
+            backdrop-filter: blur(30px) saturate(135%);
+            -webkit-backdrop-filter: blur(30px) saturate(135%);
+        }
         .loading-row, .ready-row, .error-row {
             position: relative;
             z-index: 1;
@@ -1015,13 +1025,15 @@ st.markdown(
             gap: 12px;
         }
         .loader-ring {
-            width: 28px;
-            height: 28px;
+            width: 24px;
+            height: 24px;
             flex: 0 0 auto;
-            border: 2.5px solid rgba(0,103,192,.14);
-            border-top-color: var(--win-accent);
+            border: 0;
             border-radius: 50%;
-            animation: uploadSpin .9s linear infinite;
+            background: conic-gradient(from 0deg, transparent 0 34%, rgba(0,103,192,.18) 54%, var(--win-accent) 86%, transparent 100%);
+            -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.25px), #000 calc(100% - 1.75px));
+            mask: radial-gradient(farthest-side, transparent calc(100% - 2.25px), #000 calc(100% - 1.75px));
+            animation: fluentProgressRing 1.05s cubic-bezier(.45,.05,.55,.95) infinite;
         }
         .ready-check, .error-mark {
             width: 28px;
@@ -1048,20 +1060,20 @@ st.markdown(
         .animated-progress {
             position: relative;
             z-index: 1;
-            height: 3px;
-            margin-top: 13px;
+            height: 2px;
+            margin-top: 12px;
             overflow: hidden;
-            background: rgba(0,103,192,.10);
+            background: rgba(0,0,0,.07);
             border-radius: 999px;
         }
         .animated-progress::before {
             content: "";
             position: absolute;
             inset: 0;
-            width: 34%;
+            width: 28%;
             border-radius: inherit;
-            background: linear-gradient(90deg, transparent, var(--win-accent), transparent);
-            animation: uploadProgress 1.35s var(--win-ease) infinite;
+            background: var(--win-accent);
+            animation: uploadProgress 1.45s cubic-bezier(.1,.9,.2,1) infinite;
         }
         .ready-stage-card {
             border-color: rgba(16,124,16,.16);
@@ -1097,9 +1109,20 @@ st.markdown(
         @keyframes uploadSpin {
             to { transform: rotate(360deg); }
         }
+        @keyframes fluentProgressRing {
+            0% { transform: rotate(0deg); }
+            45% { transform: rotate(165deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes fluentRefreshSpin {
+            0% { transform: rotate(0deg); }
+            42% { transform: rotate(155deg); }
+            100% { transform: rotate(360deg); }
+        }
         @keyframes uploadProgress {
-            from { transform: translateX(-130%); }
-            to { transform: translateX(390%); }
+            0% { transform: translateX(-140%) scaleX(.62); }
+            48% { transform: translateX(125%) scaleX(1); }
+            100% { transform: translateX(430%) scaleX(.72); }
         }
         @keyframes uploadCardIn {
             from { opacity: 0; transform: translateY(4px); }
@@ -1280,6 +1303,61 @@ st.markdown(
             .st-key-main_navigation { top: 6px; }
             .st-key-main_navigation button,
             .st-key-main_navigation [role="radio"] { padding: 0 12px !important; }
+        }
+
+        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] {
+            margin-top: 8px !important;
+        }
+        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button {
+            width: 100%;
+            min-width: 34px;
+            min-height: 34px;
+            padding: 0 !important;
+            color: var(--win-text-secondary);
+            background: rgba(255,255,255,.72);
+            border: 1px solid rgba(0,0,0,.10);
+            border-radius: 8px;
+            box-shadow: 0 1px 2px rgba(0,0,0,.035);
+            backdrop-filter: blur(20px) saturate(125%);
+            -webkit-backdrop-filter: blur(20px) saturate(125%);
+            transition: color var(--win-fast) ease, background var(--win-fast) ease, border-color var(--win-fast) ease, box-shadow var(--win-normal) var(--win-ease), transform 80ms ease;
+        }
+        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button:hover:not(:disabled) {
+            color: var(--win-text);
+            background: rgba(255,255,255,.96);
+            border-color: rgba(0,0,0,.16);
+            box-shadow: 0 2px 6px rgba(0,0,0,.08);
+        }
+        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button:active:not(:disabled) {
+            color: var(--win-accent-pressed);
+            background: rgba(0,0,0,.045);
+            transform: scale(.96);
+            box-shadow: none;
+        }
+        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button:disabled {
+            color: var(--win-accent);
+            background: rgba(0,103,192,.075);
+            border-color: rgba(0,103,192,.16);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,.44);
+            opacity: 1;
+        }
+        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button p {
+            width: 100%;
+            height: 100%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 !important;
+            color: inherit !important;
+            font-size: 0 !important;
+            line-height: 1 !important;
+        }
+        section[data-testid="stSidebar"] [class*="st-key-refresh_full_report_"] button p::before {
+            content: "\E72C";
+            color: inherit;
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+            font-size: 14px;
+            font-weight: 400;
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -3475,9 +3553,14 @@ with report_source_slot.container():
             st.markdown(
                 f"""
                 <style>
+                .st-key-refresh_full_report_{site_key} button {{
+                    color: var(--win-accent) !important;
+                    background: rgba(0,103,192,.075) !important;
+                    border-color: rgba(0,103,192,.16) !important;
+                }}
                 .st-key-refresh_full_report_{site_key} button p {{
-                    display: inline-block;
-                    animation: uploadSpin .75s linear infinite;
+                    display: inline-flex;
+                    animation: fluentRefreshSpin 1.05s cubic-bezier(.45,.05,.55,.95) infinite;
                 }}
                 </style>
                 """,
@@ -3490,9 +3573,13 @@ if refresh_success_count is not None:
         """
         <style>
         div[data-testid="stToast"] {
-            background: rgba(247,253,248,.98);
-            border: 1px solid rgba(16,124,16,.28);
-            color: #0b5a0b;
+            background: rgba(252,252,252,.94);
+            border: 1px solid rgba(0,0,0,.12);
+            border-radius: 8px;
+            box-shadow: 0 8px 28px rgba(0,0,0,.14), 0 2px 6px rgba(0,0,0,.07);
+            color: var(--win-text);
+            backdrop-filter: blur(30px) saturate(135%);
+            -webkit-backdrop-filter: blur(30px) saturate(135%);
         }
         </style>
         """,
@@ -3539,7 +3626,7 @@ try:
         )
         status_box.markdown(
             f"""
-            <div class="loading-stage-card">
+            <div class="loading-stage-card{' refresh-stage-card' if show_refresh_effect else ''}" role="status" aria-live="polite">
                 <div class="loading-row">
                     <div class="loader-ring"></div>
                     <div class="stage-copy">
