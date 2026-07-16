@@ -3294,7 +3294,7 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
 
 def reset_sidebar_filters(site_key):
     values = {
-        f"{site_key}_filter_risk_levels": ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
+        f"{site_key}_filter_risk_levels": ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand", "Inactive / No Demand"],
         f"{site_key}_filter_min_usage": 0,
         f"{site_key}_sku_select_combined": "",
     }
@@ -3356,10 +3356,12 @@ st.sidebar.markdown('<div class="sidebar-section-help">Filters apply to Overview
 risk_options = ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand", "Inactive / No Demand"]
 if risk_filter_key in st.session_state:
     st.session_state[risk_filter_key] = [value for value in st.session_state[risk_filter_key] if value in risk_options]
+    if st.session_state[risk_filter_key] == risk_options[:-1]:
+        st.session_state[risk_filter_key] = risk_options.copy()
 show_risks = st.sidebar.multiselect(
     "Risk Level",
     options=risk_options,
-    default=["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand"],
+    default=risk_options,
     key=risk_filter_key,
 )
 min_usage = st.sidebar.number_input(
@@ -3755,7 +3757,7 @@ if selected_page == "Overview":
     st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
     st.markdown(
-        f"<div class='section-subtitle'>Showing {len(priority_filtered):,} of {len(sku_df):,} SKUs. Critical applies only to active 30-day demand; inactive SKUs are hidden by default.</div>",
+        f"<div class='section-subtitle'>Showing {len(priority_filtered):,} of {len(sku_df):,} SKUs. All risk levels are shown by default; Critical applies only to active 30-day demand.</div>",
         unsafe_allow_html=True,
     )
 
