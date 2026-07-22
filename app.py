@@ -2576,20 +2576,6 @@ def exclude_rma_stock_check_rows(input_df: pd.DataFrame) -> tuple[pd.DataFrame, 
     return input_df.loc[~rma_mask].copy(), excluded_dos
 
 
-def ordered_stock_check_dos(input_df: pd.DataFrame) -> list:
-    if input_df is None or input_df.empty or "DO #" not in input_df.columns:
-        return []
-    ordered_dos = []
-    seen_keys = set()
-    for value in input_df["DO #"]:
-        do_no = clean_text(value)
-        do_key = normalize_lookup_key(do_no)
-        if do_no and do_key not in seen_keys:
-            ordered_dos.append(do_no)
-            seen_keys.add(do_key)
-    return ordered_dos
-
-
 def normalize_lookup_key(value) -> str:
     return clean_text(value).upper()
 
@@ -4412,8 +4398,6 @@ elif selected_page == "Stock Check":
     stock_run_input_key = f"stock_check_run_input_{site_key}"
     stock_rma_excluded_key = f"stock_check_rma_excluded_{site_key}"
     stock_result_model_key = f"stock_check_result_model_{site_key}"
-    stock_included_dos_key = f"stock_check_included_dos_{site_key}"
-    stock_applied_dos_key = f"stock_check_applied_dos_{site_key}"
     st.session_state.setdefault(stock_table_version_key, 0)
     stock_table_key = f"stock_check_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
     default_stock_table_df = pd.DataFrame(
@@ -4457,7 +4441,7 @@ elif selected_page == "Stock Check":
 
     if stock_reset_clicked:
         st.session_state[stock_table_version_key] += 1
-        keys_to_clear = [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key, stock_saved_table_key, stock_run_input_key, stock_rma_excluded_key, stock_result_model_key, stock_included_dos_key, stock_applied_dos_key]
+        keys_to_clear = [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key, stock_saved_table_key, stock_run_input_key, stock_rma_excluded_key, stock_result_model_key]
         for key in keys_to_clear:
             st.session_state.pop(key, None)
         update_persistent_app_state(remove_keys=keys_to_clear)
@@ -4497,12 +4481,9 @@ elif selected_page == "Stock Check":
             st.session_state[stock_overview_result_key] = overview_df
             st.session_state[stock_issues_result_key] = issues_df
             st.session_state[stock_temp_result_key] = temporary_balance_df
-            available_stock_dos = ordered_stock_check_dos(calculation_input_df)
             st.session_state[stock_run_input_key] = calculation_input_df.copy()
             st.session_state[stock_rma_excluded_key] = excluded_rma_dos
             st.session_state[stock_result_model_key] = model_source_value
-            st.session_state[stock_included_dos_key] = available_stock_dos
-            st.session_state[stock_applied_dos_key] = available_stock_dos
             persistent_stock_values.update(
                 {
                     stock_result_signature_key: stock_current_signature,
@@ -4513,8 +4494,6 @@ elif selected_page == "Stock Check":
                     stock_run_input_key: calculation_input_df,
                     stock_rma_excluded_key: excluded_rma_dos,
                     stock_result_model_key: model_source_value,
-                    stock_included_dos_key: available_stock_dos,
-                    stock_applied_dos_key: available_stock_dos,
                 }
             )
             stock_has_saved_result = True
@@ -4542,103 +4521,6 @@ elif selected_page == "Stock Check":
 
     if stock_has_saved_result and excluded_rma_dos:
         st.warning(f"Excluded {len(excluded_rma_dos):,} RMA DO(s): {', '.join(str(value) for value in excluded_rma_dos)}")
-
-    if stock_has_saved_result and not result_input_df.empty:
-        all_stock_dos = ordered_stock_check_dos(result_input_df)
-        option_lookup = {normalize_lookup_key(do_no): do_no for do_no in all_stock_dos}
-
-        if stock_included_dos_key not in st.session_state:
-            st.session_state[stock_included_dos_key] = all_stock_dos.copy()
-        else:
-            saved_included_dos = st.session_state.get(stock_included_dos_key, [])
-            st.session_state[stock_included_dos_key] = [
-                option_lookup[normalize_lookup_key(do_no)]
-                for do_no in saved_included_dos
-                if normalize_lookup_key(do_no) in option_lookup
-            ]
-
-        if stock_applied_dos_key not in st.session_state:
-            st.session_state[stock_applied_dos_key] = st.session_state[stock_included_dos_key].copy()
-
-        stock_filter_disabled = bool(stock_result_model and stock_result_model != model_source_value)
-        filter_col, include_all_col, exclude_all_col = st.columns([5, 1.2, 1.2])
-        with include_all_col:
-            if st.button("Include all", key=f"stock_include_all_{site_key}", use_container_width=True, disabled=(not all_stock_dos or stock_filter_disabled)):
-                st.session_state[stock_included_dos_key] = all_stock_dos.copy()
-                update_persistent_app_state(values={stock_included_dos_key: all_stock_dos})
-                st.rerun()
-        with exclude_all_col:
-            if st.button("Exclude all", key=f"stock_exclude_all_{site_key}", use_container_width=True, disabled=(not all_stock_dos or stock_filter_disabled)):
-                st.session_state[stock_included_dos_key] = []
-                update_persistent_app_state(values={stock_included_dos_key: []})
-                st.rerun()
-        with filter_col:
-            included_stock_dos = st.multiselect(
-                "Included DO #s",
-                options=all_stock_dos,
-                key=stock_included_dos_key,
-                help="Keep a DO selected to include it in the stock calculation. Deselect it to exclude it without running the full Stock Check again.",
-                disabled=stock_filter_disabled,
-            )
-
-        included_do_keys = {normalize_lookup_key(do_no) for do_no in included_stock_dos}
-        applied_do_keys = {
-            normalize_lookup_key(do_no)
-            for do_no in st.session_state.get(stock_applied_dos_key, [])
-        }
-        filter_changed = included_do_keys != applied_do_keys
-        report_matches_saved_result = not stock_result_model or stock_result_model == model_source_value
-
-        if filter_changed and report_matches_saved_result:
-            do_key_series = result_input_df["DO #"].astype(str).map(normalize_lookup_key)
-            active_input_df = result_input_df.loc[(do_key_series == "") | do_key_series.isin(included_do_keys)].copy()
-            if active_input_df.empty:
-                detail_df = pd.DataFrame()
-                overview_df = pd.DataFrame()
-                issues_df = pd.DataFrame()
-                temporary_balance_df = build_temporary_balance_table(sku_df, detail_df)
-            else:
-                if (active_input_df["Issue"].astype(str) == "").any():
-                    stock_do_cache_key = f"_stock_do_tables_{site_key}"
-                    stock_do_cache = st.session_state.get(stock_do_cache_key, {})
-                    if isinstance(stock_do_cache, dict) and stock_do_cache.get("source") == model_source_value and isinstance(stock_do_cache.get("tables"), tuple):
-                        existing_do_tables = stock_do_cache["tables"]
-                    else:
-                        existing_do_tables = build_existing_do_tables(model.get("tx_df", pd.DataFrame()))
-                        st.session_state[stock_do_cache_key] = {"source": model_source_value, "tables": existing_do_tables}
-                else:
-                    existing_do_tables = (set(), {}, {})
-                detail_df, overview_df, issues_df = build_stock_check_tables(
-                    active_input_df,
-                    sku_df,
-                    model.get("tx_df", pd.DataFrame()),
-                    existing_do_tables,
-                )
-                temporary_balance_df = build_temporary_balance_table(sku_df, detail_df) if not detail_df.empty else build_temporary_balance_table(sku_df, pd.DataFrame())
-
-            st.session_state[stock_detail_result_key] = detail_df
-            st.session_state[stock_overview_result_key] = overview_df
-            st.session_state[stock_issues_result_key] = issues_df
-            st.session_state[stock_temp_result_key] = temporary_balance_df
-            st.session_state[stock_applied_dos_key] = included_stock_dos.copy()
-            update_persistent_app_state(
-                values={
-                    stock_detail_result_key: detail_df,
-                    stock_overview_result_key: overview_df,
-                    stock_issues_result_key: issues_df,
-                    stock_temp_result_key: temporary_balance_df,
-                    stock_included_dos_key: included_stock_dos,
-                    stock_applied_dos_key: included_stock_dos,
-                }
-            )
-
-        active_do_keys = {normalize_lookup_key(do_no) for do_no in st.session_state.get(stock_applied_dos_key, [])}
-        active_do_series = result_input_df["DO #"].astype(str).map(normalize_lookup_key)
-        result_input_df = result_input_df.loc[(active_do_series == "") | active_do_series.isin(active_do_keys)].copy()
-        excluded_count = max(0, len(all_stock_dos) - len(active_do_keys))
-        st.caption(f"Included DOs: {len(active_do_keys):,} | Excluded DOs: {excluded_count:,}. Changes update the saved result immediately.")
-        if all_stock_dos and not active_do_keys:
-            st.info("No DOs are currently included. Select one or more DO #s above to restore the calculation.")
 
     if stock_has_saved_result and not result_input_df.empty and "Issue" in result_input_df.columns:
         valid_rows = result_input_df[result_input_df["Issue"].astype(str) == ""]
