@@ -13,7 +13,7 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
 CUSTOMER_EXPORT_VERSION = "Customer export v12"
-APP_CACHE_VERSION = "inventory-logic-v29-all-report-skus"
+APP_CACHE_VERSION = "inventory-logic-v30-orlando-newark-format"
 WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
@@ -1338,7 +1338,31 @@ FORMAT_CONFIGS = {
         },
         "total_rule": "ref_total",
         "total_source": "Ref # = Total",
-        "wrong_format_warning": "Wrong file format for Newark. Switch to Carson or upload the Newark report.",
+        "wrong_format_warning": "Wrong file format for Newark. Select the correct warehouse or upload a Newark-format report.",
+    },
+    "Orlando": {
+        # Temporary setup: Orlando currently uses the same report structure as Newark.
+        # Replace these column indexes and rules when the Orlando report format is provided.
+        "title": "Inventory Shortage",
+        "sidebar_title": "Inventory Dashboard",
+        "caption": "Upload an Item Activity Report Excel file to generate the shortage dashboard.",
+        "upload_label": "Drop Item Activity Report here",
+        "placeholder": "Search SKU...",
+        "help": "Orlando temporarily uses the Newark report format.",
+        "cols": {
+            "sku": 0,
+            "description": 2,
+            "activity_date": 7,
+            "trans_no": 9,
+            "ref_no": 10,
+            "qty_in": 12,
+            "qty_out": 14,
+            "balance": 19,
+            "ctn_balance": 20,
+        },
+        "total_rule": "ref_total",
+        "total_source": "Ref # = Total",
+        "wrong_format_warning": "Wrong file format for Orlando. Orlando currently requires a Newark-format report.",
     },
     "Carson": {
         "title": "Inventory Shortage",
@@ -1360,7 +1384,7 @@ FORMAT_CONFIGS = {
         },
         "total_rule": "sku_totals",
         "total_source": "Column B = Totals:",
-        "wrong_format_warning": "Wrong file format for Carson. Switch to Newark or upload the Carson report.",
+        "wrong_format_warning": "Wrong file format for Carson. Select the correct warehouse or upload the Carson report.",
     },
 }
 
@@ -3363,10 +3387,11 @@ st.sidebar.markdown(
     """,
     unsafe_allow_html=True,
 )
-if st.session_state.get("report_format") not in ["Newark", "Carson"]:
+warehouse_options = list(FORMAT_CONFIGS.keys())
+if st.session_state.get("report_format") not in warehouse_options:
     st.session_state["report_format"] = "Newark"
 st.sidebar.markdown('<div class="sidebar-section-title">Workspace</div>', unsafe_allow_html=True)
-format_name = st.sidebar.selectbox("Warehouse", options=["Newark", "Carson"], index=0, key="report_format")
+format_name = st.sidebar.selectbox("Warehouse", options=warehouse_options, index=0, key="report_format")
 update_persistent_app_state(values={"report_format": format_name})
 config = FORMAT_CONFIGS[format_name]
 site_key = safe_format_slug(format_name).lower()
