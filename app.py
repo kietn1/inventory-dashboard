@@ -14,7 +14,7 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
 CUSTOMER_EXPORT_VERSION = "Customer export v12"
-APP_CACHE_VERSION = "inventory-logic-v31-newark-carson"
+APP_CACHE_VERSION = "inventory-logic-v30-orlando-newark-format"
 WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
@@ -1340,6 +1340,30 @@ FORMAT_CONFIGS = {
         "total_rule": "ref_total",
         "total_source": "Ref # = Total",
         "wrong_format_warning": "Wrong file format for Newark. Select the correct warehouse or upload a Newark-format report.",
+    },
+    "Orlando": {
+        # Temporary setup: Orlando currently uses the same report structure as Newark.
+        # Replace these column indexes and rules when the Orlando report format is provided.
+        "title": "Inventory Shortage",
+        "sidebar_title": "Inventory Dashboard",
+        "caption": "Upload an Item Activity Report Excel file to generate the shortage dashboard.",
+        "upload_label": "Drop Item Activity Report here",
+        "placeholder": "Search SKU...",
+        "help": "Orlando temporarily uses the Newark report format.",
+        "cols": {
+            "sku": 0,
+            "description": 2,
+            "activity_date": 7,
+            "trans_no": 9,
+            "ref_no": 10,
+            "qty_in": 12,
+            "qty_out": 14,
+            "balance": 19,
+            "ctn_balance": 20,
+        },
+        "total_rule": "ref_total",
+        "total_source": "Ref # = Total",
+        "wrong_format_warning": "Wrong file format for Orlando. Orlando currently requires a Newark-format report.",
     },
     "Carson": {
         "title": "Inventory Shortage",
@@ -4564,6 +4588,7 @@ elif selected_page == "Stock Check":
         height=0,
         width=0,
     )
+    st.caption("Ctrl+Z undoes the last committed table edit. While actively typing inside a cell, Ctrl+Z uses the browser's normal character-by-character undo.")
 
     row_count_mismatch = False
     stock_has_saved_result = stock_result_signature_key in st.session_state
