@@ -4588,7 +4588,6 @@ elif selected_page == "Stock Check":
         height=0,
         width=0,
     )
-    st.caption("Ctrl+Z undoes the last committed table edit. While actively typing inside a cell, Ctrl+Z uses the browser's normal character-by-character undo.")
 
     row_count_mismatch = False
     stock_has_saved_result = stock_result_signature_key in st.session_state
