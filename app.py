@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
@@ -4398,8 +4399,13 @@ elif selected_page == "Stock Check":
     stock_run_input_key = f"stock_check_run_input_{site_key}"
     stock_rma_excluded_key = f"stock_check_rma_excluded_{site_key}"
     stock_result_model_key = f"stock_check_result_model_{site_key}"
+    stock_editor_base_key = f"stock_check_editor_base_{site_key}"
+    stock_live_table_key = f"stock_check_live_table_{site_key}"
+    stock_last_seen_key = f"stock_check_last_seen_{site_key}"
+    stock_undo_history_key = f"stock_check_undo_history_{site_key}"
+
+    stock_columns = ["DO #", "Item Code / SKU", "Qty"]
     st.session_state.setdefault(stock_table_version_key, 0)
-    stock_table_key = f"stock_check_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
     default_stock_table_df = pd.DataFrame(
         {
             "DO #": [""] * 30,
@@ -4407,45 +4413,182 @@ elif selected_page == "Stock Check":
             "Qty": [""] * 30,
         }
     )
+
+    def valid_stock_input_frame(value):
+        return isinstance(value, pd.DataFrame) and set(stock_columns).issubset(value.columns)
+
+    def normalized_stock_input_frame(value):
+        if not valid_stock_input_frame(value):
+            return default_stock_table_df.copy()
+        return value[stock_columns].copy().reset_index(drop=True)
+
+    def stock_input_frames_equal(left, right):
+        if not valid_stock_input_frame(left) or not valid_stock_input_frame(right):
+            return False
+        left_clean = left[stock_columns].copy().reset_index(drop=True).fillna("").astype(str)
+        right_clean = right[stock_columns].copy().reset_index(drop=True).fillna("").astype(str)
+        return left_clean.equals(right_clean)
+
     saved_stock_table_df = st.session_state.get(stock_saved_table_key)
-    if isinstance(saved_stock_table_df, pd.DataFrame) and set(["DO #", "Item Code / SKU", "Qty"]).issubset(saved_stock_table_df.columns):
-        stock_template_df = saved_stock_table_df[["DO #", "Item Code / SKU", "Qty"]].copy()
-    else:
-        stock_template_df = default_stock_table_df
-    with st.form(key=f"stock_check_form_{site_key}", clear_on_submit=False):
-        reset_col, run_col, action_spacer_col = st.columns([1, 1.5, 4.5])
+    editor_base_df = st.session_state.get(stock_editor_base_key)
+    if not valid_stock_input_frame(editor_base_df):
+        if valid_stock_input_frame(saved_stock_table_df):
+            editor_base_df = normalized_stock_input_frame(saved_stock_table_df)
+        else:
+            editor_base_df = default_stock_table_df.copy()
+        st.session_state[stock_editor_base_key] = editor_base_df.copy()
+
+    if not valid_stock_input_frame(st.session_state.get(stock_last_seen_key)):
+        st.session_state[stock_last_seen_key] = editor_base_df.copy()
+    if not valid_stock_input_frame(st.session_state.get(stock_live_table_key)):
+        st.session_state[stock_live_table_key] = st.session_state[stock_last_seen_key].copy()
+    if not isinstance(st.session_state.get(stock_undo_history_key), list):
+        st.session_state[stock_undo_history_key] = []
+
+    stock_table_key = f"stock_check_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
+    stock_reset_button_key = f"stock_reset_{site_key}"
+    stock_undo_button_key = f"stock_undo_{site_key}"
+    stock_run_button_key = f"stock_run_{site_key}"
+
+    # Reserve the action-row position so it can reflect history created by the
+    # current data-editor rerun while still appearing above the table.
+    stock_action_placeholder = st.empty()
+
+    stock_table_df = st.data_editor(
+        editor_base_df,
+        use_container_width=True,
+        hide_index=True,
+        height=342,
+        num_rows="dynamic",
+        key=stock_table_key,
+        column_config={
+            "DO #": st.column_config.TextColumn("DO #", help="Paste or enter the DO number."),
+            "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU", help="Paste or enter the item code/SKU."),
+            "Qty": st.column_config.TextColumn("Qty", help="Paste or enter the requested quantity."),
+        },
+    )
+    stock_table_df = normalized_stock_input_frame(stock_table_df)
+
+    previous_stock_table_df = st.session_state.get(stock_last_seen_key)
+    if valid_stock_input_frame(previous_stock_table_df) and not stock_input_frames_equal(stock_table_df, previous_stock_table_df):
+        updated_history = list(st.session_state.get(stock_undo_history_key, []))
+        if not updated_history or not stock_input_frames_equal(updated_history[-1], previous_stock_table_df):
+            updated_history.append(normalized_stock_input_frame(previous_stock_table_df))
+        st.session_state[stock_undo_history_key] = updated_history[-50:]
+        st.session_state[stock_last_seen_key] = stock_table_df.copy()
+    st.session_state[stock_live_table_key] = stock_table_df.copy()
+
+    stock_history = st.session_state.get(stock_undo_history_key, [])
+    with stock_action_placeholder.container():
+        reset_col, undo_col, run_col, action_spacer_col = st.columns([1, 1, 1.5, 3.5])
         with reset_col:
-            stock_reset_clicked = st.form_submit_button(
+            stock_reset_clicked = st.button(
                 "Reset",
                 use_container_width=True,
+                key=stock_reset_button_key,
+            )
+        with undo_col:
+            stock_undo_clicked = st.button(
+                "Undo",
+                use_container_width=True,
+                key=stock_undo_button_key,
+                disabled=not bool(stock_history),
+                help="Undo the last committed Stock Check table edit (Ctrl+Z).",
             )
         with run_col:
-            stock_run_clicked = st.form_submit_button(
+            stock_run_clicked = st.button(
                 "Run Stock Check",
                 type="primary",
                 use_container_width=True,
+                key=stock_run_button_key,
             )
-        stock_table_df = st.data_editor(
-            stock_template_df,
-            use_container_width=True,
-            hide_index=True,
-            height=342,
-            num_rows="dynamic",
-            key=stock_table_key,
-            column_config={
-                "DO #": st.column_config.TextColumn("DO #", help="Paste or enter the DO number."),
-                "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU", help="Paste or enter the item code/SKU."),
-                "Qty": st.column_config.TextColumn("Qty", help="Paste or enter the requested quantity."),
-            },
-        )
 
     if stock_reset_clicked:
         st.session_state[stock_table_version_key] += 1
-        keys_to_clear = [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key, stock_saved_table_key, stock_run_input_key, stock_rma_excluded_key, stock_result_model_key]
+        keys_to_clear = [
+            stock_result_signature_key,
+            stock_detail_result_key,
+            stock_overview_result_key,
+            stock_issues_result_key,
+            stock_temp_result_key,
+            stock_temp_filter_key,
+            stock_saved_table_key,
+            stock_run_input_key,
+            stock_rma_excluded_key,
+            stock_result_model_key,
+            stock_editor_base_key,
+            stock_live_table_key,
+            stock_last_seen_key,
+            stock_undo_history_key,
+        ]
         for key in keys_to_clear:
             st.session_state.pop(key, None)
         update_persistent_app_state(remove_keys=keys_to_clear)
         st.rerun()
+
+    if stock_undo_clicked and stock_history:
+        undo_target_df = normalized_stock_input_frame(stock_history[-1])
+        st.session_state[stock_undo_history_key] = stock_history[:-1]
+        st.session_state[stock_editor_base_key] = undo_target_df.copy()
+        st.session_state[stock_live_table_key] = undo_target_df.copy()
+        st.session_state[stock_last_seen_key] = undo_target_df.copy()
+        st.session_state[stock_table_version_key] += 1
+        st.rerun()
+
+    undo_button_selector = f".st-key-{stock_undo_button_key} button"
+    editor_selector = f".st-key-{stock_table_key}"
+    components.html(
+        f"""
+        <script>
+        (() => {{
+            const root = window.parent;
+            const doc = root.document;
+            root.__inventoryStockUndoButtonSelector = {json.dumps(undo_button_selector)};
+            root.__inventoryStockEditorSelector = {json.dumps(editor_selector)};
+
+            if (!root.__inventoryStockUndoShortcutInstalled) {{
+                root.__inventoryStockGridActive = false;
+
+                const updateGridFocus = (event) => {{
+                    const selector = root.__inventoryStockEditorSelector;
+                    root.__inventoryStockGridActive = Boolean(
+                        selector && event.target && event.target.closest && event.target.closest(selector)
+                    );
+                }};
+
+                doc.addEventListener("pointerdown", updateGridFocus, true);
+                doc.addEventListener("focusin", updateGridFocus, true);
+                doc.addEventListener("keydown", (event) => {{
+                    const isUndo = (event.ctrlKey || event.metaKey)
+                        && !event.shiftKey
+                        && String(event.key).toLowerCase() === "z";
+                    if (!isUndo || !root.__inventoryStockGridActive) return;
+
+                    const target = event.target;
+                    const nativeEditable = target && (
+                        target.matches?.("input, textarea, [contenteditable='true']")
+                        || target.isContentEditable
+                    );
+                    if (nativeEditable) return;
+
+                    const selector = root.__inventoryStockUndoButtonSelector;
+                    const undoButton = selector ? doc.querySelector(selector) : null;
+                    if (!undoButton || undoButton.disabled) return;
+
+                    event.preventDefault();
+                    event.stopPropagation();
+                    undoButton.click();
+                }}, true);
+
+                root.__inventoryStockUndoShortcutInstalled = true;
+            }}
+        }})();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+    st.caption("Ctrl+Z undoes the last committed table edit. While actively typing inside a cell, Ctrl+Z uses the browser's normal character-by-character undo.")
 
     row_count_mismatch = False
     stock_has_saved_result = stock_result_signature_key in st.session_state
