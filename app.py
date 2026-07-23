@@ -9,12 +9,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
 CUSTOMER_EXPORT_VERSION = "Customer export v12"
-APP_CACHE_VERSION = "inventory-logic-v30-orlando-newark-format"
+APP_CACHE_VERSION = "inventory-logic-v31-orlando-stock-movements"
 WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
@@ -1342,28 +1341,15 @@ FORMAT_CONFIGS = {
         "wrong_format_warning": "Wrong file format for Newark. Select the correct warehouse or upload a Newark-format report.",
     },
     "Orlando": {
-        # Temporary setup: Orlando currently uses the same report structure as Newark.
-        # Replace these column indexes and rules when the Orlando report format is provided.
-        "title": "Inventory Shortage",
+        "title": "Inventory Movement",
         "sidebar_title": "Inventory Dashboard",
-        "caption": "Upload an Item Activity Report Excel file to generate the shortage dashboard.",
-        "upload_label": "Drop Item Activity Report here",
+        "caption": "Upload the Orlando Stock Movements report to review movement history and demand.",
+        "upload_label": "Drop Stock Movements Report here",
         "placeholder": "Search SKU...",
-        "help": "Orlando temporarily uses the Newark report format.",
-        "cols": {
-            "sku": 0,
-            "description": 2,
-            "activity_date": 7,
-            "trans_no": 9,
-            "ref_no": 10,
-            "qty_in": 12,
-            "qty_out": 14,
-            "balance": 19,
-            "ctn_balance": 20,
-        },
-        "total_rule": "ref_total",
-        "total_source": "Ref # = Total",
-        "wrong_format_warning": "Wrong file format for Orlando. Orlando currently requires a Newark-format report.",
+        "help": "Use the Orlando Stock Movements - Summary export. Type and UQ are ignored. Positive Quantity is inbound; negative AXIA references are outbound; other negative references are adjustments.",
+        "report_type": "stock_movements",
+        "required_headers": ["Product", "Description", "Reference", "Date", "Quantity"],
+        "wrong_format_warning": "Wrong file format for Orlando. Upload the Stock Movements report containing Product, Description, Reference, Date, and Quantity.",
     },
     "Carson": {
         "title": "Inventory Shortage",
@@ -1719,10 +1705,275 @@ def load_excel_to_raw(file_bytes: bytes, cache_version: str = APP_CACHE_VERSION)
     return pd.read_excel(BytesIO(file_bytes), sheet_name=0, header=None, dtype=object)
 
 
+def find_orlando_movement_header_row(raw: pd.DataFrame) -> tuple[int, dict]:
+    required = {"product", "description", "reference", "date", "quantity"}
+    for idx in range(min(len(raw), 30)):
+        values = [clean_text(value) for value in raw.iloc[idx].tolist()]
+        normalized = [value.lower() for value in values]
+        if required.issubset(set(normalized)):
+            return idx, {name.lower(): position for position, name in enumerate(values) if clean_text(name)}
+    raise WrongFileFormatError(FORMAT_CONFIGS["Orlando"]["wrong_format_warning"])
+
+
+def orlando_calendar_window(report_start, report_end, days: int) -> tuple[pd.Timestamp, pd.Timestamp, list]:
+    end_date = pd.to_datetime(report_end).normalize()
+    requested_start = end_date - pd.Timedelta(days=max(days - 1, 0))
+    available_start = pd.to_datetime(report_start).normalize()
+    start_date = max(requested_start, available_start)
+    dates = pd.date_range(start=start_date, end=end_date, freq="D").normalize().tolist()
+    return start_date, end_date, dates
+
+
+def orlando_business_day_count(start_date, end_date) -> int:
+    if pd.isna(start_date) or pd.isna(end_date):
+        return 0
+    days = pd.date_range(pd.to_datetime(start_date).normalize(), pd.to_datetime(end_date).normalize(), freq=WAREHOUSE_BUSINESS_DAY)
+    return int(len(days))
+
+
+def build_orlando_movement_model(raw: pd.DataFrame, config: dict, format_name: str) -> dict:
+    header_idx, header_map = find_orlando_movement_header_row(raw)
+    rows = raw.iloc[header_idx + 1 :].copy()
+
+    transactions = []
+    sku_order = []
+    descriptions = {}
+
+    for excel_row_num, row in zip(rows.index, rows.itertuples(index=False, name=None)):
+        sku = clean_text(get_cell(row, header_map["product"]))
+        description = clean_text(get_cell(row, header_map["description"]))
+        reference = clean_text(get_cell(row, header_map["reference"]))
+        activity_raw = get_cell(row, header_map["date"])
+        quantity_value = first_qty_number(get_cell(row, header_map["quantity"]), np.nan)
+
+        if not sku or sku.lower() == "product":
+            continue
+        activity_date = parse_excel_or_text_date(activity_raw)
+        if pd.isna(activity_date) or pd.isna(quantity_value):
+            continue
+
+        quantity = float(quantity_value)
+        reference_key = reference.upper()
+        is_customer_outbound = quantity < 0 and "AXIA" in reference_key
+        qty_in = max(quantity, 0.0)
+        qty_out = abs(quantity) if is_customer_outbound else 0.0
+        adjustment_qty = quantity if quantity < 0 and not is_customer_outbound else 0.0
+        transaction_type = "Inbound" if quantity > 0 else ("Outbound" if is_customer_outbound else ("Adjustment" if quantity < 0 else "No Qty"))
+
+        if sku not in descriptions:
+            sku_order.append(sku)
+            descriptions[sku] = description
+        elif description and not descriptions[sku]:
+            descriptions[sku] = description
+
+        transactions.append(
+            {
+                "Excel Row": excel_row_num + 1,
+                "SKU": sku,
+                "Description": descriptions.get(sku, description),
+                "Activity Date": activity_date,
+                "Transaction Type": transaction_type,
+                "Trans. #": "",
+                "Ref #": reference,
+                "Qty In / Ctn Raw": clean_text(get_cell(row, header_map["quantity"])) if quantity > 0 else "",
+                "Qty Out / Ctn Raw": clean_text(get_cell(row, header_map["quantity"])) if quantity < 0 else "",
+                "Qty In": qty_in,
+                "Qty Out": qty_out,
+                "Adjustment Qty": adjustment_qty,
+                "Signed Quantity": quantity,
+                "Is Customer Outbound": is_customer_outbound,
+                "Balance After Transaction": np.nan,
+                "Ctn Balance After Transaction": np.nan,
+                "Is Not Shipped": False,
+                "Is Cancelled": False,
+            }
+        )
+
+    tx_columns = [
+        "Excel Row",
+        "SKU",
+        "Description",
+        "Activity Date",
+        "Transaction Type",
+        "Trans. #",
+        "Ref #",
+        "Qty In / Ctn Raw",
+        "Qty Out / Ctn Raw",
+        "Qty In",
+        "Qty Out",
+        "Adjustment Qty",
+        "Signed Quantity",
+        "Is Customer Outbound",
+        "Balance After Transaction",
+        "Ctn Balance After Transaction",
+        "Is Not Shipped",
+        "Is Cancelled",
+    ]
+    tx_df = pd.DataFrame(transactions, columns=tx_columns)
+    if tx_df.empty:
+        raise ValueError("No dated Orlando stock movement rows were found.")
+
+    tx_df["Activity Date"] = pd.to_datetime(tx_df["Activity Date"], errors="coerce").dt.normalize()
+    tx_df["Qty In"] = pd.to_numeric(tx_df["Qty In"], errors="coerce").fillna(0.0)
+    tx_df["Qty Out"] = pd.to_numeric(tx_df["Qty Out"], errors="coerce").fillna(0.0)
+    tx_df["Adjustment Qty"] = pd.to_numeric(tx_df["Adjustment Qty"], errors="coerce").fillna(0.0)
+    tx_df["Signed Quantity"] = pd.to_numeric(tx_df["Signed Quantity"], errors="coerce").fillna(0.0)
+    tx_df = tx_df.dropna(subset=["Activity Date"]).reset_index(drop=True)
+    if tx_df.empty:
+        raise ValueError("The Orlando report does not contain valid movement dates.")
+
+    report_start = tx_df["Activity Date"].min().normalize()
+    report_end = tx_df["Activity Date"].max().normalize()
+
+    grouped = tx_df.groupby("SKU", sort=False)
+    sku_df = grouped.agg(
+        **{
+            "Description": ("Description", lambda values: next((clean_text(value) for value in values if clean_text(value)), "")),
+            "Official Total Inbound": ("Qty In", "sum"),
+            "Official Total Outbound": ("Qty Out", "sum"),
+            "Last Activity Date": ("Activity Date", "max"),
+        }
+    ).reset_index()
+
+    adjustment_totals = tx_df.groupby("SKU")["Adjustment Qty"].sum()
+    sku_df["Adjustment Total"] = sku_df["SKU"].map(adjustment_totals).fillna(0.0)
+    inbound_dates = tx_df.loc[tx_df["Qty In"] > 0].groupby("SKU")["Activity Date"].max()
+    outbound_dates = tx_df.loc[tx_df["Qty Out"] > 0].groupby("SKU")["Activity Date"].max()
+    sku_df["Last Inbound Date"] = sku_df["SKU"].map(inbound_dates)
+    sku_df["Last Outbound Date"] = sku_df["SKU"].map(outbound_dates)
+    sku_df["Ending Balance"] = np.nan
+    sku_df["Ctn Balance"] = np.nan
+    sku_df["Beginning Balance"] = np.nan
+    sku_df["Official Ending Row"] = np.nan
+    sku_df["Official Total Row"] = np.nan
+    sku_df["Official Total Row Count"] = 0
+    sku_df["Official Ending Row Count"] = 0
+    sku_df["Data Quality Issue"] = "Current Available balance is not included in the Stock Movements report"
+    sku_df["Data Quality Status"] = "Review"
+
+    window_days = {
+        "Outbound Last 90 Days": 90,
+        "Outbound Last 30 Days": 30,
+        "Outbound Last 14 Days": 14,
+        "Outbound Last 7 Days": 7,
+    }
+    windows = {}
+    window_dates = {}
+    business_day_counts = {}
+    positive_outbound_df = tx_df[tx_df["Qty Out"] > 0].copy()
+    for label, day_count in window_days.items():
+        start_date, end_date, dates = orlando_calendar_window(report_start, report_end, day_count)
+        windows[label] = (start_date, end_date)
+        window_dates[label] = dates
+        business_day_counts[label] = orlando_business_day_count(start_date, end_date)
+        if positive_outbound_df.empty:
+            sku_df[label] = 0.0
+        else:
+            mask = positive_outbound_df["Activity Date"].between(start_date, end_date, inclusive="both")
+            totals = positive_outbound_df.loc[mask].groupby("SKU")["Qty Out"].sum()
+            sku_df[label] = sku_df["SKU"].map(totals).fillna(0.0)
+
+    denominator_30d = business_day_counts["Outbound Last 30 Days"]
+    sku_df["Avg Daily Usage 30D"] = np.where(
+        denominator_30d > 0,
+        sku_df["Outbound Last 30 Days"] / denominator_30d,
+        0.0,
+    )
+    sku_df["Demand Status"] = np.select(
+        [sku_df["Outbound Last 30 Days"] > 0, sku_df["Outbound Last 90 Days"] > 0],
+        ["Active", "Dormant"],
+        default="Inactive",
+    )
+    sku_df["Days Remaining"] = np.nan
+    sku_df["Risk Level"] = "Data Issue"
+    sku_df["Recommended Action"] = "Enter Current Available in Stock Check before testing new demand"
+    sku_df["Forecast Stockout Date"] = pd.NaT
+    sku_df["Transaction Total Inbound"] = sku_df["Official Total Inbound"]
+    sku_df["Transaction Total Outbound"] = sku_df["Official Total Outbound"]
+    sku_df["Calculated Ending Balance"] = np.nan
+    sku_df["Balance Difference"] = np.nan
+    sku_df["Inbound Difference"] = 0.0
+    sku_df["Outbound Difference"] = 0.0
+    sku_df["Audit Status"] = "Balance Required"
+    sku_df["Risk Sort"] = 0
+    sku_df = sku_df.sort_values(
+        ["Outbound Last 30 Days", "Outbound Last 14 Days", "SKU"],
+        ascending=[False, False, True],
+    ).reset_index(drop=True)
+
+    official_total_df = sku_df[
+        ["SKU", "Description", "Official Total Inbound", "Official Total Outbound"]
+    ].copy()
+    official_total_df.insert(0, "Excel Row", np.nan)
+    official_total_df["Source"] = "Calculated from signed Quantity"
+    official_total_df["Balance"] = np.nan
+    official_total_df["Ctn Balance"] = np.nan
+
+    official_ending_df = pd.DataFrame(
+        columns=["Excel Row", "SKU", "Description", "Activity Date", "Balance", "Ctn Balance"]
+    )
+    beginning_balance_df = pd.DataFrame(
+        columns=["Excel Row", "SKU", "Description", "Activity Date", "Balance", "Ctn Balance"]
+    )
+    not_shipped_df = pd.DataFrame(columns=["Excel Row", "SKU", "Description", "Activity Date", "Ref #", "Qty Out"])
+    cancelled_df = pd.DataFrame(columns=["Excel Row", "SKU", "Description", "Activity Date", "Ref #", "Qty Out"])
+
+    audit_cols = [
+        "SKU",
+        "Description",
+        "Data Quality Status",
+        "Data Quality Issue",
+        "Beginning Balance",
+        "Official Total Inbound",
+        "Official Total Outbound",
+        "Calculated Ending Balance",
+        "Ending Balance",
+        "Balance Difference",
+        "Transaction Total Inbound",
+        "Inbound Difference",
+        "Transaction Total Outbound",
+        "Outbound Difference",
+        "Official Total Row Count",
+        "Official Ending Row Count",
+        "Audit Status",
+    ]
+    audit_df = sku_df[audit_cols].copy()
+
+    if positive_outbound_df.empty:
+        trend_df = pd.DataFrame(columns=["Activity Date", "Qty Out"])
+    else:
+        trend_df = positive_outbound_df.groupby("Activity Date", as_index=False)["Qty Out"].sum().sort_values("Activity Date")
+
+    return {
+        "format_name": format_name,
+        "report_type": "stock_movements",
+        "source_sku_count": int(sku_df["SKU"].nunique()),
+        "sku_df": sku_df,
+        "tx_df": tx_df,
+        "trend_df": trend_df,
+        "audit_df": audit_df,
+        "official_total_df": official_total_df,
+        "official_ending_df": official_ending_df,
+        "beginning_balance_df": beginning_balance_df,
+        "not_shipped_df": not_shipped_df,
+        "cancelled_df": cancelled_df,
+        "report_start": report_start,
+        "report_end": report_end,
+        "report_date_source": "Earliest and latest movement dates",
+        "windows": windows,
+        "window_dates": window_dates,
+        "window_business_day_counts": business_day_counts,
+        "header_idx": header_idx,
+        "config": config,
+    }
+
+
 @st.cache_data(show_spinner=False)
 def process_excel_file(file_bytes: bytes, format_name: str, cache_version: str = APP_CACHE_VERSION) -> dict:
     raw_df = load_excel_to_raw(file_bytes, cache_version)
     config = FORMAT_CONFIGS[format_name]
+    if config.get("report_type") == "stock_movements":
+        return build_orlando_movement_model(raw_df, config, format_name)
     validate_selected_format(raw_df, config)
     return build_inventory_model(raw_df, config, format_name)
 
@@ -1969,6 +2220,8 @@ def build_inventory_model(raw: pd.DataFrame, config: dict, format_name: str) -> 
         "Qty Out / Ctn Raw",
         "Qty In",
         "Qty Out",
+        "Adjustment Qty",
+        "Signed Quantity",
         "Balance After Transaction",
         "Ctn Balance After Transaction",
         "Is Not Shipped",
@@ -2391,6 +2644,8 @@ def report_download_filename(format_name: str, report_end) -> str:
     except Exception:
         date_part = datetime.today().strftime("%m%d%Y")
     clean_format = re.sub(r"[^A-Za-z0-9]+", "_", str(format_name)).strip("_") or "Inventory"
+    if str(format_name) == "Orlando":
+        return f"{clean_format}_Inventory_Movement_Report_{date_part}.xlsx"
     return f"{clean_format}_Inventory_Shortage_Report_{date_part}.xlsx"
 
 def prepare_transaction_export(tx_df: pd.DataFrame) -> pd.DataFrame:
@@ -2403,6 +2658,8 @@ def prepare_transaction_export(tx_df: pd.DataFrame) -> pd.DataFrame:
         "Ref #",
         "Qty In",
         "Qty Out",
+        "Adjustment Qty",
+        "Signed Quantity",
         "Balance After Transaction",
         "Is Not Shipped",
         "Is Cancelled",
@@ -2410,7 +2667,7 @@ def prepare_transaction_export(tx_df: pd.DataFrame) -> pd.DataFrame:
     out = tx_df.copy()
     for col in export_cols:
         if col not in out.columns:
-            if col in ["Qty In", "Qty Out", "Balance After Transaction"]:
+            if col in ["Qty In", "Qty Out", "Adjustment Qty", "Signed Quantity", "Balance After Transaction"]:
                 out[col] = 0.0
             elif col in ["Is Not Shipped", "Is Cancelled"]:
                 out[col] = False
@@ -2421,7 +2678,7 @@ def prepare_transaction_export(tx_df: pd.DataFrame) -> pd.DataFrame:
 
     out = out[export_cols].copy()
     out["Activity Date"] = pd.to_datetime(out["Activity Date"], errors="coerce")
-    for col in ["Qty In", "Qty Out", "Balance After Transaction"]:
+    for col in ["Qty In", "Qty Out", "Adjustment Qty", "Signed Quantity", "Balance After Transaction"]:
         out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).round(0)
 
     out = out.sort_values(["SKU", "Activity Date"], ascending=[True, False]).reset_index(drop=True)
@@ -2533,16 +2790,20 @@ def parse_stock_check_columns(do_text: str, sku_text: str, qty_text: str) -> tup
 
 def parse_stock_check_table(table_df: pd.DataFrame) -> pd.DataFrame:
     rows = []
+    output_columns = ["Input Order", "DO #", "SKU", "Requested Qty", "Current Available", "Issue"]
     if table_df is None or table_df.empty:
-        return pd.DataFrame(columns=["Input Order", "DO #", "SKU", "Requested Qty", "Issue"])
+        return pd.DataFrame(columns=output_columns)
     for idx, row in table_df.reset_index(drop=True).iterrows():
         do_no = clean_text(row.get("DO #", ""))
         sku = clean_text(row.get("Item Code / SKU", row.get("SKU", "")))
         qty_text_value = clean_text(row.get("Qty", ""))
-        if not do_no and not sku and not qty_text_value:
+        available_text_value = clean_text(row.get("Current Available", ""))
+        if not do_no and not sku and not qty_text_value and not available_text_value:
             continue
-        match = re.search(r"-?\d+(?:\.\d+)?", qty_text_value.replace(",", ""))
-        qty = float(match.group()) if match else np.nan
+        qty_match = re.search(r"-?\d+(?:\.\d+)?", qty_text_value.replace(",", ""))
+        available_match = re.search(r"-?\d+(?:\.\d+)?", available_text_value.replace(",", ""))
+        qty = float(qty_match.group()) if qty_match else np.nan
+        current_available = float(available_match.group()) if available_match else np.nan
         issue = ""
         if not do_no:
             issue = "Missing DO #"
@@ -2556,10 +2817,47 @@ def parse_stock_check_table(table_df: pd.DataFrame) -> pd.DataFrame:
                 "DO #": do_no,
                 "SKU": sku,
                 "Requested Qty": qty,
+                "Current Available": current_available,
                 "Issue": issue,
             }
         )
-    return pd.DataFrame(rows, columns=["Input Order", "DO #", "SKU", "Requested Qty", "Issue"])
+    return pd.DataFrame(rows, columns=output_columns)
+
+
+def apply_orlando_current_available(input_df: pd.DataFrame, sku_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    adjusted_input = input_df.copy()
+    adjusted_sku = sku_df.copy()
+    if adjusted_input.empty:
+        return adjusted_input, adjusted_sku
+
+    adjusted_input["SKU Key"] = adjusted_input["SKU"].astype(str).map(normalize_lookup_key)
+    adjusted_input["Current Available"] = pd.to_numeric(adjusted_input.get("Current Available", np.nan), errors="coerce")
+    provided = adjusted_input.loc[adjusted_input["Current Available"].notna() & (adjusted_input["SKU Key"] != "")].copy()
+
+    balance_map = {}
+    conflicting_keys = set()
+    if not provided.empty:
+        for sku_key, group in provided.groupby("SKU Key", sort=False):
+            values = pd.to_numeric(group["Current Available"], errors="coerce").dropna().round(10).unique().tolist()
+            if len(values) > 1:
+                conflicting_keys.add(sku_key)
+            elif values:
+                balance_map[sku_key] = float(values[0])
+
+    for idx, row in adjusted_input.iterrows():
+        if clean_text(row.get("Issue", "")):
+            continue
+        sku_key = clean_text(row.get("SKU Key", ""))
+        if sku_key in conflicting_keys:
+            adjusted_input.at[idx, "Issue"] = "Conflicting Current Available"
+        elif sku_key not in balance_map:
+            adjusted_input.at[idx, "Issue"] = "Missing Current Available"
+
+    adjusted_sku["SKU Key"] = adjusted_sku["SKU"].astype(str).map(normalize_lookup_key)
+    adjusted_sku["Ending Balance"] = adjusted_sku["SKU Key"].map(balance_map)
+    adjusted_sku = adjusted_sku.drop(columns=["SKU Key"], errors="ignore")
+    adjusted_input = adjusted_input.drop(columns=["SKU Key"], errors="ignore")
+    return adjusted_input, adjusted_sku
 
 
 def exclude_rma_stock_check_rows(input_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
@@ -2583,6 +2881,12 @@ def normalize_lookup_key(value) -> str:
 
 def build_existing_do_tables(tx_df: pd.DataFrame) -> tuple[set, dict, dict]:
     if tx_df is None or tx_df.empty:
+        return set(), {}, {}
+
+    tx_df = tx_df.copy()
+    tx_df["Qty Out"] = pd.to_numeric(tx_df.get("Qty Out", 0), errors="coerce").fillna(0)
+    tx_df = tx_df[tx_df["Qty Out"] > 0].copy()
+    if tx_df.empty:
         return set(), {}, {}
 
     source_rows = []
@@ -2988,7 +3292,7 @@ def to_transaction_excel_bytes(model: dict, format_name: str, cache_version: str
             cell.border = border
         worksheet.row_dimensions[header_row].height = 28
 
-        integer_columns = {"Qty In", "Qty Out", "Balance After Transaction"}
+        integer_columns = {"Qty In", "Qty Out", "Adjustment Qty", "Signed Quantity", "Balance After Transaction"}
         date_columns = {"Activity Date"}
         text_columns = {"SKU", "Description", "Transaction Type", "Trans. #", "Ref #", "Is Not Shipped", "Is Cancelled"}
 
@@ -3279,7 +3583,7 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
     if "Activity Date" in display_df.columns:
         display_df["Activity Date"] = pd.to_datetime(display_df["Activity Date"], errors="coerce").dt.strftime("%m/%d/%Y").replace("NaT", "")
 
-    integer_cols = ["Excel Row", "Qty In", "Qty Out", "Balance After Transaction"]
+    integer_cols = ["Excel Row", "Qty In", "Qty Out", "Adjustment Qty", "Signed Quantity", "Balance After Transaction"]
     for col in integer_cols:
         if col in display_df.columns:
             display_df[col] = pd.to_numeric(display_df[col], errors="coerce").round(0).astype("Int64")
@@ -3288,7 +3592,7 @@ def show_transaction_dataframe(df: pd.DataFrame, height: int = 420, limit: int =
         if col in display_df.columns:
             display_df[col] = display_df[col].fillna(False).astype(bool)
 
-    numeric_subset = [col for col in ["Excel Row", "Qty In", "Qty Out", "Balance After Transaction"] if col in display_df.columns]
+    numeric_subset = [col for col in ["Excel Row", "Qty In", "Qty Out", "Adjustment Qty", "Signed Quantity", "Balance After Transaction"] if col in display_df.columns]
     center_subset = [col for col in ["Activity Date", "Transaction Type", "Is Not Shipped", "Is Cancelled"] if col in display_df.columns]
     left_subset = [col for col in ["Trans. #", "Ref #"] if col in display_df.columns]
 
@@ -3411,29 +3715,35 @@ uploaded = st.sidebar.file_uploader(
 )
 report_source_slot = st.sidebar.empty()
 
-st.sidebar.markdown('<div class="sidebar-section-title">Inventory filters</div>', unsafe_allow_html=True)
-st.sidebar.markdown('<div class="sidebar-section-help">Filters apply to Overview and the SKU selector.</div>', unsafe_allow_html=True)
+filter_section_title = "Movement filters" if format_name == "Orlando" else "Inventory filters"
+filter_section_help = "Filters apply to the Orlando movement summary and SKU selector." if format_name == "Orlando" else "Filters apply to Overview and the SKU selector."
+st.sidebar.markdown(f'<div class="sidebar-section-title">{filter_section_title}</div>', unsafe_allow_html=True)
+st.sidebar.markdown(f'<div class="sidebar-section-help">{filter_section_help}</div>', unsafe_allow_html=True)
 risk_options = ["Data Issue", "Critical", "Warning", "Watch", "Healthy", "No Recent Demand", "Inactive / No Demand"]
 risk_select_all_label = "Select all"
-risk_filter_previous_key = f"_{risk_filter_key}_previous"
-if risk_filter_key in st.session_state:
-    st.session_state[risk_filter_key] = [
-        value
-        for value in st.session_state[risk_filter_key]
-        if value == risk_select_all_label or value in risk_options
-    ]
-st.session_state[risk_filter_previous_key] = list(
-    st.session_state.get(risk_filter_key, [risk_select_all_label])
-)
-risk_selection = st.sidebar.multiselect(
-    "Risk Level",
-    options=[risk_select_all_label, *risk_options],
-    default=[risk_select_all_label],
-    key=risk_filter_key,
-    on_change=update_risk_filter_selection,
-    args=(risk_filter_key, risk_filter_previous_key, risk_select_all_label, risk_options),
-)
-show_risks = list(risk_options) if risk_select_all_label in risk_selection else risk_selection
+if format_name == "Orlando":
+    risk_selection = [risk_select_all_label]
+    show_risks = ["Data Issue"]
+else:
+    risk_filter_previous_key = f"_{risk_filter_key}_previous"
+    if risk_filter_key in st.session_state:
+        st.session_state[risk_filter_key] = [
+            value
+            for value in st.session_state[risk_filter_key]
+            if value == risk_select_all_label or value in risk_options
+        ]
+    st.session_state[risk_filter_previous_key] = list(
+        st.session_state.get(risk_filter_key, [risk_select_all_label])
+    )
+    risk_selection = st.sidebar.multiselect(
+        "Risk Level",
+        options=[risk_select_all_label, *risk_options],
+        default=[risk_select_all_label],
+        key=risk_filter_key,
+        on_change=update_risk_filter_selection,
+        args=(risk_filter_key, risk_filter_previous_key, risk_select_all_label, risk_options),
+    )
+    show_risks = list(risk_options) if risk_select_all_label in risk_selection else risk_selection
 min_usage = st.sidebar.number_input(
     "Min 30D Outbound",
     min_value=0,
@@ -3441,7 +3751,10 @@ min_usage = st.sidebar.number_input(
     step=1,
     key=min_usage_filter_key,
 )
-update_persistent_app_state(values={risk_filter_key: risk_selection, min_usage_filter_key: min_usage})
+persistent_filter_values = {min_usage_filter_key: min_usage}
+if format_name != "Orlando":
+    persistent_filter_values[risk_filter_key] = risk_selection
+update_persistent_app_state(values=persistent_filter_values)
 
 sku_sidebar_slot = st.sidebar.empty()
 st.sidebar.button("Clear filters", use_container_width=True, on_click=reset_sidebar_filters, args=(site_key,))
@@ -3569,8 +3882,8 @@ try:
                 <div class="loading-row">
                     <div class="loader-ring"></div>
                     <div class="stage-copy">
-                        <div class="stage-title">Loading Item Activity Report</div>
-                        <div class="stage-subtitle">Reading the workbook, validating the {html.escape(format_name)} format, and building the inventory model.</div>
+                        <div class="stage-title">Loading {html.escape("Stock Movements Report" if format_name == "Orlando" else "Item Activity Report")}</div>
+                        <div class="stage-subtitle">Reading the workbook, validating the {html.escape(format_name)} format, and building the report model.</div>
                         <div class="stage-meta">{html.escape(active_file_name)}</div>
                     </div>
                 </div>
@@ -3598,7 +3911,7 @@ except WrongFileFormatError as exc:
                 <div class="stage-copy">
                     <div class="stage-title">Report format not recognized</div>
                     <div class="stage-subtitle">{html.escape(str(exc))}</div>
-                    <div class="stage-meta">Confirm the warehouse format and upload the matching Item Activity Report.</div>
+                    <div class="stage-meta">Confirm the warehouse format and upload the matching report.</div>
                 </div>
             </div>
         </div>
@@ -3614,7 +3927,7 @@ except Exception:
                 <div class="error-mark">!</div>
                 <div class="stage-copy">
                     <div class="stage-title">File could not be processed</div>
-                    <div class="stage-subtitle">Check the selected warehouse format and upload a valid Item Activity Report.</div>
+                    <div class="stage-subtitle">Check the selected warehouse format and upload a valid report.</div>
                 </div>
             </div>
         </div>
@@ -3631,8 +3944,20 @@ if show_risks:
 sku_option_source = sku_option_source[sku_option_source["Outbound Last 30 Days"] >= min_usage]
 sku_options = [""] + sku_option_source["SKU"].astype(str).dropna().tolist()
 
+inventory_as_of_date = pd.to_datetime(model.get("report_end"), errors="coerce").date()
 with sku_sidebar_slot.container():
     st.markdown('<div class="sidebar-section-gap"></div>', unsafe_allow_html=True)
+
+    if format_name == "Orlando":
+        orlando_as_of_key = f"{site_key}_inventory_as_of_date"
+        if st.session_state.get(orlando_as_of_key) is None:
+            st.session_state[orlando_as_of_key] = inventory_as_of_date
+        inventory_as_of_date = st.date_input(
+            "Current Available As-of",
+            key=orlando_as_of_key,
+            help="Date that applies to the Current Available quantities entered in Stock Check.",
+        )
+        update_persistent_app_state(values={orlando_as_of_key: inventory_as_of_date})
 
     if st.session_state.get(sku_select_key) not in sku_options:
         st.session_state[sku_select_key] = ""
@@ -3660,6 +3985,17 @@ report_end = model["report_end"]
 windows = model["windows"]
 
 source_label = "Saved" if using_saved_report else "Uploaded"
+header_title = "Inventory Movement" if format_name == "Orlando" else "Inventory Shortage"
+header_subtitle = (
+    "Movement history, reference lookup, and sign-based demand analysis. Current balance is entered only when running Stock Check."
+    if format_name == "Orlando"
+    else "Inventory risk, SKU activity, DO lookup, and outbound stock validation."
+)
+as_of_chip = (
+    f'<span class="meta-chip meta-chip-date">Available as of {html.escape(pd.to_datetime(inventory_as_of_date).strftime("%m/%d/%Y"))}</span>'
+    if format_name == "Orlando"
+    else ""
+)
 st.markdown(
     f"""
     <div class="app-header">
@@ -3670,13 +4006,14 @@ st.markdown(
                 </div>
                 <div class="app-title-copy">
                     <div class="app-eyebrow">{html.escape(format_name)} warehouse</div>
-                    <div class="app-title">Inventory Shortage</div>
+                    <div class="app-title">{html.escape(header_title)}</div>
                 </div>
             </div>
-            <div class="app-subtitle">Inventory risk, SKU activity, DO lookup, and outbound stock validation.</div>
+            <div class="app-subtitle">{html.escape(header_subtitle)}</div>
         </div>
         <div class="app-meta">
             <span class="meta-chip meta-chip-date meta-chip-accent">{fmt_date(report_start)} – {fmt_date(report_end)}</span>
+            {as_of_chip}
             <span class="meta-chip meta-chip-file" title="{html.escape(active_file_name)}">{html.escape(active_file_name)}</span>
             <span class="meta-chip meta-chip-status">{source_label}</span>
         </div>
@@ -3727,7 +4064,12 @@ if selected_page == "Overview":
     transaction_export_data = lambda export_model=model, export_format=format_name: to_transaction_excel_bytes(export_model, export_format, APP_CACHE_VERSION)
     heading_col, export_col_1, export_col_2 = st.columns([3.4, 1.25, 1.25])
     with heading_col:
-        tab_page_header("Overview", "Review inventory risk first, then move into SKU, DO, or stock validation workflows.")
+        overview_subtitle = (
+            "Review movement coverage and SKU demand, then use Reference Lookup or Stock Check."
+            if format_name == "Orlando"
+            else "Review inventory risk first, then move into SKU, DO, or stock validation workflows."
+        )
+        tab_page_header("Overview", overview_subtitle)
     with export_col_1:
         st.download_button(
             "Download report",
@@ -3752,36 +4094,73 @@ if selected_page == "Overview":
             on_click="ignore",
         )
 
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
-        metric_card("Total SKUs", fmt_num(len(sku_df)), f"Active {active_count:,} · Dormant {dormant_count:,} · Inactive {inactive_count:,}")
-    with k2:
-        metric_card("Critical SKUs", fmt_num(critical_count), f"Data issues {data_issue_count:,}")
-    with k3:
-        metric_card("Warning SKUs", fmt_num(warning_count), "Need ETA or reserve review")
-    with k4:
-        metric_card("Watch SKUs", fmt_num(watch_count), "Monitor usage trend")
+    if format_name == "Orlando":
+        total_inbound = pd.to_numeric(sku_df["Transaction Total Inbound"], errors="coerce").fillna(0).sum()
+        total_outbound = pd.to_numeric(sku_df["Transaction Total Outbound"], errors="coerce").fillna(0).sum()
+        reference_count = int(model.get("tx_df", pd.DataFrame()).get("Ref #", pd.Series(dtype=str)).astype(str).map(clean_text).replace("", np.nan).nunique())
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            metric_card("Total SKUs", fmt_num(len(sku_df)), f"Movement range {fmt_date(report_start)} – {fmt_date(report_end)}")
+        with k2:
+            metric_card("Inbound Qty", fmt_num(total_inbound), "Positive Quantity rows")
+        with k3:
+            metric_card("Outbound Qty", fmt_num(total_outbound), "Negative Quantity with AXIA Reference")
+        with k4:
+            metric_card("References", fmt_num(reference_count), "Reference values found in the report")
 
-    st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
-    st.markdown(
-        f"<div class='section-subtitle'>Showing {len(priority_filtered):,} of {len(sku_df):,} SKUs. Critical applies only to active 30-day demand; inactive SKUs are hidden by default.</div>",
-        unsafe_allow_html=True,
-    )
+        st.info("This Stock Movements report does not contain Current Available inventory. Shortage risk and stockout forecasting are intentionally not calculated from net movement.")
+        st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>SKU Movement Summary</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='section-subtitle'>Showing {len(priority_filtered):,} of {len(sku_df):,} SKUs. Type and UQ are ignored. Positive quantities are inbound; negative AXIA references are customer outbound; other negative references are adjustments.</div>",
+            unsafe_allow_html=True,
+        )
+        movement_cols = [
+            "SKU",
+            "Description",
+            "Transaction Total Inbound",
+            "Transaction Total Outbound",
+            "Adjustment Total",
+            "Outbound Last 30 Days",
+            "Avg Daily Usage 30D",
+            "Last Inbound Date",
+            "Last Outbound Date",
+            "Last Activity Date",
+        ]
+        movement_display = prepare_display(priority_filtered[movement_cols])
+        movement_height = min(620, max(300, 88 + (min(len(movement_display), 16) * 31)))
+        show_limited_dataframe(movement_display, height=movement_height, limit=500, show_count=False)
+    else:
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            metric_card("Total SKUs", fmt_num(len(sku_df)), f"Active {active_count:,} · Dormant {dormant_count:,} · Inactive {inactive_count:,}")
+        with k2:
+            metric_card("Critical SKUs", fmt_num(critical_count), f"Data issues {data_issue_count:,}")
+        with k3:
+            metric_card("Warning SKUs", fmt_num(warning_count), "Need ETA or reserve review")
+        with k4:
+            metric_card("Watch SKUs", fmt_num(watch_count), "Monitor usage trend")
 
-    priority_cols = [
-        "SKU",
-        "Description",
-        "Risk Level",
-        "Ending Balance",
-        "Last Outbound Date",
-        "Avg Daily Usage 30D",
-        "Days Remaining",
-        "Forecast Stockout Date",
-    ]
-    priority_display = prepare_display(priority_filtered[priority_cols])
-    priority_height = min(620, max(300, 88 + (min(len(priority_display), 16) * 31)))
-    show_limited_dataframe(priority_display, height=priority_height, limit=250, show_count=False)
+        st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Shortage Priority List</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='section-subtitle'>Showing {len(priority_filtered):,} of {len(sku_df):,} SKUs. Critical applies only to active 30-day demand; inactive SKUs are hidden by default.</div>",
+            unsafe_allow_html=True,
+        )
+
+        priority_cols = [
+            "SKU",
+            "Description",
+            "Risk Level",
+            "Ending Balance",
+            "Last Outbound Date",
+            "Avg Daily Usage 30D",
+            "Days Remaining",
+            "Forecast Stockout Date",
+        ]
+        priority_display = prepare_display(priority_filtered[priority_cols])
+        priority_height = min(620, max(300, 88 + (min(len(priority_display), 16) * 31)))
+        show_limited_dataframe(priority_display, height=priority_height, limit=250, show_count=False)
 
 
 elif selected_page == "SKU Detail":
@@ -3805,40 +4184,61 @@ elif selected_page == "SKU Detail":
             unsafe_allow_html=True,
         )
 
-        ending_balance_value = pd.to_numeric(pd.Series([selected["Ending Balance"]]), errors="coerce").iloc[0]
-        if pd.isna(ending_balance_value):
-            st.warning("This SKU is missing a valid Ending Balance value.")
-        elif ending_balance_value <= 0 and selected["Risk Level"] == "Critical":
-            st.warning("This SKU has active demand and zero or negative ending balance.")
-        elif selected["Risk Level"] == "No Recent Demand":
-            st.info("This SKU had outbound demand in the 90-day data window but none in the 30-day data window.")
-        elif selected["Risk Level"] == "Inactive / No Demand":
-            st.info("This SKU has no outbound demand in the 90-day data window.")
+        if format_name == "Orlando":
+            st.info("Current Available is not stored in this report. Enter it in Stock Check only when validating a new DO.")
+            d1, d2, d3, d4 = st.columns(4)
+            with d1:
+                metric_card("Demand Status", selected["Demand Status"], "Based on negative AXIA-reference movement")
+            with d2:
+                metric_card("Total Inbound", fmt_num(selected["Transaction Total Inbound"]), "Positive Quantity")
+            with d3:
+                metric_card("Total Outbound", fmt_num(selected["Transaction Total Outbound"]), "Negative Quantity with AXIA reference")
+            with d4:
+                metric_card("Avg Daily Usage", fmt_num(selected["Avg Daily Usage 30D"], 2), "Business days in available 30D coverage")
+            detail_cols = [
+                "Outbound Last 90 Days",
+                "Outbound Last 30 Days",
+                "Outbound Last 14 Days",
+                "Outbound Last 7 Days",
+                "Last Outbound Date",
+                "Last Inbound Date",
+                "Last Activity Date",
+            ]
+        else:
+            ending_balance_value = pd.to_numeric(pd.Series([selected["Ending Balance"]]), errors="coerce").iloc[0]
+            if pd.isna(ending_balance_value):
+                st.warning("This SKU is missing a valid Ending Balance value.")
+            elif ending_balance_value <= 0 and selected["Risk Level"] == "Critical":
+                st.warning("This SKU has active demand and zero or negative ending balance.")
+            elif selected["Risk Level"] == "No Recent Demand":
+                st.info("This SKU had outbound demand in the 90-day data window but none in the 30-day data window.")
+            elif selected["Risk Level"] == "Inactive / No Demand":
+                st.info("This SKU has no outbound demand in the 90-day data window.")
 
-        d1, d2, d3, d4 = st.columns(4)
-        with d1:
-            metric_card("Risk Level", risk_badge_text(selected["Risk Level"]), selected["Recommended Action"])
-        with d2:
-            metric_card("Ending Balance", fmt_num(selected["Ending Balance"]), "Official ending balance")
-        with d3:
-            metric_card("Days Remaining", fmt_num(selected["Days Remaining"], 1), "Based on Avg Daily Usage 30D")
-        with d4:
-            metric_card("Forecast Stockout", fmt_date(selected["Forecast Stockout Date"]), "Business day estimate")
+            d1, d2, d3, d4 = st.columns(4)
+            with d1:
+                metric_card("Risk Level", risk_badge_text(selected["Risk Level"]), selected["Recommended Action"])
+            with d2:
+                metric_card("Ending Balance", fmt_num(selected["Ending Balance"]), "Official ending balance")
+            with d3:
+                metric_card("Days Remaining", fmt_num(selected["Days Remaining"], 1), "Based on Avg Daily Usage 30D")
+            with d4:
+                metric_card("Forecast Stockout", fmt_date(selected["Forecast Stockout Date"]), "Business day estimate")
+            detail_cols = [
+                "Demand Status",
+                "Official Total Inbound",
+                "Official Total Outbound",
+                "Avg Daily Usage 30D",
+                "Last Outbound Date",
+                "Last Inbound Date",
+                "Last Activity Date",
+                "Official Total Row",
+                "Official Ending Row",
+            ]
 
         st.markdown("<div class='section-block'></div>", unsafe_allow_html=True)
         st.markdown('<div class="section-title">SKU metrics</div>', unsafe_allow_html=True)
         st.markdown('<div class="section-subtitle">Demand, usage, and recent activity for the selected item.</div>', unsafe_allow_html=True)
-        detail_cols = [
-            "Demand Status",
-            "Official Total Inbound",
-            "Official Total Outbound",
-            "Avg Daily Usage 30D",
-            "Last Outbound Date",
-            "Last Inbound Date",
-            "Last Activity Date",
-            "Official Total Row",
-            "Official Ending Row",
-        ]
         detail = selected[detail_cols].to_frame("Value")
         detail["Value"] = detail.apply(
             lambda r: fmt_date(r["Value"]) if "date" in str(r.name).lower()
@@ -3864,13 +4264,15 @@ elif selected_page == "SKU Detail":
                 "Ref #",
                 "Qty In",
                 "Qty Out",
+                "Adjustment Qty",
+                "Signed Quantity",
                 "Balance After Transaction",
                 "Is Not Shipped",
                 "Is Cancelled",
             ]
             for col in full_tx_cols:
                 if col not in tx_sku.columns:
-                    if col in ["Qty In", "Qty Out", "Balance After Transaction"]:
+                    if col in ["Qty In", "Qty Out", "Adjustment Qty", "Signed Quantity", "Balance After Transaction"]:
                         tx_sku[col] = 0.0
                     elif col in ["Is Not Shipped", "Is Cancelled"]:
                         tx_sku[col] = False
@@ -3891,7 +4293,10 @@ elif selected_page == "SKU Detail":
                 with s2:
                     metric_card("Total Qty Out", fmt_num(total_qty_out), "Outbound transaction total")
                 with s3:
-                    metric_card("Current Balance", fmt_num(selected["Ending Balance"]), "Official ending balance")
+                    if format_name == "Orlando":
+                        metric_card("References", fmt_num(tx_sku["Ref #"].astype(str).map(clean_text).replace("", np.nan).nunique()), "Unique references for this SKU")
+                    else:
+                        metric_card("Current Balance", fmt_num(selected["Ending Balance"]), "Official ending balance")
 
                 st.markdown("<div class='kpi-row-gap'></div>", unsafe_allow_html=True)
 
@@ -4195,12 +4600,12 @@ elif selected_page == "DO Lookup":
             unsafe_allow_html=True,
         )
     else:
-        do_required_cols = ["Ref #", "Trans. #", "SKU", "Description", "Activity Date", "Transaction Type", "Qty In", "Qty Out", "Balance After Transaction", "Is Not Shipped", "Is Cancelled", "Excel Row"]
+        do_required_cols = ["Ref #", "Trans. #", "SKU", "Description", "Activity Date", "Transaction Type", "Qty In", "Qty Out", "Adjustment Qty", "Signed Quantity", "Balance After Transaction", "Is Not Shipped", "Is Cancelled", "Excel Row"]
         if any(col not in do_tx.columns for col in do_required_cols):
             do_tx = do_tx.copy()
         for col in do_required_cols:
             if col not in do_tx.columns:
-                if col in ["Qty In", "Qty Out", "Balance After Transaction"]:
+                if col in ["Qty In", "Qty Out", "Adjustment Qty", "Signed Quantity", "Balance After Transaction"]:
                     do_tx[col] = 0.0
                 elif col in ["Is Not Shipped", "Is Cancelled"]:
                     do_tx[col] = False
@@ -4373,6 +4778,8 @@ elif selected_page == "DO Lookup":
                 "Trans. #",
                 "Qty In",
                 "Qty Out",
+                "Adjustment Qty",
+                "Signed Quantity",
                 "Balance After Transaction",
                 "Is Not Shipped",
                 "Is Cancelled",
@@ -4386,7 +4793,12 @@ elif selected_page == "DO Lookup":
 
 
 elif selected_page == "Stock Check":
-    tab_page_header("Stock Check", "Enter DO demand to calculate temporary remaining stock. Existing report DOs are recognized to prevent double-counting.")
+    stock_check_subtitle = (
+        "Enter DO demand and Current Available to calculate temporary remaining stock. Existing negative-quantity references are recognized to prevent double-counting."
+        if format_name == "Orlando"
+        else "Enter DO demand to calculate temporary remaining stock. Existing report DOs are recognized to prevent double-counting."
+    )
+    tab_page_header("Stock Check", stock_check_subtitle)
 
     stock_table_version_key = f"stock_check_table_version_{site_key}"
     stock_result_signature_key = f"stock_check_result_signature_{site_key}"
@@ -4399,196 +4811,61 @@ elif selected_page == "Stock Check":
     stock_run_input_key = f"stock_check_run_input_{site_key}"
     stock_rma_excluded_key = f"stock_check_rma_excluded_{site_key}"
     stock_result_model_key = f"stock_check_result_model_{site_key}"
-    stock_editor_base_key = f"stock_check_editor_base_{site_key}"
-    stock_live_table_key = f"stock_check_live_table_{site_key}"
-    stock_last_seen_key = f"stock_check_last_seen_{site_key}"
-    stock_undo_history_key = f"stock_check_undo_history_{site_key}"
-
-    stock_columns = ["DO #", "Item Code / SKU", "Qty"]
+    stock_check_source_value = (
+        f"{model_source_value}|available-as-of-{pd.to_datetime(inventory_as_of_date).strftime('%Y-%m-%d')}"
+        if format_name == "Orlando"
+        else model_source_value
+    )
     st.session_state.setdefault(stock_table_version_key, 0)
-    default_stock_table_df = pd.DataFrame(
-        {
-            "DO #": [""] * 30,
-            "Item Code / SKU": [""] * 30,
-            "Qty": [""] * 30,
-        }
-    )
-
-    def valid_stock_input_frame(value):
-        return isinstance(value, pd.DataFrame) and set(stock_columns).issubset(value.columns)
-
-    def normalized_stock_input_frame(value):
-        if not valid_stock_input_frame(value):
-            return default_stock_table_df.copy()
-        return value[stock_columns].copy().reset_index(drop=True)
-
-    def stock_input_frames_equal(left, right):
-        if not valid_stock_input_frame(left) or not valid_stock_input_frame(right):
-            return False
-        left_clean = left[stock_columns].copy().reset_index(drop=True).fillna("").astype(str)
-        right_clean = right[stock_columns].copy().reset_index(drop=True).fillna("").astype(str)
-        return left_clean.equals(right_clean)
-
-    saved_stock_table_df = st.session_state.get(stock_saved_table_key)
-    editor_base_df = st.session_state.get(stock_editor_base_key)
-    if not valid_stock_input_frame(editor_base_df):
-        if valid_stock_input_frame(saved_stock_table_df):
-            editor_base_df = normalized_stock_input_frame(saved_stock_table_df)
-        else:
-            editor_base_df = default_stock_table_df.copy()
-        st.session_state[stock_editor_base_key] = editor_base_df.copy()
-
-    if not valid_stock_input_frame(st.session_state.get(stock_last_seen_key)):
-        st.session_state[stock_last_seen_key] = editor_base_df.copy()
-    if not valid_stock_input_frame(st.session_state.get(stock_live_table_key)):
-        st.session_state[stock_live_table_key] = st.session_state[stock_last_seen_key].copy()
-    if not isinstance(st.session_state.get(stock_undo_history_key), list):
-        st.session_state[stock_undo_history_key] = []
-
     stock_table_key = f"stock_check_table_input_{site_key}_{st.session_state[stock_table_version_key]}"
-    stock_reset_button_key = f"stock_reset_{site_key}"
-    stock_undo_button_key = f"stock_undo_{site_key}"
-    stock_run_button_key = f"stock_run_{site_key}"
-
-    # Reserve the action-row position so it can reflect history created by the
-    # current data-editor rerun while still appearing above the table.
-    stock_action_placeholder = st.empty()
-
-    stock_table_df = st.data_editor(
-        editor_base_df,
-        use_container_width=True,
-        hide_index=True,
-        height=342,
-        num_rows="dynamic",
-        key=stock_table_key,
-        column_config={
-            "DO #": st.column_config.TextColumn("DO #", help="Paste or enter the DO number."),
-            "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU", help="Paste or enter the item code/SKU."),
-            "Qty": st.column_config.TextColumn("Qty", help="Paste or enter the requested quantity."),
-        },
-    )
-    stock_table_df = normalized_stock_input_frame(stock_table_df)
-
-    previous_stock_table_df = st.session_state.get(stock_last_seen_key)
-    if valid_stock_input_frame(previous_stock_table_df) and not stock_input_frames_equal(stock_table_df, previous_stock_table_df):
-        updated_history = list(st.session_state.get(stock_undo_history_key, []))
-        if not updated_history or not stock_input_frames_equal(updated_history[-1], previous_stock_table_df):
-            updated_history.append(normalized_stock_input_frame(previous_stock_table_df))
-        st.session_state[stock_undo_history_key] = updated_history[-50:]
-        st.session_state[stock_last_seen_key] = stock_table_df.copy()
-    st.session_state[stock_live_table_key] = stock_table_df.copy()
-
-    stock_history = st.session_state.get(stock_undo_history_key, [])
-    with stock_action_placeholder.container():
-        reset_col, undo_col, run_col, action_spacer_col = st.columns([1, 1, 1.5, 3.5])
+    stock_input_columns = ["DO #", "Item Code / SKU", "Qty"]
+    if format_name == "Orlando":
+        stock_input_columns.append("Current Available")
+    default_stock_table_df = pd.DataFrame({column: [""] * 30 for column in stock_input_columns})
+    saved_stock_table_df = st.session_state.get(stock_saved_table_key)
+    if isinstance(saved_stock_table_df, pd.DataFrame) and set(stock_input_columns).issubset(saved_stock_table_df.columns):
+        stock_template_df = saved_stock_table_df[stock_input_columns].copy()
+    else:
+        stock_template_df = default_stock_table_df
+    with st.form(key=f"stock_check_form_{site_key}", clear_on_submit=False):
+        reset_col, run_col, action_spacer_col = st.columns([1, 1.5, 4.5])
         with reset_col:
-            stock_reset_clicked = st.button(
+            stock_reset_clicked = st.form_submit_button(
                 "Reset",
                 use_container_width=True,
-                key=stock_reset_button_key,
-            )
-        with undo_col:
-            stock_undo_clicked = st.button(
-                "Undo",
-                use_container_width=True,
-                key=stock_undo_button_key,
-                disabled=not bool(stock_history),
-                help="Undo the last committed Stock Check table edit (Ctrl+Z).",
             )
         with run_col:
-            stock_run_clicked = st.button(
+            stock_run_clicked = st.form_submit_button(
                 "Run Stock Check",
                 type="primary",
                 use_container_width=True,
-                key=stock_run_button_key,
             )
+        stock_table_df = st.data_editor(
+            stock_template_df,
+            use_container_width=True,
+            hide_index=True,
+            height=342,
+            num_rows="dynamic",
+            key=stock_table_key,
+            column_config={
+                "DO #": st.column_config.TextColumn("DO #", help="Paste or enter the DO number."),
+                "Item Code / SKU": st.column_config.TextColumn("Item Code / SKU", help="Paste or enter the item code/SKU."),
+                "Qty": st.column_config.TextColumn("Qty", help="Paste or enter the requested quantity."),
+                **(
+                    {"Current Available": st.column_config.TextColumn("Current Available", help="Enter the current usable quantity for this SKU. Enter it once per SKU; repeated rows may be blank.")}
+                    if format_name == "Orlando"
+                    else {}
+                ),
+            },
+        )
 
     if stock_reset_clicked:
         st.session_state[stock_table_version_key] += 1
-        keys_to_clear = [
-            stock_result_signature_key,
-            stock_detail_result_key,
-            stock_overview_result_key,
-            stock_issues_result_key,
-            stock_temp_result_key,
-            stock_temp_filter_key,
-            stock_saved_table_key,
-            stock_run_input_key,
-            stock_rma_excluded_key,
-            stock_result_model_key,
-            stock_editor_base_key,
-            stock_live_table_key,
-            stock_last_seen_key,
-            stock_undo_history_key,
-        ]
+        keys_to_clear = [stock_result_signature_key, stock_detail_result_key, stock_overview_result_key, stock_issues_result_key, stock_temp_result_key, stock_temp_filter_key, stock_saved_table_key, stock_run_input_key, stock_rma_excluded_key, stock_result_model_key]
         for key in keys_to_clear:
             st.session_state.pop(key, None)
         update_persistent_app_state(remove_keys=keys_to_clear)
         st.rerun()
-
-    if stock_undo_clicked and stock_history:
-        undo_target_df = normalized_stock_input_frame(stock_history[-1])
-        st.session_state[stock_undo_history_key] = stock_history[:-1]
-        st.session_state[stock_editor_base_key] = undo_target_df.copy()
-        st.session_state[stock_live_table_key] = undo_target_df.copy()
-        st.session_state[stock_last_seen_key] = undo_target_df.copy()
-        st.session_state[stock_table_version_key] += 1
-        st.rerun()
-
-    undo_button_selector = f".st-key-{stock_undo_button_key} button"
-    editor_selector = f".st-key-{stock_table_key}"
-    components.html(
-        f"""
-        <script>
-        (() => {{
-            const root = window.parent;
-            const doc = root.document;
-            root.__inventoryStockUndoButtonSelector = {json.dumps(undo_button_selector)};
-            root.__inventoryStockEditorSelector = {json.dumps(editor_selector)};
-
-            if (!root.__inventoryStockUndoShortcutInstalled) {{
-                root.__inventoryStockGridActive = false;
-
-                const updateGridFocus = (event) => {{
-                    const selector = root.__inventoryStockEditorSelector;
-                    root.__inventoryStockGridActive = Boolean(
-                        selector && event.target && event.target.closest && event.target.closest(selector)
-                    );
-                }};
-
-                doc.addEventListener("pointerdown", updateGridFocus, true);
-                doc.addEventListener("focusin", updateGridFocus, true);
-                doc.addEventListener("keydown", (event) => {{
-                    const isUndo = (event.ctrlKey || event.metaKey)
-                        && !event.shiftKey
-                        && String(event.key).toLowerCase() === "z";
-                    if (!isUndo || !root.__inventoryStockGridActive) return;
-
-                    const target = event.target;
-                    const nativeEditable = target && (
-                        target.matches?.("input, textarea, [contenteditable='true']")
-                        || target.isContentEditable
-                    );
-                    if (nativeEditable) return;
-
-                    const selector = root.__inventoryStockUndoButtonSelector;
-                    const undoButton = selector ? doc.querySelector(selector) : null;
-                    if (!undoButton || undoButton.disabled) return;
-
-                    event.preventDefault();
-                    event.stopPropagation();
-                    undoButton.click();
-                }}, true);
-
-                root.__inventoryStockUndoShortcutInstalled = true;
-            }}
-        }})();
-        </script>
-        """,
-        height=0,
-        width=0,
-    )
-    st.caption("Ctrl+Z undoes the last committed table edit. While actively typing inside a cell, Ctrl+Z uses the browser's normal character-by-character undo.")
 
     row_count_mismatch = False
     stock_has_saved_result = stock_result_signature_key in st.session_state
@@ -4597,9 +4874,12 @@ elif selected_page == "Stock Check":
         st.session_state[stock_saved_table_key] = stock_table_df.copy()
         persistent_stock_values = {stock_saved_table_key: stock_table_df}
         input_df = parse_stock_check_table(stock_table_df)
+        calculation_sku_df = sku_df
+        if format_name == "Orlando":
+            input_df, calculation_sku_df = apply_orlando_current_available(input_df, sku_df)
         if not input_df.empty:
             input_signature_source = input_df.fillna("").astype(str).to_json(orient="records")
-            stock_current_signature = hashlib.sha256(f"{uploaded_key}|{input_signature_source}".encode("utf-8")).hexdigest()
+            stock_current_signature = hashlib.sha256(f"{stock_check_source_value}|{input_signature_source}".encode("utf-8")).hexdigest()
             calculation_input_df, excluded_rma_dos = exclude_rma_stock_check_rows(input_df)
             if calculation_input_df.empty:
                 detail_df = pd.DataFrame()
@@ -4617,8 +4897,11 @@ elif selected_page == "Stock Check":
                         st.session_state[stock_do_cache_key] = {"source": model_source_value, "tables": existing_do_tables}
                 else:
                     existing_do_tables = (set(), {}, {})
-                detail_df, overview_df, issues_df = build_stock_check_tables(calculation_input_df, sku_df, model.get("tx_df", pd.DataFrame()), existing_do_tables)
-                temporary_balance_df = build_temporary_balance_table(sku_df, detail_df) if not detail_df.empty else pd.DataFrame()
+                detail_df, overview_df, issues_df = build_stock_check_tables(calculation_input_df, calculation_sku_df, model.get("tx_df", pd.DataFrame()), existing_do_tables)
+                temporary_source_df = calculation_sku_df
+                if format_name == "Orlando":
+                    temporary_source_df = calculation_sku_df[pd.to_numeric(calculation_sku_df["Ending Balance"], errors="coerce").notna()].copy()
+                temporary_balance_df = build_temporary_balance_table(temporary_source_df, detail_df) if not detail_df.empty and not temporary_source_df.empty else pd.DataFrame()
             st.session_state[stock_result_signature_key] = stock_current_signature
             st.session_state[stock_detail_result_key] = detail_df
             st.session_state[stock_overview_result_key] = overview_df
@@ -4626,7 +4909,7 @@ elif selected_page == "Stock Check":
             st.session_state[stock_temp_result_key] = temporary_balance_df
             st.session_state[stock_run_input_key] = calculation_input_df.copy()
             st.session_state[stock_rma_excluded_key] = excluded_rma_dos
-            st.session_state[stock_result_model_key] = model_source_value
+            st.session_state[stock_result_model_key] = stock_check_source_value
             persistent_stock_values.update(
                 {
                     stock_result_signature_key: stock_current_signature,
@@ -4636,7 +4919,7 @@ elif selected_page == "Stock Check":
                     stock_temp_result_key: temporary_balance_df,
                     stock_run_input_key: calculation_input_df,
                     stock_rma_excluded_key: excluded_rma_dos,
-                    stock_result_model_key: model_source_value,
+                    stock_result_model_key: stock_check_source_value,
                 }
             )
             stock_has_saved_result = True
@@ -4659,7 +4942,7 @@ elif selected_page == "Stock Check":
         excluded_rma_dos = []
         stock_result_model = ""
 
-    if stock_has_saved_result and stock_result_model and stock_result_model != model_source_value:
+    if stock_has_saved_result and stock_result_model and stock_result_model != stock_check_source_value:
         st.warning(f"Report changed or refreshed. Click Run Stock Check to include all {len(sku_df):,} current SKUs.")
 
     if stock_has_saved_result and excluded_rma_dos:
@@ -4677,7 +4960,10 @@ elif selected_page == "Stock Check":
             st.caption(f"Input issue rows: {len(issue_rows):,}")
 
     if not stock_has_saved_result:
-        st.info("Paste values under DO #, Item Code / SKU, and Qty, then click Run Stock Check.")
+        if format_name == "Orlando":
+            st.info("Paste DO #, Item Code / SKU, Qty, and Current Available. Current Available is required because the Stock Movements report has no balance column.")
+        else:
+            st.info("Paste values under DO #, Item Code / SKU, and Qty, then click Run Stock Check.")
     elif row_count_mismatch:
         pass
     else:
@@ -4733,7 +5019,12 @@ elif selected_page == "Stock Check":
 
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
             st.markdown("<div class='section-title'>Item Availability by DO #</div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-subtitle'>Current stock is the official Ending Balance. New DOs reduce stock sequentially. Existing DOs only deduct incremental Qty To Check.</div>", unsafe_allow_html=True)
+            stock_source_text = (
+                f"Current stock is the manually entered Current Available as of {pd.to_datetime(inventory_as_of_date).strftime('%m/%d/%Y')}. New DOs reduce stock sequentially; existing negative-quantity references only deduct incremental Qty To Check."
+                if format_name == "Orlando"
+                else "Current stock is the official Ending Balance. New DOs reduce stock sequentially. Existing DOs only deduct incremental Qty To Check."
+            )
+            st.markdown(f"<div class='section-subtitle'>{html.escape(stock_source_text)}</div>", unsafe_allow_html=True)
 
             for do_no in overview_df["DO #"].astype(str).tolist() if not overview_df.empty else []:
                 do_items = detail_df[detail_df["DO #"].astype(str) == do_no].copy()
@@ -4832,60 +5123,117 @@ elif selected_page == "Stock Check":
                 show_limited_dataframe(issues_display, height=issue_height, limit=1000, show_count=False)
 
 elif selected_page == "Audit":
-    tab_page_header("Audit Checks", "Review source completeness, official-row reconciliation, and recent outbound windows.")
+    if format_name == "Orlando":
+        tab_page_header("Movement Audit", "Review report coverage, sign-based movement classification, and outbound windows.")
+        tx_audit_df = model.get("tx_df", pd.DataFrame()).copy()
+        inbound_rows = int((pd.to_numeric(tx_audit_df.get("Qty In", 0), errors="coerce").fillna(0) > 0).sum()) if not tx_audit_df.empty else 0
+        outbound_rows = int((pd.to_numeric(tx_audit_df.get("Qty Out", 0), errors="coerce").fillna(0) > 0).sum()) if not tx_audit_df.empty else 0
+        adjustment_rows = int((pd.to_numeric(tx_audit_df.get("Adjustment Qty", 0), errors="coerce").fillna(0) != 0).sum()) if not tx_audit_df.empty else 0
+        a1, a2, a3, a4 = st.columns(4)
+        with a1:
+            metric_card("Movement Rows", fmt_num(len(tx_audit_df)), f"{fmt_date(report_start)} – {fmt_date(report_end)}")
+        with a2:
+            metric_card("Inbound Rows", fmt_num(inbound_rows), "Positive Quantity")
+        with a3:
+            metric_card("Customer Outbound", fmt_num(outbound_rows), "Negative Quantity with AXIA reference")
+        with a4:
+            metric_card("Adjustment Rows", fmt_num(adjustment_rows), "Other negative references")
 
-    audit_df = model["audit_df"]
-    audit_review_df = audit_df[audit_df["Audit Status"] != "Pass"]
-    if audit_review_df.empty:
-        st.success("All available audit checks passed.")
+        st.warning("Current Available is not present in this file, so inventory balance reconciliation, shortage risk, and stockout dates cannot be audited from the upload alone.")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Outbound window audit</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Calendar windows are clipped to the uploaded report range. Average Daily Usage uses available U.S. business days, including zero-demand business days inside that range.</div>', unsafe_allow_html=True)
+        r1, r2, r3, r4 = st.columns(4)
+        recent_labels = ["Outbound Last 90 Days", "Outbound Last 30 Days", "Outbound Last 14 Days", "Outbound Last 7 Days"]
+        recent_card_labels = ["Recent Outbound 90D", "Recent Outbound 30D", "Recent Outbound 14D", "Recent Outbound 7D"]
+        business_counts = model.get("window_business_day_counts", {})
+        for col, label, card_label in zip([r1, r2, r3, r4], recent_labels, recent_card_labels):
+            start_date, end_date = windows[label]
+            with col:
+                metric_card(card_label, fmt_num(sku_df[label].sum()), f"{fmt_date(start_date)} - {fmt_date(end_date)} | {business_counts.get(label, 0)} business days")
+
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">SKU movement totals</div>', unsafe_allow_html=True)
+        movement_audit_cols = [
+            "SKU",
+            "Description",
+            "Transaction Total Inbound",
+            "Transaction Total Outbound",
+            "Adjustment Total",
+            "Last Inbound Date",
+            "Last Outbound Date",
+            "Last Activity Date",
+        ]
+        show_limited_dataframe(prepare_display(sku_df[movement_audit_cols]), height=420, limit=1000)
+        with st.expander("Full movement rows", expanded=False):
+            show_transaction_dataframe(tx_audit_df, height=420, limit=2000)
     else:
-        st.markdown('<div class="section-title">Items requiring review</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-subtitle">Only audit exceptions are shown below.</div>', unsafe_allow_html=True)
-        show_limited_dataframe(audit_review_df, height=320, limit=500)
+        tab_page_header("Audit Checks", "Review source completeness, official-row reconciliation, and recent outbound windows.")
 
-    with st.expander("Full SKU Reconciliation", expanded=False):
-        show_limited_dataframe(audit_df, height=360, limit=1000)
+        audit_df = model["audit_df"]
+        audit_review_df = audit_df[audit_df["Audit Status"] != "Pass"]
+        if audit_review_df.empty:
+            st.success("All available audit checks passed.")
+        else:
+            st.markdown('<div class="section-title">Items requiring review</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-subtitle">Only audit exceptions are shown below.</div>', unsafe_allow_html=True)
+            show_limited_dataframe(audit_review_df, height=320, limit=500)
 
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Outbound window audit</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Totals are calculated from dated outbound transaction rows.</div>', unsafe_allow_html=True)
-    r1, r2, r3, r4 = st.columns(4)
-    recent_labels = ["Outbound Last 90 Days", "Outbound Last 30 Days", "Outbound Last 14 Days", "Outbound Last 7 Days"]
-    recent_card_labels = ["Recent Outbound 90D", "Recent Outbound 30D", "Recent Outbound 14D", "Recent Outbound 7D"]
-    for col, label, card_label in zip([r1, r2, r3, r4], recent_labels, recent_card_labels):
-        start, end = windows[label]
-        valid_dates = model["window_dates"][label]
-        with col:
-            metric_card(card_label, fmt_num(sku_df[label].sum()), f"{fmt_date(start)} - {fmt_date(end)} | {len(valid_dates)} data dates")
+        with st.expander("Full SKU Reconciliation", expanded=False):
+            show_limited_dataframe(audit_df, height=360, limit=1000)
 
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Official total rows</div>', unsafe_allow_html=True)
-    show_limited_dataframe(model["official_total_df"], height=260, limit=250)
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Outbound window audit</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Totals are calculated from dated outbound transaction rows.</div>', unsafe_allow_html=True)
+        r1, r2, r3, r4 = st.columns(4)
+        recent_labels = ["Outbound Last 90 Days", "Outbound Last 30 Days", "Outbound Last 14 Days", "Outbound Last 7 Days"]
+        recent_card_labels = ["Recent Outbound 90D", "Recent Outbound 30D", "Recent Outbound 14D", "Recent Outbound 7D"]
+        for col, label, card_label in zip([r1, r2, r3, r4], recent_labels, recent_card_labels):
+            start_date, end_date = windows[label]
+            valid_dates = model["window_dates"][label]
+            with col:
+                metric_card(card_label, fmt_num(sku_df[label].sum()), f"{fmt_date(start_date)} - {fmt_date(end_date)} | {len(valid_dates)} data dates")
 
-    st.markdown('<div class="section-title" style="margin-top:14px;">Official ending balance rows</div>', unsafe_allow_html=True)
-    show_limited_dataframe(model["official_ending_df"], height=260, limit=250)
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Official total rows</div>', unsafe_allow_html=True)
+        show_limited_dataframe(model["official_total_df"], height=260, limit=250)
 
-    with st.expander("Not Shipped Rows", expanded=False):
-        show_limited_dataframe(model["not_shipped_df"], height=260, limit=250)
+        st.markdown('<div class="section-title" style="margin-top:14px;">Official ending balance rows</div>', unsafe_allow_html=True)
+        show_limited_dataframe(model["official_ending_df"], height=260, limit=250)
 
-    with st.expander("Cancelled Rows", expanded=False):
-        show_limited_dataframe(model["cancelled_df"], height=260, limit=250)
+        with st.expander("Not Shipped Rows", expanded=False):
+            show_limited_dataframe(model["not_shipped_df"], height=260, limit=250)
 
-    if not model["beginning_balance_df"].empty:
-        with st.expander("Beginning Balance Rows", expanded=False):
-            show_limited_dataframe(model["beginning_balance_df"], height=260, limit=250)
+        with st.expander("Cancelled Rows", expanded=False):
+            show_limited_dataframe(model["cancelled_df"], height=260, limit=250)
+
+        if not model["beginning_balance_df"].empty:
+            with st.expander("Beginning Balance Rows", expanded=False):
+                show_limited_dataframe(model["beginning_balance_df"], height=260, limit=250)
 
 elif selected_page == "Help":
     tab_page_header("Help", "The shortest path through the dashboard for daily inventory work.")
-    st.markdown(
-        """
-        1. Select the **Warehouse** and upload the matching Item Activity Report.
-        2. Start in **Overview** and review Critical, Warning, and Watch items.
-        3. Use **SKU Detail** for item-level activity and **DO Lookup** for order searches.
-        4. Use **Stock Check** before creating outbound orders, then use **Audit** only when source reconciliation is needed.
-        5. Forecast dates exclude weekends and U.S. federal holidays.
-        """
-    )
+    if format_name == "Orlando":
+        st.markdown(
+            """
+            1. Upload one **Stock Movements - Summary** workbook.
+            2. The app identifies the earliest and latest movement dates automatically.
+            3. **Type** and **UQ** are ignored. Positive Quantity is inbound; negative Quantity with an AXIA Reference is customer outbound; other negative references are adjustments.
+            4. Use **DO Lookup** to search the Reference column.
+            5. In **Stock Check**, enter Current Available once for each SKU because the upload does not contain current balance.
+            6. Average Daily Usage uses available U.S. business days within the uploaded date range.
+            """
+        )
+    else:
+        st.markdown(
+            """
+            1. Select the **Warehouse** and upload the matching Item Activity Report.
+            2. Start in **Overview** and review Critical, Warning, and Watch items.
+            3. Use **SKU Detail** for item-level activity and **DO Lookup** for order searches.
+            4. Use **Stock Check** before creating outbound orders, then use **Audit** only when source reconciliation is needed.
+            5. Forecast dates exclude weekends and U.S. federal holidays.
+            """
+        )
 if show_upload_effect:
     sku_count = len(model["sku_df"])
     report_end_text = fmt_date(model.get("report_end"))
