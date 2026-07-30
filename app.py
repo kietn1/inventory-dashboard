@@ -2578,7 +2578,7 @@ def prepare_display(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def prepare_customer_export(df: pd.DataFrame) -> pd.DataFrame:
+def prepare_customer_export(df: pd.DataFrame, format_name: str = "") -> pd.DataFrame:
     customer_cols = [
         "SKU",
         "Description",
@@ -2589,12 +2589,21 @@ def prepare_customer_export(df: pd.DataFrame) -> pd.DataFrame:
         "Days Remaining",
         "Forecast Stockout Date",
     ]
+    if clean_text(format_name).lower() == "orlando":
+        customer_cols = [
+            col
+            for col in customer_cols
+            if col not in {"Avg Daily Usage 30D", "Days Remaining", "Forecast Stockout Date"}
+        ]
     out = df[customer_cols].copy()
     out["Ending Balance"] = pd.to_numeric(out["Ending Balance"], errors="coerce").round(0)
-    out["Avg Daily Usage 30D"] = pd.to_numeric(out["Avg Daily Usage 30D"], errors="coerce").round(2)
-    out["Days Remaining"] = pd.to_numeric(out["Days Remaining"], errors="coerce").round(1)
+    if "Avg Daily Usage 30D" in out.columns:
+        out["Avg Daily Usage 30D"] = pd.to_numeric(out["Avg Daily Usage 30D"], errors="coerce").round(2)
+    if "Days Remaining" in out.columns:
+        out["Days Remaining"] = pd.to_numeric(out["Days Remaining"], errors="coerce").round(1)
     for col in ["Forecast Stockout Date", "Last Outbound Date"]:
-        out[col] = pd.to_datetime(out[col], errors="coerce")
+        if col in out.columns:
+            out[col] = pd.to_datetime(out[col], errors="coerce")
     return out
 
 
@@ -3275,7 +3284,7 @@ def to_excel_bytes(model: dict, format_name: str, export_version: str) -> bytes:
 
     report_start = model.get("report_start")
     report_end = model.get("report_end")
-    export_df = prepare_customer_export(model["sku_df"])
+    export_df = prepare_customer_export(model["sku_df"], format_name)
 
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -3302,7 +3311,7 @@ def to_excel_bytes(model: dict, format_name: str, export_version: str) -> bytes:
 
         worksheet.merge_cells(start_row=3, start_column=1, end_row=3, end_column=last_col)
         note_cell = worksheet.cell(row=3, column=1)
-        note_cell.value = "Forecast Stockout Date excludes weekends and U.S. federal holidays."
+        note_cell.value = ""
         note_cell.font = Font(size=10, italic=True, color="6B7280")
         note_cell.alignment = Alignment(horizontal="left", vertical="center")
 
@@ -5095,7 +5104,6 @@ elif selected_page == "Help":
         2. Start in **Overview** and review Critical, Warning, and Watch items.
         3. Use **SKU Detail** for item-level activity and **DO Lookup** for order searches.
         4. Use **Stock Check** before creating outbound orders, then use **Audit** only when source reconciliation is needed.
-        5. Forecast dates exclude weekends and U.S. federal holidays.
         """
     )
 if show_upload_effect:
