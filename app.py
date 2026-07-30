@@ -14,7 +14,7 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
 CUSTOMER_EXPORT_VERSION = "Customer export v12"
-APP_CACHE_VERSION = "inventory-logic-v31-orlando-stock-movements"
+APP_CACHE_VERSION = "inventory-logic-v30-orlando-newark-format"
 WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
@@ -294,7 +294,7 @@ st.markdown(
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Sidebar: same top rhythm and surface language as the workspace */
+        
         section[data-testid="stSidebar"] {
             width: var(--sidebar-width) !important;
             min-width: var(--sidebar-width) !important;
@@ -469,7 +469,7 @@ st.markdown(
         }
         section[data-testid="stSidebar"] [data-testid="stFileUploader"] small { font-size: 10px; }
 
-        /* Main header aligned with the sidebar brand */
+        
         .app-header {
             min-height: 72px;
             display: flex;
@@ -697,7 +697,7 @@ st.markdown(
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Content hierarchy */
+        
         .tab-page-heading {
             margin: 1px 0 13px;
         }
@@ -725,7 +725,7 @@ st.markdown(
         .section-block { height: 14px; }
         .kpi-row-gap { height: 8px; }
 
-        /* KPI cards */
+        
         .kpi-card {
             position: relative;
             min-height: 104px;
@@ -797,7 +797,7 @@ st.markdown(
         .kpi-tone-neutral .kpi-accent { background: #6b6b6b; }
         .kpi-tone-neutral .kpi-icon { color: #5c5c5c; background: rgba(0,0,0,.055); }
 
-        /* Selected SKU */
+        
         .selected-sku-card {
             position: relative;
             margin: 0 0 12px;
@@ -837,7 +837,7 @@ st.markdown(
             line-height: 1.35;
         }
 
-        /* Streamlit controls */
+        
         .stButton > button, .stDownloadButton > button {
             min-height: 34px;
             padding: 6px 12px;
@@ -913,7 +913,7 @@ st.markdown(
         div[data-testid="stRadio"] label { font-size: 12px !important; }
         div[data-testid="stCheckbox"] label { font-size: 12px !important; }
 
-        /* Tables */
+        
         div[data-testid="stDataFrame"] {
             margin-top: 5px;
             overflow: hidden;
@@ -933,7 +933,7 @@ st.markdown(
             font-size: 10.5px;
         }
 
-        /* Expanders and alerts */
+        
         div[data-testid="stExpander"] {
             margin-bottom: 8px;
             overflow: hidden;
@@ -955,7 +955,7 @@ st.markdown(
             box-shadow: none;
         }
 
-        /* Search/status components */
+        
         .tx-filter-shell, .lookup-hero, .stock-input-example, .loading-stage-card, .ready-stage-card, .error-stage-card, .empty-state {
             background: rgba(255,255,255,.78);
             border: 1px solid var(--win-border);
@@ -1165,7 +1165,7 @@ st.markdown(
         .stage-title { color: var(--win-text); font-size: 12px; font-weight: 650; }
         .stage-subtitle { color: var(--win-text-secondary); font-size: 11px; }
 
-        /* Responsive */
+        
         @media (max-width: 1180px) {
             .app-header { align-items: flex-start; flex-direction: column; gap: 9px; }
             .app-meta { justify-content: flex-start; max-width: 100%; margin-left: 45px; }
@@ -1349,7 +1349,6 @@ FORMAT_CONFIGS = {
         "placeholder": "Search SKU...",
         "help": "Select Orlando and upload the PGL Stock Movements Report.",
         "parser": "orlando_stock_movements",
-        # After Orlando normalization, these canonical columns match the Newark parser.
         "cols": {
             "sku": 0,
             "description": 2,
@@ -1677,13 +1676,7 @@ def extract_orlando_report_end(raw: pd.DataFrame):
 
 
 def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
-    """Convert the Orlando Stock Movements Report into the canonical Item Activity layout.
 
-    Orlando may print serialized/detail lines before one summarized movement row. Only a
-    movement row with a populated Available balance is authoritative. The product-line
-    Available value is not a dependable beginning balance, so beginning balance is
-    reconciled from ending balance minus signed summarized movements.
-    """
     header_idx = validate_orlando_format(raw)
     report_end = extract_orlando_report_end(raw)
 
@@ -1751,7 +1744,7 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
                 qty_out = abs(signed_quantity)
             else:
                 qty_in = signed_quantity
-        else:  # ADJ
+        else:
             if signed_quantity >= 0:
                 qty_in = signed_quantity
             else:
@@ -1774,6 +1767,16 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
     finish_current()
     if not sections:
         raise WrongFileFormatError(FORMAT_CONFIGS["Orlando"]["wrong_format_warning"])
+
+    sku_keys = {section["sku"].upper() for section in sections}
+    sections = [
+        section
+        for section in sections
+        if not (
+            section["sku"].upper().startswith("QDD_")
+            and section["sku"][4:].upper() in sku_keys
+        )
+    ]
 
     all_dates = [movement["activity_date"] for section in sections for movement in section["movements"]]
     valid_dates = pd.to_datetime(pd.Series(all_dates), errors="coerce").dropna()
@@ -4660,8 +4663,8 @@ elif selected_page == "Stock Check":
     stock_undo_button_key = f"stock_undo_{site_key}"
     stock_run_button_key = f"stock_run_{site_key}"
 
-    # Reserve the action-row position so it can reflect history created by the
-    # current data-editor rerun while still appearing above the table.
+                                                                              
+                                                                      
     stock_action_placeholder = st.empty()
 
     stock_table_df = st.data_editor(
