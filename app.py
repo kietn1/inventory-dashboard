@@ -1678,7 +1678,6 @@ def extract_orlando_report_end(raw: pd.DataFrame):
 def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
 
     header_idx = validate_orlando_format(raw)
-    report_end = extract_orlando_report_end(raw)
 
     sections = []
     current = None
@@ -1781,8 +1780,7 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
     all_dates = [movement["activity_date"] for section in sections for movement in section["movements"]]
     valid_dates = pd.to_datetime(pd.Series(all_dates), errors="coerce").dropna()
     report_start = valid_dates.min().normalize() if not valid_dates.empty else pd.NaT
-    if pd.isna(report_end):
-        report_end = valid_dates.max().normalize() if not valid_dates.empty else pd.NaT
+    report_end = valid_dates.max().normalize() if not valid_dates.empty else pd.NaT
 
     canonical_rows = []
     range_text = "Item Activity"
