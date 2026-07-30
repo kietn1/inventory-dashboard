@@ -14,7 +14,7 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
 CUSTOMER_EXPORT_VERSION = "Customer export v12"
-APP_CACHE_VERSION = "inventory-logic-v30-orlando-newark-format"
+APP_CACHE_VERSION = "inventory-logic-v31-orlando-stock-movements"
 WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
@@ -1342,14 +1342,14 @@ FORMAT_CONFIGS = {
         "wrong_format_warning": "Wrong file format for Newark. Select the correct warehouse or upload a Newark-format report.",
     },
     "Orlando": {
-        # Temporary setup: Orlando currently uses the same report structure as Newark.
-        # Replace these column indexes and rules when the Orlando report format is provided.
         "title": "Inventory Shortage",
         "sidebar_title": "Inventory Dashboard",
-        "caption": "Upload an Item Activity Report Excel file to generate the shortage dashboard.",
-        "upload_label": "Drop Item Activity Report here",
+        "caption": "Upload the Orlando Stock Movements Report Excel file to generate the shortage dashboard.",
+        "upload_label": "Drop Orlando Stock Movements Report here",
         "placeholder": "Search SKU...",
-        "help": "Orlando temporarily uses the Newark report format.",
+        "help": "Select Orlando and upload the PGL Stock Movements Report.",
+        "parser": "orlando_stock_movements",
+        # After Orlando normalization, these canonical columns match the Newark parser.
         "cols": {
             "sku": 0,
             "description": 2,
@@ -1362,8 +1362,8 @@ FORMAT_CONFIGS = {
             "ctn_balance": 20,
         },
         "total_rule": "ref_total",
-        "total_source": "Ref # = Total",
-        "wrong_format_warning": "Wrong file format for Orlando. Orlando currently requires a Newark-format report.",
+        "total_source": "Orlando summarized movement rows",
+        "wrong_format_warning": "Wrong file format for Orlando. Upload the PGL Stock Movements Report with Product, Reference, Type, Date, Quantity, Available, and UQ columns.",
     },
     "Carson": {
         "title": "Inventory Shortage",
@@ -1637,6 +1637,212 @@ def find_header_row(raw: pd.DataFrame) -> int:
     raise ValueError("Cannot find a header row with SKU / Activity Date / Ref #.")
 
 
+def find_orlando_header_row(raw: pd.DataFrame) -> int:
+    required = {"product", "description", "reference", "type", "date", "quantity", "available", "uq"}
+    for idx in range(len(raw)):
+        row_values = {clean_text(value).lower() for value in raw.iloc[idx].tolist() if clean_text(value)}
+        if required.issubset(row_values):
+            return idx
+    raise WrongFileFormatError(FORMAT_CONFIGS["Orlando"]["wrong_format_warning"])
+
+
+def validate_orlando_format(raw: pd.DataFrame) -> int:
+    header_idx = find_orlando_header_row(raw)
+    header = [clean_text(value).lower() for value in raw.iloc[header_idx].tolist()]
+    expected_positions = {
+        2: "product",
+        3: "description",
+        4: "reference",
+        5: "type",
+        6: "date",
+        7: "quantity",
+        8: "available",
+        9: "uq",
+    }
+    for col_idx, expected in expected_positions.items():
+        if col_idx >= len(header) or header[col_idx] != expected:
+            raise WrongFileFormatError(FORMAT_CONFIGS["Orlando"]["wrong_format_warning"])
+    return header_idx
+
+
+def extract_orlando_report_end(raw: pd.DataFrame):
+    for row_idx in range(min(25, len(raw))):
+        row_text = " | ".join(clean_text(value) for value in raw.iloc[row_idx].tolist() if clean_text(value))
+        match = re.search(r"\bTo:\s*(\d{1,2}-[A-Za-z]{3}-\d{2,4})", row_text, flags=re.IGNORECASE)
+        if match:
+            parsed = parse_excel_or_text_date(match.group(1))
+            if not pd.isna(parsed):
+                return parsed
+    return pd.NaT
+
+
+def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
+    """Convert the Orlando Stock Movements Report into the canonical Item Activity layout.
+
+    Orlando may print serialized/detail lines before one summarized movement row. Only a
+    movement row with a populated Available balance is authoritative. The product-line
+    Available value is not a dependable beginning balance, so beginning balance is
+    reconciled from ending balance minus signed summarized movements.
+    """
+    header_idx = validate_orlando_format(raw)
+    report_end = extract_orlando_report_end(raw)
+
+    sections = []
+    current = None
+    movement_types = {"INW", "ORD", "ADJ"}
+
+    def finish_current():
+        nonlocal current
+        if current is not None:
+            sections.append(current)
+            current = None
+
+    for excel_idx in range(header_idx + 1, len(raw)):
+        row = raw.iloc[excel_idx]
+        product = clean_text(get_cell(row, 2))
+        description = clean_text(get_cell(row, 3))
+        reference = clean_text(get_cell(row, 4))
+        movement_type = clean_text(get_cell(row, 5)).upper()
+        date_raw = get_cell(row, 6)
+        date_text = clean_text(date_raw)
+        quantity = first_qty_number(get_cell(row, 7), np.nan)
+        available = first_qty_number(get_cell(row, 8), np.nan)
+        unit = clean_text(get_cell(row, 9))
+
+        if product and product.lower() != "product":
+            finish_current()
+            current = {
+                "sku": product,
+                "description": description,
+                "movements": [],
+                "ending_balance": np.nan,
+                "total_excel_row": np.nan,
+            }
+            continue
+
+        if current is None:
+            continue
+
+        if date_text.lower().rstrip(":") == "total":
+            current["ending_balance"] = available
+            current["total_excel_row"] = excel_idx + 1
+            continue
+
+        activity_date = parse_excel_or_text_date(date_raw)
+        is_summary_movement = (
+            movement_type in movement_types
+            and not pd.isna(activity_date)
+            and not pd.isna(quantity)
+            and not pd.isna(available)
+        )
+        if not is_summary_movement:
+            continue
+
+        signed_quantity = float(quantity)
+        qty_in = 0.0
+        qty_out = 0.0
+        if movement_type == "INW":
+            if signed_quantity >= 0:
+                qty_in = signed_quantity
+            else:
+                qty_out = abs(signed_quantity)
+        elif movement_type == "ORD":
+            if signed_quantity <= 0:
+                qty_out = abs(signed_quantity)
+            else:
+                qty_in = signed_quantity
+        else:  # ADJ
+            if signed_quantity >= 0:
+                qty_in = signed_quantity
+            else:
+                qty_out = abs(signed_quantity)
+
+        current["movements"].append(
+            {
+                "excel_row": excel_idx + 1,
+                "activity_date": activity_date,
+                "reference": reference,
+                "movement_type": movement_type,
+                "qty_in": qty_in,
+                "qty_out": qty_out,
+                "signed_quantity": signed_quantity,
+                "balance": float(available),
+                "unit": unit,
+            }
+        )
+
+    finish_current()
+    if not sections:
+        raise WrongFileFormatError(FORMAT_CONFIGS["Orlando"]["wrong_format_warning"])
+
+    all_dates = [movement["activity_date"] for section in sections for movement in section["movements"]]
+    valid_dates = pd.to_datetime(pd.Series(all_dates), errors="coerce").dropna()
+    report_start = valid_dates.min().normalize() if not valid_dates.empty else pd.NaT
+    if pd.isna(report_end):
+        report_end = valid_dates.max().normalize() if not valid_dates.empty else pd.NaT
+
+    canonical_rows = []
+    range_text = "Item Activity"
+    if not pd.isna(report_start) and not pd.isna(report_end):
+        range_text = f"Item Activity from: {report_start.strftime('%m/%d/%Y')} to {report_end.strftime('%m/%d/%Y')}"
+    canonical_rows.append([range_text])
+
+    header = [None] * 21
+    header[0] = "SKU"
+    header[2] = "Description"
+    header[7] = "Activity Date"
+    header[9] = "Trans. #"
+    header[10] = "Ref #"
+    header[12] = "Qty In / Ctn"
+    header[14] = "Qty Out / Ctn"
+    header[19] = "Balance"
+    header[20] = "Ctn Balance"
+    canonical_rows.append(header)
+
+    for section in sections:
+        ending_balance = section["ending_balance"]
+        if pd.isna(ending_balance):
+            raise ValueError(f"Orlando SKU {section['sku']} is missing its Total ending balance row.")
+
+        total_in = sum(movement["qty_in"] for movement in section["movements"])
+        total_out = sum(movement["qty_out"] for movement in section["movements"])
+        beginning_balance = float(ending_balance) - total_in + total_out
+
+        sku_row = [None] * 21
+        sku_row[0] = section["sku"]
+        sku_row[2] = section["description"]
+        canonical_rows.append(sku_row)
+
+        beginning_row = [None] * 21
+        beginning_row[7] = "Beginning Balance"
+        beginning_row[19] = beginning_balance
+        canonical_rows.append(beginning_row)
+
+        for movement in section["movements"]:
+            movement_row = [None] * 21
+            movement_row[7] = movement["activity_date"]
+            movement_row[9] = movement["movement_type"]
+            movement_row[10] = movement["reference"]
+            movement_row[12] = movement["qty_in"]
+            movement_row[14] = movement["qty_out"]
+            movement_row[19] = movement["balance"]
+            canonical_rows.append(movement_row)
+
+        total_row = [None] * 21
+        total_row[10] = "Total"
+        total_row[12] = total_in
+        total_row[14] = total_out
+        total_row[19] = ending_balance
+        canonical_rows.append(total_row)
+
+        ending_row = [None] * 21
+        ending_row[7] = "Ending Balance"
+        ending_row[19] = ending_balance
+        canonical_rows.append(ending_row)
+
+    return pd.DataFrame(canonical_rows, dtype=object)
+
+
 def validate_selected_format(raw: pd.DataFrame, config: dict):
     header_idx = find_header_row(raw)
     header_row = raw.iloc[header_idx]
@@ -1723,6 +1929,10 @@ def load_excel_to_raw(file_bytes: bytes, cache_version: str = APP_CACHE_VERSION)
 def process_excel_file(file_bytes: bytes, format_name: str, cache_version: str = APP_CACHE_VERSION) -> dict:
     raw_df = load_excel_to_raw(file_bytes, cache_version)
     config = FORMAT_CONFIGS[format_name]
+    if config.get("parser") == "orlando_stock_movements":
+        normalized_df = normalize_orlando_report(raw_df)
+        validate_selected_format(normalized_df, config)
+        return build_inventory_model(normalized_df, config, format_name)
     validate_selected_format(raw_df, config)
     return build_inventory_model(raw_df, config, format_name)
 
