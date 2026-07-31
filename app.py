@@ -1362,7 +1362,7 @@ FORMAT_CONFIGS = {
         },
         "total_rule": "ref_total",
         "total_source": "Orlando summarized movement rows",
-        "wrong_format_warning": "Wrong file format for Orlando. Upload the PGL Stock Movements Report with Product, Reference, Type, Date, Quantity, Available, and UQ columns.",
+        "wrong_format_warning": "Wrong file format for Orlando. Upload a PGL Stock Movements Report containing Product, Reference, Type, Date, Quantity, and Available columns.",
     },
     "Carson": {
         "title": "Inventory Shortage",
@@ -1636,52 +1636,197 @@ def find_header_row(raw: pd.DataFrame) -> int:
     raise ValueError("Cannot find a header row with SKU / Activity Date / Ref #.")
 
 
-def find_orlando_header_row(raw: pd.DataFrame) -> int:
-    required = {"product", "description", "reference", "type", "date", "quantity", "available", "uq"}
-    for idx in range(len(raw)):
-        row_values = {clean_text(value).lower() for value in raw.iloc[idx].tolist() if clean_text(value)}
-        if required.issubset(row_values):
-            return idx
-    raise WrongFileFormatError(FORMAT_CONFIGS["Orlando"]["wrong_format_warning"])
+ORLANDO_HEADER_ALIASES = {
+    "sku": {
+        "product",
+        "product code",
+        "product sku",
+        "sku",
+        "item",
+        "item code",
+        "item number",
+    },
+    "description": {
+        "description",
+        "product description",
+        "item description",
+    },
+    "ref_no": {
+        "reference",
+        "reference no",
+        "reference number",
+        "ref",
+        "ref no",
+        "ref number",
+        "document",
+        "document no",
+        "document number",
+    },
+    "movement_type": {
+        "type",
+        "movement type",
+        "transaction type",
+        "activity type",
+    },
+    "activity_date": {
+        "date",
+        "activity date",
+        "movement date",
+        "transaction date",
+        "posting date",
+    },
+    "quantity": {
+        "quantity",
+        "qty",
+        "movement quantity",
+        "transaction quantity",
+    },
+    "balance": {
+        "available",
+        "available balance",
+        "available qty",
+        "available quantity",
+        "balance",
+        "running balance",
+    },
+    "unit": {
+        "uq",
+        "unit",
+        "uom",
+        "unit of measure",
+        "unit of quantity",
+    },
+}
+
+ORLANDO_REQUIRED_HEADERS = (
+    "sku",
+    "ref_no",
+    "movement_type",
+    "activity_date",
+    "quantity",
+    "balance",
+)
 
 
-def validate_orlando_format(raw: pd.DataFrame) -> int:
-    header_idx = find_orlando_header_row(raw)
-    header = [clean_text(value).lower() for value in raw.iloc[header_idx].tolist()]
-    expected_positions = {
-        2: "product",
-        3: "description",
-        4: "reference",
-        5: "type",
-        6: "date",
-        7: "quantity",
-        8: "available",
-        9: "uq",
+def normalize_orlando_label(value) -> str:
+    text = clean_text(value).casefold().replace("&", " and ")
+    text = re.sub(r"[/#._-]+", " ", text)
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return " ".join(text.split())
+
+
+def score_orlando_header_match(label: str, alias: str) -> int:
+    if not label or not alias:
+        return 0
+    if label == alias:
+        return 1000 + len(alias)
+    label_words = label.split()
+    alias_words = alias.split()
+    if len(alias_words) > 1 and all(word in label_words for word in alias_words):
+        return 500 + len(alias)
+    if len(alias_words) == 1 and alias in label_words:
+        return 300 + len(alias)
+    return 0
+
+
+def map_orlando_header_row(row) -> tuple[dict, int]:
+    labels = [normalize_orlando_label(value) for value in row]
+    candidates = []
+    for field, aliases in ORLANDO_HEADER_ALIASES.items():
+        for col_idx, label in enumerate(labels):
+            for alias in aliases:
+                score = score_orlando_header_match(label, alias)
+                if score:
+                    candidates.append((score, field, col_idx))
+    candidates.sort(reverse=True)
+    mapping = {}
+    used_columns = set()
+    total_score = 0
+    for score, field, col_idx in candidates:
+        if field in mapping or col_idx in used_columns:
+            continue
+        mapping[field] = col_idx
+        used_columns.add(col_idx)
+        total_score += score
+    required_count = sum(field in mapping for field in ORLANDO_REQUIRED_HEADERS)
+    optional_count = sum(field in mapping for field in ("description", "unit"))
+    layout_score = required_count * 100000 + optional_count * 10000 + total_score
+    return mapping, layout_score
+
+
+def find_orlando_layout(raw: pd.DataFrame) -> dict:
+    best = None
+    scan_limits = [min(len(raw), 1000)]
+    if len(raw) > scan_limits[0]:
+        scan_limits.append(len(raw))
+    scanned_to = 0
+    for scan_limit in scan_limits:
+        for idx in range(scanned_to, scan_limit):
+            mapping, score = map_orlando_header_row(raw.iloc[idx].tolist())
+            required_count = sum(field in mapping for field in ORLANDO_REQUIRED_HEADERS)
+            if best is None or score > best["score"]:
+                best = {
+                    "header_idx": idx,
+                    "cols": mapping,
+                    "score": score,
+                    "required_count": required_count,
+                }
+        scanned_to = scan_limit
+        if best is not None and best["required_count"] == len(ORLANDO_REQUIRED_HEADERS):
+            break
+    if best is None:
+        raise WrongFileFormatError(FORMAT_CONFIGS["Orlando"]["wrong_format_warning"])
+    missing = [field for field in ORLANDO_REQUIRED_HEADERS if field not in best["cols"]]
+    if missing:
+        readable = {
+            "sku": "Product",
+            "ref_no": "Reference",
+            "movement_type": "Type",
+            "activity_date": "Date",
+            "quantity": "Quantity",
+            "balance": "Available",
+        }
+        missing_text = ", ".join(readable[field] for field in missing)
+        raise WrongFileFormatError(
+            f"{FORMAT_CONFIGS['Orlando']['wrong_format_warning']} Missing required headers: {missing_text}."
+        )
+    return best
+
+
+def validate_orlando_format(raw: pd.DataFrame) -> dict:
+    layout = find_orlando_layout(raw)
+    cols = layout["cols"]
+    if len(set(cols.values())) != len(cols):
+        raise WrongFileFormatError(FORMAT_CONFIGS["Orlando"]["wrong_format_warning"])
+    return layout
+
+
+def normalize_orlando_movement_type(value) -> str:
+    label = normalize_orlando_label(value)
+    movement_aliases = {
+        "INW": {"inw", "inbound", "receipt", "receiving", "received"},
+        "ORD": {"ord", "order", "outbound", "shipment", "shipping", "shipped"},
+        "ADJ": {"adj", "adjustment", "inventory adjustment"},
     }
-    for col_idx, expected in expected_positions.items():
-        if col_idx >= len(header) or header[col_idx] != expected:
-            raise WrongFileFormatError(FORMAT_CONFIGS["Orlando"]["wrong_format_warning"])
-    return header_idx
+    for movement_type, aliases in movement_aliases.items():
+        if label in aliases:
+            return movement_type
+    return ""
 
 
-def extract_orlando_report_end(raw: pd.DataFrame):
-    for row_idx in range(min(25, len(raw))):
-        row_text = " | ".join(clean_text(value) for value in raw.iloc[row_idx].tolist() if clean_text(value))
-        match = re.search(r"\bTo:\s*(\d{1,2}-[A-Za-z]{3}-\d{2,4})", row_text, flags=re.IGNORECASE)
-        if match:
-            parsed = parse_excel_or_text_date(match.group(1))
-            if not pd.isna(parsed):
-                return parsed
-    return pd.NaT
+def is_orlando_total_value(value) -> bool:
+    return normalize_orlando_label(value) in {"total", "totals", "grand total"}
 
 
 def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
-
-    header_idx = validate_orlando_format(raw)
-
+    layout = validate_orlando_format(raw)
+    header_idx = layout["header_idx"]
+    cols = layout["cols"]
     sections = []
     current = None
-    movement_types = {"INW", "ORD", "ADJ"}
+
+    def value_from(row, field):
+        return get_cell(row, cols.get(field))
 
     def finish_current():
         nonlocal current
@@ -1691,42 +1836,66 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
 
     for excel_idx in range(header_idx + 1, len(raw)):
         row = raw.iloc[excel_idx]
-        product = clean_text(get_cell(row, 2))
-        description = clean_text(get_cell(row, 3))
-        reference = clean_text(get_cell(row, 4))
-        movement_type = clean_text(get_cell(row, 5)).upper()
-        date_raw = get_cell(row, 6)
-        date_text = clean_text(date_raw)
-        quantity = first_qty_number(get_cell(row, 7), np.nan)
-        available = first_qty_number(get_cell(row, 8), np.nan)
-        unit = clean_text(get_cell(row, 9))
-
-        if product and product.lower() != "product":
-            finish_current()
-            current = {
-                "sku": product,
-                "description": description,
-                "movements": [],
-                "ending_balance": np.nan,
-                "total_excel_row": np.nan,
-            }
-            continue
-
-        if current is None:
-            continue
-
-        if date_text.lower().rstrip(":") == "total":
-            current["ending_balance"] = available
-            current["total_excel_row"] = excel_idx + 1
-            continue
-
+        product = clean_text(value_from(row, "sku"))
+        description = clean_text(value_from(row, "description"))
+        reference = clean_text(value_from(row, "ref_no"))
+        movement_raw = value_from(row, "movement_type")
+        movement_type = normalize_orlando_movement_type(movement_raw)
+        date_raw = value_from(row, "activity_date")
+        quantity = first_qty_number(value_from(row, "quantity"), np.nan)
+        available = first_qty_number(value_from(row, "balance"), np.nan)
+        unit = clean_text(value_from(row, "unit"))
         activity_date = parse_excel_or_text_date(date_raw)
+        repeated_header = (
+            normalize_orlando_label(product) in ORLANDO_HEADER_ALIASES["sku"]
+            and normalize_orlando_label(reference) in ORLANDO_HEADER_ALIASES["ref_no"]
+            and normalize_orlando_label(movement_raw) in ORLANDO_HEADER_ALIASES["movement_type"]
+            and normalize_orlando_label(date_raw) in ORLANDO_HEADER_ALIASES["activity_date"]
+        )
+        if repeated_header:
+            continue
+
+        selected_values = [
+            product,
+            description,
+            reference,
+            movement_raw,
+            date_raw,
+        ]
+        is_total_row = any(is_orlando_total_value(value) for value in selected_values)
         is_summary_movement = (
-            movement_type in movement_types
+            bool(movement_type)
             and not pd.isna(activity_date)
             and not pd.isna(quantity)
             and not pd.isna(available)
         )
+
+        normalized_product = normalize_orlando_label(product)
+        product_is_header = normalized_product in ORLANDO_HEADER_ALIASES["sku"]
+        if product and not product_is_header and not is_total_row:
+            if current is None or current["sku"].casefold() != product.casefold():
+                finish_current()
+                current = {
+                    "sku": product,
+                    "description": description,
+                    "movements": [],
+                    "ending_balance": np.nan,
+                    "total_excel_row": np.nan,
+                }
+            elif description and not current["description"]:
+                current["description"] = description
+            if not is_summary_movement:
+                continue
+
+        if current is None:
+            continue
+
+        if is_total_row:
+            if not pd.isna(available):
+                current["ending_balance"] = float(available)
+                current["total_excel_row"] = excel_idx + 1
+            continue
+
         if not is_summary_movement:
             continue
 
@@ -1739,10 +1908,7 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
             else:
                 qty_out = abs(signed_quantity)
         elif movement_type == "ORD":
-            if signed_quantity <= 0:
-                qty_out = abs(signed_quantity)
-            else:
-                qty_in = signed_quantity
+            qty_out = abs(signed_quantity)
         else:
             if signed_quantity >= 0:
                 qty_in = signed_quantity
@@ -1764,29 +1930,37 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
         )
 
     finish_current()
+    sections = [section for section in sections if section["sku"]]
     if not sections:
         raise WrongFileFormatError(FORMAT_CONFIGS["Orlando"]["wrong_format_warning"])
 
-    sku_keys = {section["sku"].upper() for section in sections}
+    sku_keys = {section["sku"].strip().upper() for section in sections}
     sections = [
         section
         for section in sections
         if not (
-            section["sku"].upper().startswith("QDD_")
-            and section["sku"][4:].upper() in sku_keys
+            section["sku"].strip().upper().startswith("QDD_")
+            and section["sku"].strip()[4:].upper() in sku_keys
         )
     ]
 
+    missing_totals = [section["sku"] for section in sections if pd.isna(section["ending_balance"])]
+    if missing_totals:
+        preview = ", ".join(missing_totals[:8])
+        suffix = "" if len(missing_totals) <= 8 else f" and {len(missing_totals) - 8} more"
+        raise ValueError(f"Orlando SKUs missing a Total ending balance row: {preview}{suffix}.")
+
     all_dates = [movement["activity_date"] for section in sections for movement in section["movements"]]
     valid_dates = pd.to_datetime(pd.Series(all_dates), errors="coerce").dropna()
-    report_start = valid_dates.min().normalize() if not valid_dates.empty else pd.NaT
-    report_end = valid_dates.max().normalize() if not valid_dates.empty else pd.NaT
+    if valid_dates.empty:
+        raise ValueError("No official Orlando movement rows with valid dates and running balances were found.")
+    report_start = valid_dates.min().normalize()
+    report_end = valid_dates.max().normalize()
 
     canonical_rows = []
-    range_text = "Item Activity"
-    if not pd.isna(report_start) and not pd.isna(report_end):
-        range_text = f"Item Activity from: {report_start.strftime('%m/%d/%Y')} to {report_end.strftime('%m/%d/%Y')}"
-    canonical_rows.append([range_text])
+    canonical_rows.append(
+        [f"Item Activity from: {report_start.strftime('%m/%d/%Y')} to {report_end.strftime('%m/%d/%Y')}"]
+    )
 
     header = [None] * 21
     header[0] = "SKU"
@@ -1801,13 +1975,10 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
     canonical_rows.append(header)
 
     for section in sections:
-        ending_balance = section["ending_balance"]
-        if pd.isna(ending_balance):
-            raise ValueError(f"Orlando SKU {section['sku']} is missing its Total ending balance row.")
-
+        ending_balance = float(section["ending_balance"])
         total_in = sum(movement["qty_in"] for movement in section["movements"])
         total_out = sum(movement["qty_out"] for movement in section["movements"])
-        beginning_balance = float(ending_balance) - total_in + total_out
+        beginning_balance = ending_balance - total_in + total_out
 
         sku_row = [None] * 21
         sku_row[0] = section["sku"]
@@ -1842,7 +2013,6 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
         canonical_rows.append(ending_row)
 
     return pd.DataFrame(canonical_rows, dtype=object)
-
 
 def validate_selected_format(raw: pd.DataFrame, config: dict):
     header_idx = find_header_row(raw)
@@ -1927,13 +2097,35 @@ def load_excel_to_raw(file_bytes: bytes, cache_version: str = APP_CACHE_VERSION)
 
 
 @st.cache_data(show_spinner=False)
+def load_orlando_excel_to_raw(file_bytes: bytes, cache_version: str = APP_CACHE_VERSION) -> pd.DataFrame:
+    excel_file = pd.ExcelFile(BytesIO(file_bytes))
+    preferred = []
+    remaining = []
+    for sheet_name in excel_file.sheet_names:
+        normalized_name = normalize_orlando_label(sheet_name)
+        if "stock movement" in normalized_name or "inventory movement" in normalized_name:
+            preferred.append(sheet_name)
+        else:
+            remaining.append(sheet_name)
+    for sheet_name in preferred + remaining:
+        candidate = pd.read_excel(excel_file, sheet_name=sheet_name, header=None, dtype=object)
+        try:
+            find_orlando_layout(candidate)
+        except WrongFileFormatError:
+            continue
+        return candidate
+    raise WrongFileFormatError(FORMAT_CONFIGS["Orlando"]["wrong_format_warning"])
+
+
+@st.cache_data(show_spinner=False)
 def process_excel_file(file_bytes: bytes, format_name: str, cache_version: str = APP_CACHE_VERSION) -> dict:
-    raw_df = load_excel_to_raw(file_bytes, cache_version)
     config = FORMAT_CONFIGS[format_name]
     if config.get("parser") == "orlando_stock_movements":
+        raw_df = load_orlando_excel_to_raw(file_bytes, cache_version)
         normalized_df = normalize_orlando_report(raw_df)
         validate_selected_format(normalized_df, config)
         return build_inventory_model(normalized_df, config, format_name)
+    raw_df = load_excel_to_raw(file_bytes, cache_version)
     validate_selected_format(raw_df, config)
     return build_inventory_model(raw_df, config, format_name)
 
