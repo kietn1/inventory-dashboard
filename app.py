@@ -4666,29 +4666,37 @@ elif selected_page == "DO Lookup":
                 else:
                     do_tx[col] = ""
 
-        do_search_cache_key = f"_do_search_text_{site_key}"
-        do_search_cache = st.session_state.get(do_search_cache_key, {})
-        if isinstance(do_search_cache, dict) and do_search_cache.get("source") == model_source_value and isinstance(do_search_cache.get("values"), pd.Series):
-            do_search_text = do_search_cache["values"]
-        else:
-            do_search_text = do_tx["Ref #"].astype(str).str.lower() + " " + do_tx["Trans. #"].astype(str).str.lower()
-            st.session_state[do_search_cache_key] = {"source": model_source_value, "values": do_search_text}
-
         do_found_terms = []
         do_missing_terms = []
         do_matched_frames = []
 
         for term in do_lookup_terms:
-            term_mask = do_search_text.str.contains(re.escape(term.lower()), na=False, regex=True)
-            if term_mask.any():
+            term_lower = term.lower()
+            term_frames = []
+
+            for source_col in ["Ref #", "Trans. #"]:
+                source_values = do_tx[source_col].fillna("").astype(str).str.strip()
+                source_lower = source_values.str.lower()
+                source_mask = source_lower.str.contains(re.escape(term_lower), na=False, regex=True)
+                if not source_mask.any():
+                    continue
+
+                matched_df = do_tx[source_mask].copy()
+                matched_values = source_values[source_mask]
+                matched_df.insert(0, "Match Type", np.where(matched_values.str.lower().eq(term_lower), "Exact", "Not Exact"))
+                matched_df.insert(0, "Matched DO #", matched_values.values)
+                matched_df.insert(0, "Searched DO #", term)
+                term_frames.append(matched_df)
+
+            if term_frames:
                 do_found_terms.append(term)
-                term_df = do_tx[term_mask].copy()
-                term_df.insert(0, "Searched DO #", term)
+                term_df = pd.concat(term_frames, ignore_index=True)
+                term_df = term_df.drop_duplicates(subset=["Searched DO #", "Matched DO #", "Excel Row", "SKU"], keep="first")
                 do_matched_frames.append(term_df)
             else:
                 do_missing_terms.append(term)
 
-        do_detail_df = pd.concat(do_matched_frames, ignore_index=True) if do_matched_frames else pd.DataFrame(columns=["Searched DO #"] + list(do_tx.columns))
+        do_detail_df = pd.concat(do_matched_frames, ignore_index=True) if do_matched_frames else pd.DataFrame(columns=["Searched DO #", "Matched DO #", "Match Type"] + list(do_tx.columns))
 
         unique_sku_count = do_detail_df["SKU"].astype(str).replace("", np.nan).dropna().nunique() if not do_detail_df.empty else 0
         total_do_qty_out = pd.to_numeric(do_detail_df["Qty Out"], errors="coerce").fillna(0).sum() if not do_detail_df.empty else 0
@@ -4758,8 +4766,9 @@ elif selected_page == "DO Lookup":
                 if term_detail_df.empty:
                     overview_rows.append(
                         {
-                            "DO #": term,
-                            "Status": "Not Found",
+                            "Searched DO #": term,
+                            "Matched DO #": "-",
+                            "Match Type": "Not Found",
                             "SKU Count": 0,
                             "Qty In": 0,
                             "Qty Out": 0,
@@ -4774,16 +4783,25 @@ elif selected_page == "DO Lookup":
                         date_start = term_dates.min().strftime("%m/%d/%Y")
                         date_end = term_dates.max().strftime("%m/%d/%Y")
                         date_range_text = date_start if date_start == date_end else f"{date_start} - {date_end}"
-                    overview_rows.append(
-                        {
-                            "DO #": term,
-                            "Status": "Found",
-                            "SKU Count": term_detail_df["SKU"].astype(str).replace("", np.nan).dropna().nunique(),
-                            "Qty In": pd.to_numeric(term_detail_df["Qty In"], errors="coerce").fillna(0).sum(),
-                            "Qty Out": pd.to_numeric(term_detail_df["Qty Out"], errors="coerce").fillna(0).sum(),
-                            "Activity Date Range": date_range_text,
-                        }
-                    )
+                    for matched_do, matched_group in term_detail_df.groupby("Matched DO #", dropna=False, sort=True):
+                        matched_dates = pd.to_datetime(matched_group["Activity Date"], errors="coerce").dropna()
+                        if matched_dates.empty:
+                            matched_date_range_text = "-"
+                        else:
+                            matched_date_start = matched_dates.min().strftime("%m/%d/%Y")
+                            matched_date_end = matched_dates.max().strftime("%m/%d/%Y")
+                            matched_date_range_text = matched_date_start if matched_date_start == matched_date_end else f"{matched_date_start} - {matched_date_end}"
+                        overview_rows.append(
+                            {
+                                "Searched DO #": term,
+                                "Matched DO #": matched_do,
+                                "Match Type": "Exact" if (matched_group["Match Type"] == "Exact").any() else "Not Exact",
+                                "SKU Count": matched_group["SKU"].astype(str).replace("", np.nan).dropna().nunique(),
+                                "Qty In": pd.to_numeric(matched_group["Qty In"], errors="coerce").fillna(0).sum(),
+                                "Qty Out": pd.to_numeric(matched_group["Qty Out"], errors="coerce").fillna(0).sum(),
+                                "Activity Date Range": matched_date_range_text,
+                            }
+                        )
 
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
             st.markdown("<div class='section-title'>DO Search Overview</div>", unsafe_allow_html=True)
@@ -4798,30 +4816,34 @@ elif selected_page == "DO Lookup":
 
             for term in do_found_terms:
                 term_detail_df = do_detail_df[do_detail_df["Searched DO #"] == term].copy()
-                term_summary = (
-                    term_detail_df.groupby(["Searched DO #", "SKU", "Description"], dropna=False)
-                    .agg(
-                        **{
-                            "First Activity Date": ("Activity Date", "min"),
-                            "Latest Activity Date": ("Activity Date", "max"),
-                            "Total Qty In": ("Qty In", "sum"),
-                            "Total Qty Out": ("Qty Out", "sum"),
-                        }
+                for matched_do, matched_detail_df in term_detail_df.groupby("Matched DO #", dropna=False, sort=True):
+                    match_type = "Exact" if (matched_detail_df["Match Type"] == "Exact").any() else "Not Exact"
+                    term_summary = (
+                        matched_detail_df.groupby(["Matched DO #", "Match Type", "SKU", "Description"], dropna=False)
+                        .agg(
+                            **{
+                                "First Activity Date": ("Activity Date", "min"),
+                                "Latest Activity Date": ("Activity Date", "max"),
+                                "Total Qty In": ("Qty In", "sum"),
+                                "Total Qty Out": ("Qty Out", "sum"),
+                            }
+                        )
+                        .reset_index()
                     )
-                    .reset_index()
-                )
-                term_summary = term_summary.sort_values(["SKU"], ascending=[True]).reset_index(drop=True)
-                term_summary = term_summary.rename(columns={"Searched DO #": "DO #"})
-                term_qty_out = pd.to_numeric(term_detail_df["Qty Out"], errors="coerce").fillna(0).sum()
-                term_qty_in = pd.to_numeric(term_detail_df["Qty In"], errors="coerce").fillna(0).sum()
-                term_sku_count = term_summary["SKU"].astype(str).replace("", np.nan).dropna().nunique()
-                term_table_height = min(360, max(142, 76 + (len(term_summary) * 31)))
+                    term_summary = term_summary.sort_values(["SKU"], ascending=[True]).reset_index(drop=True)
+                    term_summary = term_summary.rename(columns={"Matched DO #": "DO #"})
+                    term_qty_out = pd.to_numeric(matched_detail_df["Qty Out"], errors="coerce").fillna(0).sum()
+                    term_qty_in = pd.to_numeric(matched_detail_df["Qty In"], errors="coerce").fillna(0).sum()
+                    term_sku_count = term_summary["SKU"].astype(str).replace("", np.nan).dropna().nunique()
+                    term_table_height = min(360, max(142, 76 + (len(term_summary) * 31)))
 
-                with st.expander(f"{term} | {term_sku_count:,} SKU(s) | Qty In {fmt_num(term_qty_in)} | Qty Out {fmt_num(term_qty_out)}", expanded=len(do_found_terms) <= 5):
-                    show_limited_dataframe(term_summary, height=term_table_height, limit=500, show_count=False)
+                    with st.expander(f"{matched_do} | {match_type} | {term_sku_count:,} SKU(s) | Qty In {fmt_num(term_qty_in)} | Qty Out {fmt_num(term_qty_out)}", expanded=len(do_found_terms) <= 5):
+                        show_limited_dataframe(term_summary, height=term_table_height, limit=500, show_count=False)
 
             do_detail_cols = [
-                "DO #",
+                "Searched DO #",
+                "Matched DO #",
+                "Match Type",
                 "Excel Row",
                 "SKU",
                 "Description",
@@ -4834,11 +4856,9 @@ elif selected_page == "DO Lookup":
                 "Is Not Shipped",
                 "Is Cancelled",
             ]
-            do_detail_df = do_detail_df.sort_values(["Searched DO #", "Activity Date", "Excel Row", "SKU"], ascending=[True, False, False, True])
-            do_detail_display_df = do_detail_df.rename(columns={"Searched DO #": "DO #"})
+            do_detail_df = do_detail_df.sort_values(["Searched DO #", "Matched DO #", "Activity Date", "Excel Row", "SKU"], ascending=[True, True, False, False, True])
             with st.expander("Detailed Matching Transactions", expanded=False):
-                st.markdown("<div class='section-subtitle'>Original transaction rows with DO # shown as the first column.</div>", unsafe_allow_html=True)
-                show_transaction_dataframe(do_detail_display_df[do_detail_cols], height=380, limit=500)
+                show_transaction_dataframe(do_detail_df[do_detail_cols], height=380, limit=500)
 
 
 
