@@ -1362,7 +1362,7 @@ FORMAT_CONFIGS = {
         },
         "total_rule": "ref_total",
         "total_source": "Orlando summarized movement rows",
-        "wrong_format_warning": "Wrong file format for Orlando. Upload a PGL Stock Movements Report containing Product, Reference, Type, Date, Quantity, and Available columns.",
+        "wrong_format_warning": "Wrong file format for Orlando. Upload a PGL Stock Movements Report containing Product, Reference, Type, Date, and Quantity columns.",
     },
     "Carson": {
         "title": "Inventory Shortage",
@@ -1704,7 +1704,6 @@ ORLANDO_REQUIRED_HEADERS = (
     "movement_type",
     "activity_date",
     "quantity",
-    "balance",
 )
 
 
@@ -1784,7 +1783,6 @@ def find_orlando_layout(raw: pd.DataFrame) -> dict:
             "movement_type": "Type",
             "activity_date": "Date",
             "quantity": "Quantity",
-            "balance": "Available",
         }
         missing_text = ", ".join(readable[field] for field in missing)
         raise WrongFileFormatError(
@@ -1828,9 +1826,55 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
     def value_from(row, field):
         return get_cell(row, cols.get(field))
 
+    def select_official_movements(section):
+        raw_movements = section.pop("raw_movements", [])
+        rows_with_balance = [
+            movement
+            for movement in raw_movements
+            if not pd.isna(movement["balance"])
+        ]
+        if rows_with_balance:
+            section["movements"] = rows_with_balance
+            return
+        grouped = {}
+        for movement in raw_movements:
+            key = (
+                movement["reference"].casefold(),
+                movement["movement_type"],
+                pd.Timestamp(movement["activity_date"]),
+                movement["unit"].casefold(),
+            )
+            grouped.setdefault(key, []).append(movement)
+        official = []
+        for group_rows in grouped.values():
+            if len(group_rows) == 1:
+                official.append(group_rows[0])
+                continue
+            signed_total = sum(float(row["signed_quantity"]) for row in group_rows)
+            candidates = [
+                row
+                for row in group_rows
+                if abs(
+                    float(row["signed_quantity"])
+                    - (signed_total - float(row["signed_quantity"]))
+                )
+                < 0.01
+            ]
+            if not candidates:
+                first_row = group_rows[0]
+                raise ValueError(
+                    "Cannot identify the official Orlando summary movement for "
+                    f"{section['sku']} / {first_row['reference']} / "
+                    f"{first_row['movement_type']} / "
+                    f"{pd.Timestamp(first_row['activity_date']).strftime('%m/%d/%Y %H:%M:%S')}."
+                )
+            official.append(max(candidates, key=lambda row: row["excel_row"]))
+        section["movements"] = sorted(official, key=lambda row: row["excel_row"])
+
     def finish_current():
         nonlocal current
         if current is not None:
+            select_official_movements(current)
             sections.append(current)
             current = None
 
@@ -1863,11 +1907,10 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
             date_raw,
         ]
         is_total_row = any(is_orlando_total_value(value) for value in selected_values)
-        is_summary_movement = (
+        is_movement_row = (
             bool(movement_type)
             and not pd.isna(activity_date)
             and not pd.isna(quantity)
-            and not pd.isna(available)
         )
 
         normalized_product = normalize_orlando_label(product)
@@ -1878,25 +1921,27 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
                 current = {
                     "sku": product,
                     "description": description,
+                    "raw_movements": [],
                     "movements": [],
                     "ending_balance": np.nan,
                     "total_excel_row": np.nan,
                 }
             elif description and not current["description"]:
                 current["description"] = description
-            if not is_summary_movement:
+            if not is_movement_row:
                 continue
 
         if current is None:
             continue
 
         if is_total_row:
-            if not pd.isna(available):
-                current["ending_balance"] = float(available)
+            ending_value = available if not pd.isna(available) else quantity
+            if not pd.isna(ending_value):
+                current["ending_balance"] = float(ending_value)
                 current["total_excel_row"] = excel_idx + 1
             continue
 
-        if not is_summary_movement:
+        if not is_movement_row:
             continue
 
         signed_quantity = float(quantity)
@@ -1915,7 +1960,7 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
             else:
                 qty_out = abs(signed_quantity)
 
-        current["movements"].append(
+        current["raw_movements"].append(
             {
                 "excel_row": excel_idx + 1,
                 "activity_date": activity_date,
@@ -1924,7 +1969,7 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
                 "qty_in": qty_in,
                 "qty_out": qty_out,
                 "signed_quantity": signed_quantity,
-                "balance": float(available),
+                "balance": float(available) if not pd.isna(available) else np.nan,
                 "unit": unit,
             }
         )
@@ -1953,7 +1998,7 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
     all_dates = [movement["activity_date"] for section in sections for movement in section["movements"]]
     valid_dates = pd.to_datetime(pd.Series(all_dates), errors="coerce").dropna()
     if valid_dates.empty:
-        raise ValueError("No official Orlando movement rows with valid dates and running balances were found.")
+        raise ValueError("No official Orlando movement rows with valid dates were found.")
     report_start = valid_dates.min().normalize()
     report_end = valid_dates.max().normalize()
 
