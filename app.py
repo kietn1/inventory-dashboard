@@ -4827,25 +4827,6 @@ elif selected_page == "DO Lookup":
                 "Is Cancelled",
             ]
 
-            export_detail_df = do_detail_df.copy()
-            export_detail_df["Activity Date"] = pd.to_datetime(export_detail_df["Activity Date"], errors="coerce").dt.date
-            export_detail_df = export_detail_df[do_detail_cols]
-            export_buffer = BytesIO()
-            with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
-                overview_df.to_excel(writer, sheet_name="DO Overview", index=False)
-                export_detail_df.to_excel(writer, sheet_name="Matching Transactions", index=False)
-
-            clean_do_name = "_".join(re.sub(r"[^A-Za-z0-9_-]+", "_", term).strip("_") for term in do_lookup_terms)
-            clean_do_name = clean_do_name[:120] or "DO_Lookup"
-            st.download_button(
-                "Download DO Report",
-                data=export_buffer.getvalue(),
-                file_name=f"DO_Report_{clean_do_name}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key=f"download_do_report_{site_key}",
-            )
-
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
             st.markdown("<div class='section-title'>Items Belonging to Each DO #</div>", unsafe_allow_html=True)
             st.markdown("<div class='section-subtitle'>Each section below is separated by the exact DO # you searched.</div>", unsafe_allow_html=True)
@@ -4878,7 +4859,25 @@ elif selected_page == "DO Lookup":
 
             do_detail_df = do_detail_df.sort_values(["Searched DO #", "Matched DO #", "Activity Date", "Excel Row", "SKU"], ascending=[True, True, False, False, True])
             with st.expander("Detailed Matching Transactions", expanded=False):
-                show_transaction_dataframe(do_detail_df[do_detail_cols], height=380, limit=500)
+                detailed_transactions_df = do_detail_df[do_detail_cols].copy()
+                show_transaction_dataframe(detailed_transactions_df, height=380, limit=500)
+
+                export_detail_df = detailed_transactions_df.copy()
+                export_detail_df["Activity Date"] = pd.to_datetime(export_detail_df["Activity Date"], errors="coerce").dt.date
+                export_buffer = BytesIO()
+                with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
+                    export_detail_df.to_excel(writer, sheet_name="Detailed Transactions", index=False)
+
+                clean_do_name = "_".join(re.sub(r"[^A-Za-z0-9_-]+", "_", term).strip("_") for term in do_lookup_terms)
+                clean_do_name = clean_do_name[:120] or "DO_Lookup"
+                st.download_button(
+                    "Download Detailed Matching Transactions",
+                    data=export_buffer.getvalue(),
+                    file_name=f"Detailed_Matching_Transactions_{clean_do_name}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key=f"download_do_detailed_transactions_{site_key}",
+                )
 
 
 
