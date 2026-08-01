@@ -4810,6 +4810,23 @@ elif selected_page == "DO Lookup":
             overview_height = min(310, max(132, 74 + (len(overview_df) * 32)))
             show_limited_dataframe(overview_df, height=overview_height, limit=1000, show_count=False)
 
+            do_detail_cols = [
+                "Searched DO #",
+                "Matched DO #",
+                "Match Type",
+                "Excel Row",
+                "SKU",
+                "Description",
+                "Activity Date",
+                "Transaction Type",
+                "Trans. #",
+                "Qty In",
+                "Qty Out",
+                "Balance After Transaction",
+                "Is Not Shipped",
+                "Is Cancelled",
+            ]
+
             export_detail_df = do_detail_df.copy()
             export_detail_df["Activity Date"] = pd.to_datetime(export_detail_df["Activity Date"], errors="coerce").dt.date
             export_detail_df = export_detail_df[do_detail_cols]
@@ -4859,22 +4876,6 @@ elif selected_page == "DO Lookup":
                     with st.expander(f"{matched_do} | {match_type} | {term_sku_count:,} SKU(s) | Qty In {fmt_num(term_qty_in)} | Qty Out {fmt_num(term_qty_out)}", expanded=len(do_found_terms) <= 5):
                         show_limited_dataframe(term_summary, height=term_table_height, limit=500, show_count=False)
 
-            do_detail_cols = [
-                "Searched DO #",
-                "Matched DO #",
-                "Match Type",
-                "Excel Row",
-                "SKU",
-                "Description",
-                "Activity Date",
-                "Transaction Type",
-                "Trans. #",
-                "Qty In",
-                "Qty Out",
-                "Balance After Transaction",
-                "Is Not Shipped",
-                "Is Cancelled",
-            ]
             do_detail_df = do_detail_df.sort_values(["Searched DO #", "Matched DO #", "Activity Date", "Excel Row", "SKU"], ascending=[True, True, False, False, True])
             with st.expander("Detailed Matching Transactions", expanded=False):
                 show_transaction_dataframe(do_detail_df[do_detail_cols], height=380, limit=500)
