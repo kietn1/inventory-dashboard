@@ -4810,6 +4810,25 @@ elif selected_page == "DO Lookup":
             overview_height = min(310, max(132, 74 + (len(overview_df) * 32)))
             show_limited_dataframe(overview_df, height=overview_height, limit=1000, show_count=False)
 
+            export_detail_df = do_detail_df.copy()
+            export_detail_df["Activity Date"] = pd.to_datetime(export_detail_df["Activity Date"], errors="coerce").dt.date
+            export_detail_df = export_detail_df[do_detail_cols]
+            export_buffer = BytesIO()
+            with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
+                overview_df.to_excel(writer, sheet_name="DO Overview", index=False)
+                export_detail_df.to_excel(writer, sheet_name="Matching Transactions", index=False)
+
+            clean_do_name = "_".join(re.sub(r"[^A-Za-z0-9_-]+", "_", term).strip("_") for term in do_lookup_terms)
+            clean_do_name = clean_do_name[:120] or "DO_Lookup"
+            st.download_button(
+                "Download DO Report",
+                data=export_buffer.getvalue(),
+                file_name=f"DO_Report_{clean_do_name}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"download_do_report_{site_key}",
+            )
+
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
             st.markdown("<div class='section-title'>Items Belonging to Each DO #</div>", unsafe_allow_html=True)
             st.markdown("<div class='section-subtitle'>Each section below is separated by the exact DO # you searched.</div>", unsafe_allow_html=True)
