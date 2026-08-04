@@ -287,11 +287,13 @@ st.markdown(
         .main .block-container {
             max-width: 1660px;
             padding: var(--layout-top) var(--layout-x) 36px;
+            /* Avoid transforming this ancestor. A transformed parent can make
+               fixed descendants move with Streamlit's scrolling content. */
             animation: pageReveal .36s var(--win-ease) both;
         }
         @keyframes pageReveal {
-            from { opacity: 0; transform: translateY(5px); }
-            to { opacity: 1; transform: translateY(0); }
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         
@@ -1191,13 +1193,30 @@ st.markdown(
         }
 
 
+        /* Freeze the complete report header and navigation. Fixed positioning
+           is used because Streamlit's nested wrappers can defeat sticky positioning. */
         .st-key-sticky_top_section {
-            position: sticky;
-            top: 8px;
-            z-index: 90;
+            position: fixed !important;
+            top: calc(54px + var(--layout-top)) !important;
+            left: calc(var(--sidebar-width) + var(--layout-x)) !important;
+            right: var(--layout-x) !important;
+            width: auto !important;
+            max-width: calc(1660px - (2 * var(--layout-x)));
+            margin-left: auto !important;
+            margin-right: auto !important;
+            z-index: 9000 !important;
             isolation: isolate;
-            padding-top: 0;
+            padding: 0 !important;
             background: var(--win-bg);
+        }
+        .stApp:has([data-testid="stSidebarCollapsedControl"]) .st-key-sticky_top_section,
+        .stApp:has([data-testid="collapsedControl"]) .st-key-sticky_top_section {
+            left: 138px !important;
+        }
+        .sticky-top-spacer {
+            width: 100%;
+            height: 148px;
+            pointer-events: none;
         }
 
         .st-key-main_navigation {
@@ -1307,10 +1326,31 @@ st.markdown(
             animation: tabIndicator .18s var(--win-ease) both;
         }
         .st-key-main_navigation p { margin: 0 !important; color: inherit !important; font: inherit !important; }
+        @media (max-width: 1180px) {
+            .sticky-top-spacer { height: 184px; }
+        }
         @media (max-width: 820px) {
-            .st-key-main_navigation { top: 6px; }
+            .st-key-main_navigation { top: auto; }
             .st-key-main_navigation button,
             .st-key-main_navigation [role="radio"] { padding: 0 12px !important; }
+            .st-key-sticky_top_section {
+                left: calc(var(--sidebar-width) + var(--layout-x)) !important;
+                right: var(--layout-x) !important;
+            }
+            .stApp:has([data-testid="stSidebarCollapsedControl"]) .st-key-sticky_top_section,
+            .stApp:has([data-testid="collapsedControl"]) .st-key-sticky_top_section {
+                left: 122px !important;
+            }
+            .sticky-top-spacer { height: 246px; }
+        }
+        @media (max-width: 520px) {
+            .st-key-sticky_top_section,
+            .stApp:has([data-testid="stSidebarCollapsedControl"]) .st-key-sticky_top_section,
+            .stApp:has([data-testid="collapsedControl"]) .st-key-sticky_top_section {
+                left: 9px !important;
+                right: 9px !important;
+            }
+            .sticky-top-spacer { height: 236px; }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -4174,6 +4214,9 @@ with st.container(key="sticky_top_section"):
                 horizontal=True,
                 label_visibility="collapsed",
             )
+# Keep content below the fixed header/navigation instead of sliding underneath it.
+st.markdown('<div class="sticky-top-spacer" aria-hidden="true"></div>', unsafe_allow_html=True)
+
 selected_page = selected_page or "Overview"
 update_persistent_app_state(values={"main_page_navigation": selected_page})
 
