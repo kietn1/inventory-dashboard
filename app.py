@@ -287,13 +287,11 @@ st.markdown(
         .main .block-container {
             max-width: 1660px;
             padding: var(--layout-top) var(--layout-x) 36px;
-            /* Avoid transforming this ancestor. A transformed parent can make
-               fixed descendants move with Streamlit's scrolling content. */
             animation: pageReveal .36s var(--win-ease) both;
         }
         @keyframes pageReveal {
-            from { opacity: 0; }
-            to { opacity: 1; }
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         
@@ -1193,36 +1191,10 @@ st.markdown(
         }
 
 
-        /* Freeze the complete report header and navigation. Fixed positioning
-           is used because Streamlit's nested wrappers can defeat sticky positioning. */
-        .st-key-sticky_top_section {
-            position: fixed !important;
-            top: calc(54px + var(--layout-top)) !important;
-            left: calc(var(--sidebar-width) + var(--layout-x)) !important;
-            right: var(--layout-x) !important;
-            width: auto !important;
-            max-width: calc(1660px - (2 * var(--layout-x)));
-            margin-left: auto !important;
-            margin-right: auto !important;
-            z-index: 9000 !important;
-            isolation: isolate;
-            padding: 0 !important;
-            background: var(--win-bg);
-        }
-        .stApp:has([data-testid="stSidebarCollapsedControl"]) .st-key-sticky_top_section,
-        .stApp:has([data-testid="collapsedControl"]) .st-key-sticky_top_section {
-            left: 138px !important;
-        }
-        .sticky-top-spacer {
-            width: 100%;
-            height: 148px;
-            pointer-events: none;
-        }
-
         .st-key-main_navigation {
-            position: relative;
-            top: auto;
-            z-index: 1;
+            position: sticky;
+            top: 8px;
+            z-index: 80;
             margin: 0 0 16px;
             padding: 4px;
             overflow-x: auto;
@@ -1326,31 +1298,10 @@ st.markdown(
             animation: tabIndicator .18s var(--win-ease) both;
         }
         .st-key-main_navigation p { margin: 0 !important; color: inherit !important; font: inherit !important; }
-        @media (max-width: 1180px) {
-            .sticky-top-spacer { height: 184px; }
-        }
         @media (max-width: 820px) {
-            .st-key-main_navigation { top: auto; }
+            .st-key-main_navigation { top: 6px; }
             .st-key-main_navigation button,
             .st-key-main_navigation [role="radio"] { padding: 0 12px !important; }
-            .st-key-sticky_top_section {
-                left: calc(var(--sidebar-width) + var(--layout-x)) !important;
-                right: var(--layout-x) !important;
-            }
-            .stApp:has([data-testid="stSidebarCollapsedControl"]) .st-key-sticky_top_section,
-            .stApp:has([data-testid="collapsedControl"]) .st-key-sticky_top_section {
-                left: 122px !important;
-            }
-            .sticky-top-spacer { height: 246px; }
-        }
-        @media (max-width: 520px) {
-            .st-key-sticky_top_section,
-            .stApp:has([data-testid="stSidebarCollapsedControl"]) .st-key-sticky_top_section,
-            .stApp:has([data-testid="collapsedControl"]) .st-key-sticky_top_section {
-                left: 9px !important;
-                right: 9px !important;
-            }
-            .sticky-top-spacer { height: 236px; }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -4166,57 +4117,51 @@ report_end = model["report_end"]
 windows = model["windows"]
 
 source_label = "Saved" if using_saved_report else "Uploaded"
+st.markdown(
+    f"""
+    <div class="app-header">
+        <div class="app-header-main">
+            <div class="app-title-cluster">
+                <div class="fluent-grid-icon app-product-icon" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span>
+                </div>
+                <div class="app-title-copy">
+                    <div class="app-eyebrow">{html.escape(format_name)} warehouse</div>
+                    <div class="app-title">Inventory Shortage</div>
+                </div>
+            </div>
+            <div class="app-subtitle">Inventory risk, SKU activity, DO lookup, and outbound stock validation.</div>
+        </div>
+        <div class="app-meta">
+            <span class="meta-chip meta-chip-date meta-chip-accent">{fmt_date(report_start)} – {fmt_date(report_end)}</span>
+            <span class="meta-chip meta-chip-file" title="{html.escape(active_file_name)}">{html.escape(active_file_name)}</span>
+            <span class="meta-chip meta-chip-status">{source_label}</span>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 navigation_options = ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Help"]
 if st.session_state.get("main_page_navigation") not in navigation_options:
     st.session_state["main_page_navigation"] = "Overview"
-
-# Keep the report header and main navigation visible as one frozen section.
-with st.container(key="sticky_top_section"):
-    st.markdown(
-        f"""
-        <div class="app-header">
-            <div class="app-header-main">
-                <div class="app-title-cluster">
-                    <div class="fluent-grid-icon app-product-icon" aria-hidden="true">
-                        <span></span><span></span><span></span><span></span>
-                    </div>
-                    <div class="app-title-copy">
-                        <div class="app-eyebrow">{html.escape(format_name)} warehouse</div>
-                        <div class="app-title">Inventory Shortage</div>
-                    </div>
-                </div>
-                <div class="app-subtitle">Inventory risk, SKU activity, DO lookup, and outbound stock validation.</div>
-            </div>
-            <div class="app-meta">
-                <span class="meta-chip meta-chip-date meta-chip-accent">{fmt_date(report_start)} – {fmt_date(report_end)}</span>
-                <span class="meta-chip meta-chip-file" title="{html.escape(active_file_name)}">{html.escape(active_file_name)}</span>
-                <span class="meta-chip meta-chip-status">{source_label}</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    with st.container(key="main_navigation"):
-        if hasattr(st, "segmented_control"):
-            selected_page = st.segmented_control(
-                "Navigation",
-                options=navigation_options,
-                key="main_page_navigation",
-                selection_mode="single",
-                label_visibility="collapsed",
-            )
-        else:
-            selected_page = st.radio(
-                "Navigation",
-                options=navigation_options,
-                key="main_page_navigation",
-                horizontal=True,
-                label_visibility="collapsed",
-            )
-# Keep content below the fixed header/navigation instead of sliding underneath it.
-st.markdown('<div class="sticky-top-spacer" aria-hidden="true"></div>', unsafe_allow_html=True)
-
+with st.container(key="main_navigation"):
+    if hasattr(st, "segmented_control"):
+        selected_page = st.segmented_control(
+            "Navigation",
+            options=navigation_options,
+            key="main_page_navigation",
+            selection_mode="single",
+            label_visibility="collapsed",
+        )
+    else:
+        selected_page = st.radio(
+            "Navigation",
+            options=navigation_options,
+            key="main_page_navigation",
+            horizontal=True,
+            label_visibility="collapsed",
+        )
 selected_page = selected_page or "Overview"
 update_persistent_app_state(values={"main_page_navigation": selected_page})
 
