@@ -1191,10 +1191,19 @@ st.markdown(
         }
 
 
-        .st-key-main_navigation {
+        .st-key-sticky_top_section {
             position: sticky;
             top: 8px;
-            z-index: 80;
+            z-index: 90;
+            isolation: isolate;
+            padding-top: 0;
+            background: var(--win-bg);
+        }
+
+        .st-key-main_navigation {
+            position: relative;
+            top: auto;
+            z-index: 1;
             margin: 0 0 16px;
             padding: 4px;
             overflow-x: auto;
@@ -4117,51 +4126,54 @@ report_end = model["report_end"]
 windows = model["windows"]
 
 source_label = "Saved" if using_saved_report else "Uploaded"
-st.markdown(
-    f"""
-    <div class="app-header">
-        <div class="app-header-main">
-            <div class="app-title-cluster">
-                <div class="fluent-grid-icon app-product-icon" aria-hidden="true">
-                    <span></span><span></span><span></span><span></span>
-                </div>
-                <div class="app-title-copy">
-                    <div class="app-eyebrow">{html.escape(format_name)} warehouse</div>
-                    <div class="app-title">Inventory Shortage</div>
-                </div>
-            </div>
-            <div class="app-subtitle">Inventory risk, SKU activity, DO lookup, and outbound stock validation.</div>
-        </div>
-        <div class="app-meta">
-            <span class="meta-chip meta-chip-date meta-chip-accent">{fmt_date(report_start)} – {fmt_date(report_end)}</span>
-            <span class="meta-chip meta-chip-file" title="{html.escape(active_file_name)}">{html.escape(active_file_name)}</span>
-            <span class="meta-chip meta-chip-status">{source_label}</span>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
 navigation_options = ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Help"]
 if st.session_state.get("main_page_navigation") not in navigation_options:
     st.session_state["main_page_navigation"] = "Overview"
-with st.container(key="main_navigation"):
-    if hasattr(st, "segmented_control"):
-        selected_page = st.segmented_control(
-            "Navigation",
-            options=navigation_options,
-            key="main_page_navigation",
-            selection_mode="single",
-            label_visibility="collapsed",
-        )
-    else:
-        selected_page = st.radio(
-            "Navigation",
-            options=navigation_options,
-            key="main_page_navigation",
-            horizontal=True,
-            label_visibility="collapsed",
-        )
+
+# Keep the report header and main navigation visible as one frozen section.
+with st.container(key="sticky_top_section"):
+    st.markdown(
+        f"""
+        <div class="app-header">
+            <div class="app-header-main">
+                <div class="app-title-cluster">
+                    <div class="fluent-grid-icon app-product-icon" aria-hidden="true">
+                        <span></span><span></span><span></span><span></span>
+                    </div>
+                    <div class="app-title-copy">
+                        <div class="app-eyebrow">{html.escape(format_name)} warehouse</div>
+                        <div class="app-title">Inventory Shortage</div>
+                    </div>
+                </div>
+                <div class="app-subtitle">Inventory risk, SKU activity, DO lookup, and outbound stock validation.</div>
+            </div>
+            <div class="app-meta">
+                <span class="meta-chip meta-chip-date meta-chip-accent">{fmt_date(report_start)} – {fmt_date(report_end)}</span>
+                <span class="meta-chip meta-chip-file" title="{html.escape(active_file_name)}">{html.escape(active_file_name)}</span>
+                <span class="meta-chip meta-chip-status">{source_label}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.container(key="main_navigation"):
+        if hasattr(st, "segmented_control"):
+            selected_page = st.segmented_control(
+                "Navigation",
+                options=navigation_options,
+                key="main_page_navigation",
+                selection_mode="single",
+                label_visibility="collapsed",
+            )
+        else:
+            selected_page = st.radio(
+                "Navigation",
+                options=navigation_options,
+                key="main_page_navigation",
+                horizontal=True,
+                label_visibility="collapsed",
+            )
 selected_page = selected_page or "Overview"
 update_persistent_app_state(values={"main_page_navigation": selected_page})
 
