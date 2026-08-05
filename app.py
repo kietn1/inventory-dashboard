@@ -4238,7 +4238,15 @@ def compact_route_path(path, max_points=520):
 
 
 @st.cache_data(ttl=604800, max_entries=500, show_spinner=False)
-def compute_geoapify_route(stop_points_key, mode, avoid_tolls, avoid_highways, avoid_ferries, _api_key):
+def compute_geoapify_routes(
+    stop_points_key,
+    mode,
+    avoid_tolls,
+    avoid_highways,
+    avoid_ferries,
+    traffic_model,
+    _api_key,
+):
     stop_points = [
         {"lat": float(latitude), "lon": float(longitude)}
         for latitude, longitude in stop_points_key
@@ -4250,37 +4258,67 @@ def compute_geoapify_route(stop_points_key, mode, avoid_tolls, avoid_highways, a
         avoids.append("highways")
     if avoid_ferries:
         avoids.append("ferries")
-    params = {
+
+    base_params = {
         "waypoints": "|".join(f"{point['lat']},{point['lon']}" for point in stop_points),
         "mode": mode,
         "units": "metric",
         "lang": "en",
+        "traffic": traffic_model,
     }
     if avoids:
-        params["avoid"] = "|".join(avoids)
-    payload = geoapify_get_json(
-        "https://api.geoapify.com/v1/routing",
-        params,
-        _api_key,
-        timeout=18,
+        base_params["avoid"] = "|".join(avoids)
+
+    route_variants = (
+        ("balanced", "Recommended"),
+        ("short", "Shortest"),
+        ("less_maneuvers", "Fewer turns"),
     )
-    features = payload.get("features", [])
-    if not features:
-        raise RuntimeError("No driving route was returned for these stops.")
-    feature = features[0]
-    properties = feature.get("properties", {})
-    legs = properties.get("legs", [])
-    if not legs:
-        raise RuntimeError("Geoapify returned a route without stop-by-stop details.")
-    return {
-        "distance": float(properties.get("distance", 0) or 0),
-        "time": float(properties.get("time", 0) or 0),
-        "legs": legs,
-        "path": compact_route_path(geoapify_path_coordinates(feature.get("geometry"))),
-    }
 
+    def request_route(route_type):
+        params = dict(base_params)
+        params["type"] = route_type
+        payload = geoapify_get_json(
+            "https://api.geoapify.com/v1/routing",
+            params,
+            _api_key,
+            timeout=22,
+        )
+        features = payload.get("features", [])
+        if not features:
+            raise RuntimeError("No driving route was returned.")
+        feature = features[0]
+        properties = feature.get("properties", {})
+        legs = properties.get("legs", [])
+        if not legs:
+            raise RuntimeError("Geoapify returned a route without stop-by-stop details.")
+        return {
+            "distance": float(properties.get("distance", 0) or 0),
+            "time": float(properties.get("time", 0) or 0),
+            "legs": legs,
+            "path": compact_route_path(geoapify_path_coordinates(feature.get("geometry"))),
+        }
 
-def route_network_signature(stops, mode, avoid_tolls, avoid_highways, avoid_ferries):
+    routes = {}
+    errors = {}
+    with ThreadPoolExecutor(max_workers=len(route_variants)) as executor:
+        future_by_type = {
+            route_type: executor.submit(request_route, route_type)
+            for route_type, _ in route_variants
+        }
+        for route_type, label in route_variants:
+            try:
+                routes[route_type] = request_result = future_by_type[route_type].result()
+                request_result["label"] = label
+            except Exception as exc:
+                errors[route_type] = str(exc)
+
+    if not routes:
+        details = "; ".join(errors.values())
+        raise RuntimeError(details or "No driving routes were returned for these stops.")
+    return {"routes": routes, "errors": errors}
+
+def route_network_signature(stops, mode, avoid_tolls, avoid_highways, avoid_ferries, traffic_model):
     return json.dumps(
         {
             "stops": [route_address_key(stop) for stop in stops],
@@ -4288,15 +4326,14 @@ def route_network_signature(stops, mode, avoid_tolls, avoid_highways, avoid_ferr
             "avoid_tolls": bool(avoid_tolls),
             "avoid_highways": bool(avoid_highways),
             "avoid_ferries": bool(avoid_ferries),
+            "traffic_model": traffic_model,
         },
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
     )
 
-
-def build_route_plan(network_result, departure, stop_minutes, vehicle_label):
-    route = network_result["route"]
+def build_route_plan(network_result, route, departure, stop_minutes, vehicle_label, route_type):
     stop_points = network_result["stop_points"]
     legs = route.get("legs", [])
     selected_zone = departure.tzinfo or timezone.utc
@@ -4327,6 +4364,8 @@ def build_route_plan(network_result, departure, stop_minutes, vehicle_label):
         current_utc = next_departure_utc
     stop_seconds = max(0, len(legs) - 1) * int(stop_minutes) * 60
     return {
+        "route_type": route_type,
+        "route_label": route.get("label", route_type),
         "stops": network_result["stops"],
         "departure": departure,
         "final_arrival": current_utc.astimezone(selected_zone),
@@ -4339,12 +4378,12 @@ def build_route_plan(network_result, departure, stop_minutes, vehicle_label):
         "stop_points": stop_points,
         "path_coordinates": route.get("path", []),
         "stop_signature": network_result["stop_signature"],
+        "traffic_model": network_result.get("traffic_model", "free_flow"),
     }
 
-
-def render_geoapify_route_map(stop_points=None, path_coordinates=None, route_summary=None, api_key=""):
+def render_geoapify_route_map(stop_points=None, route_options=None, default_route="balanced", api_key=""):
     stop_points = stop_points or []
-    path_coordinates = path_coordinates or []
+    route_options = route_options or []
     points = []
     for index, point in enumerate(stop_points):
         points.append(
@@ -4355,10 +4394,21 @@ def render_geoapify_route_map(stop_points=None, path_coordinates=None, route_sum
                 "lon": float(point.get("lon")),
             }
         )
+    normalized_routes = []
+    for route in route_options:
+        normalized_routes.append(
+            {
+                "id": clean_text(route.get("id")),
+                "label": clean_text(route.get("label")),
+                "description": clean_text(route.get("description")),
+                "path": [[float(item[0]), float(item[1])] for item in route.get("path", [])],
+                "summary": route.get("summary", {}),
+            }
+        )
     payload = {
         "points": points,
-        "path": [[float(item[0]), float(item[1])] for item in path_coordinates],
-        "summary": route_summary or {},
+        "routes": normalized_routes,
+        "defaultRoute": default_route,
         "apiKey": clean_text(api_key),
     }
     map_data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
@@ -4369,8 +4419,9 @@ def render_geoapify_route_map(stop_points=None, path_coordinates=None, route_sum
                 --map-text: #171717;
                 --map-muted: #666666;
                 --map-border: rgba(0,0,0,.12);
-                --map-panel: rgba(255,255,255,.95);
+                --map-panel: rgba(255,255,255,.96);
                 --map-route: #171717;
+                --map-alt-route: #777777;
                 --map-accent: #0067c0;
             }
             * { box-sizing: border-box; }
@@ -4385,22 +4436,33 @@ def render_geoapify_route_map(stop_points=None, path_coordinates=None, route_sum
             .route-stop-pin-start { border-radius: 8px; background: #171717; }
             .route-stop-pin-end { background: #107c10; }
             .leaflet-tooltip { max-width: 300px; color: var(--map-text); font-size: 11px; line-height: 1.35; background: rgba(255,255,255,.98); border: 1px solid rgba(0,0,0,.10); border-radius: 8px; box-shadow: 0 5px 18px rgba(0,0,0,.14); }
-            .route-map-summary { position: absolute; z-index: 700; top: 16px; left: 16px; width: min(370px, calc(100% - 32px)); padding: 14px 15px; color: var(--map-text); background: var(--map-panel); border: 1px solid var(--map-border); border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.15); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); pointer-events: none; }
+            .route-map-summary { position: absolute; z-index: 700; top: 16px; left: 16px; width: min(430px, calc(100% - 32px)); padding: 14px 15px; color: var(--map-text); background: var(--map-panel); border: 1px solid var(--map-border); border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.15); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
             .route-map-eyebrow { color: var(--map-accent); font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
             .route-map-title { margin-top: 3px; overflow: hidden; color: var(--map-text); font-size: 16px; font-weight: 700; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
             .route-map-address { margin-top: 4px; overflow: hidden; color: var(--map-muted); font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-            .route-map-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+            .route-choice-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 11px; }
+            .route-choice { min-width: 0; padding: 8px 8px 7px; color: var(--map-text); text-align: left; cursor: pointer; background: rgba(0,0,0,.035); border: 1px solid transparent; border-radius: 8px; transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
+            .route-choice:hover { background: rgba(0,0,0,.065); }
+            .route-choice:active { transform: scale(.985); }
+            .route-choice:focus-visible { outline: 2px solid rgba(0,103,192,.65); outline-offset: 2px; }
+            .route-choice-selected { background: rgba(224,240,255,.95); border-color: rgba(0,103,192,.28); box-shadow: inset 0 -2px 0 var(--map-accent); }
+            .route-choice-label { overflow: hidden; font-size: 10.5px; font-weight: 700; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+            .route-choice-meta { margin-top: 3px; overflow: hidden; color: var(--map-muted); font-size: 9.5px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+            .route-map-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 11px; }
             .route-map-stat { min-width: 0; padding: 8px 9px; background: rgba(0,0,0,.035); border-radius: 8px; }
             .route-map-stat-label { color: var(--map-muted); font-size: 9px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
             .route-map-stat-value { margin-top: 3px; overflow: hidden; color: var(--map-text); font-size: 12px; font-weight: 700; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
             .route-map-meta { margin-top: 9px; color: var(--map-muted); font-size: 10px; line-height: 1.35; }
             .route-map-empty-title { margin-top: 3px; color: var(--map-text); font-size: 16px; font-weight: 700; }
-            .route-map-empty-copy { margin-top: 5px; max-width: 315px; color: var(--map-muted); font-size: 11px; line-height: 1.45; }
+            .route-map-empty-copy { margin-top: 5px; max-width: 350px; color: var(--map-muted); font-size: 11px; line-height: 1.45; }
             .route-recenter { position: absolute; z-index: 700; right: 14px; bottom: 94px; width: 38px; height: 38px; display: grid; place-items: center; padding: 0; color: var(--map-text); font-size: 21px; line-height: 1; cursor: pointer; background: rgba(255,255,255,.96); border: 1px solid var(--map-border); border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.13); }
             .route-recenter:hover { background: #ffffff; }
             .route-recenter:focus-visible { outline: 2px solid rgba(0,103,192,.65); outline-offset: 2px; }
-            @media (max-width: 560px) {
+            @media (max-width: 620px) {
                 .route-map-summary { top: 10px; left: 10px; width: calc(100% - 20px); padding: 12px; }
+                .route-choice-list { grid-template-columns: 1fr; }
+                .route-choice { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; }
+                .route-choice-meta { margin-top: 0; }
                 .route-map-stats { gap: 5px; }
                 .route-map-stat { padding: 7px; }
             }
@@ -4408,7 +4470,7 @@ def render_geoapify_route_map(stop_points=None, path_coordinates=None, route_sum
         <div class="route-map-shell">
             <div id="route-map">Loading route map...</div>
             <div id="route-summary" class="route-map-summary" aria-live="polite"></div>
-            <button id="route-recenter" class="route-recenter" type="button" aria-label="Recenter route" title="Recenter route">⌖</button>
+            <button id="route-recenter" class="route-recenter" type="button" aria-label="Recenter routes" title="Recenter routes">⌖</button>
         </div>
         <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
@@ -4438,6 +4500,30 @@ def render_geoapify_route_map(stop_points=None, path_coordinates=None, route_sum
             }).addTo(map);
 
             let bounds = L.latLngBounds([]);
+            const routeLayers = new Map();
+            routeData.routes.forEach((route) => {
+                if (!Array.isArray(route.path) || route.path.length < 2) return;
+                const outline = L.polyline(route.path, {
+                    color: "#ffffff",
+                    weight: 8,
+                    opacity: .72,
+                    lineCap: "round",
+                    lineJoin: "round",
+                    interactive: false
+                }).addTo(map);
+                const line = L.polyline(route.path, {
+                    color: "#777777",
+                    weight: 4,
+                    opacity: .58,
+                    lineCap: "round",
+                    lineJoin: "round"
+                }).addTo(map);
+                line.on("click", () => selectRoute(route.id));
+                line.bindTooltip(`${escapeHtml(route.label)} · ${escapeHtml(route.summary?.miles || "")} · ${escapeHtml(route.summary?.driveTime || "")}`, { sticky: true });
+                routeLayers.set(route.id, { outline, line });
+                bounds.extend(outline.getBounds());
+            });
+
             routeData.points.forEach((point, index) => {
                 const latLng = [point.lat, point.lon];
                 bounds.extend(latLng);
@@ -4453,29 +4539,9 @@ def render_geoapify_route_map(stop_points=None, path_coordinates=None, route_sum
                     .bindTooltip(`<b>${escapeHtml(point.label)} · ${escapeHtml(point.name)}</b>`, { direction: "top", offset: [0, -12] });
             });
 
-            if (routeData.path.length > 1) {
-                const routeOutline = L.polyline(routeData.path, {
-                    color: "#ffffff",
-                    weight: 10,
-                    opacity: .92,
-                    lineCap: "round",
-                    lineJoin: "round",
-                    interactive: false
-                }).addTo(map);
-                const routeLine = L.polyline(routeData.path, {
-                    color: "#171717",
-                    weight: 5,
-                    opacity: .94,
-                    lineCap: "round",
-                    lineJoin: "round"
-                }).addTo(map);
-                bounds.extend(routeOutline.getBounds());
-                bounds.extend(routeLine.getBounds());
-            }
-
             const fitRoute = () => {
                 if (bounds.isValid()) {
-                    const leftPadding = window.innerWidth > 720 ? 405 : 32;
+                    const leftPadding = window.innerWidth > 760 ? 465 : 32;
                     map.fitBounds(bounds, {
                         paddingTopLeft: [leftPadding, 40],
                         paddingBottomRight: [48, 48],
@@ -4485,31 +4551,76 @@ def render_geoapify_route_map(stop_points=None, path_coordinates=None, route_sum
                     map.setView([39.5, -98.35], 4);
                 }
             };
-            fitRoute();
-            window.setTimeout(() => map.invalidateSize(), 80);
 
-            const summary = routeData.summary || {};
             const summaryElement = document.getElementById("route-summary");
-            if (routeData.points.length > 1) {
+            let selectedRouteId = routeData.routes.some((route) => route.id === routeData.defaultRoute)
+                ? routeData.defaultRoute
+                : routeData.routes[0]?.id;
+
+            function renderSummary() {
+                if (!routeData.routes.length || routeData.points.length < 2) {
+                    summaryElement.innerHTML = `
+                        <div class="route-map-eyebrow">Route tracking</div>
+                        <div class="route-map-empty-title">Map ready</div>
+                        <div class="route-map-empty-copy">Enter the stops and route options above, then select Calculate Routes. Recommended, shortest, and fewer-turn alternatives will appear here.</div>
+                    `;
+                    return;
+                }
+                const selected = routeData.routes.find((route) => route.id === selectedRouteId) || routeData.routes[0];
+                const summary = selected.summary || {};
+                const choices = routeData.routes.map((route) => {
+                    const routeSummary = route.summary || {};
+                    const selectedClass = route.id === selected.id ? " route-choice-selected" : "";
+                    return `
+                        <button class="route-choice${selectedClass}" type="button" data-route-id="${escapeHtml(route.id)}" aria-pressed="${route.id === selected.id}">
+                            <div class="route-choice-label">${escapeHtml(route.label)}</div>
+                            <div class="route-choice-meta">${escapeHtml(routeSummary.miles || "—")} · ${escapeHtml(routeSummary.driveTime || "—")}</div>
+                        </button>
+                    `;
+                }).join("");
                 summaryElement.innerHTML = `
-                    <div class="route-map-eyebrow">Active route</div>
-                    <div class="route-map-title">${escapeHtml(summary.title || "Driving route")}</div>
+                    <div class="route-map-eyebrow">Choose a route</div>
+                    <div class="route-map-title">${escapeHtml(summary.title || selected.label || "Driving route")}</div>
                     <div class="route-map-address">${escapeHtml(summary.from || "")} → ${escapeHtml(summary.to || "")}</div>
+                    <div class="route-choice-list">${choices}</div>
                     <div class="route-map-stats">
                         <div class="route-map-stat"><div class="route-map-stat-label">Distance</div><div class="route-map-stat-value">${escapeHtml(summary.miles || "—")}</div></div>
                         <div class="route-map-stat"><div class="route-map-stat-label">Drive time</div><div class="route-map-stat-value">${escapeHtml(summary.driveTime || "—")}</div></div>
                         <div class="route-map-stat"><div class="route-map-stat-label">Final ETA</div><div class="route-map-stat-value">${escapeHtml(summary.finalEta || "—")}</div></div>
                     </div>
-                    <div class="route-map-meta">${escapeHtml(summary.meta || "Live traffic not included")}</div>
+                    <div class="route-map-meta">${escapeHtml(summary.meta || "")}</div>
                 `;
-            } else {
-                summaryElement.innerHTML = `
-                    <div class="route-map-eyebrow">Route tracking</div>
-                    <div class="route-map-empty-title">Map ready</div>
-                    <div class="route-map-empty-copy">Enter the stops and route options above, then select Calculate Route. The route will fill this map.</div>
-                `;
+                summaryElement.querySelectorAll("[data-route-id]").forEach((button) => {
+                    button.addEventListener("click", () => selectRoute(button.dataset.routeId));
+                });
             }
 
+            function selectRoute(routeId) {
+                if (!routeLayers.has(routeId)) return;
+                selectedRouteId = routeId;
+                routeLayers.forEach((layers, id) => {
+                    const selected = id === selectedRouteId;
+                    layers.outline.setStyle({ weight: selected ? 11 : 8, opacity: selected ? .94 : .58 });
+                    layers.line.setStyle({
+                        color: selected ? "#171717" : "#777777",
+                        weight: selected ? 6 : 4,
+                        opacity: selected ? .96 : .52
+                    });
+                    if (selected) {
+                        layers.outline.bringToFront();
+                        layers.line.bringToFront();
+                    }
+                });
+                renderSummary();
+            }
+
+            fitRoute();
+            if (selectedRouteId && routeLayers.has(selectedRouteId)) {
+                selectRoute(selectedRouteId);
+            } else {
+                renderSummary();
+            }
+            window.setTimeout(() => map.invalidateSize(), 80);
             document.getElementById("route-recenter").addEventListener("click", fitRoute);
         </script>
     """
@@ -4518,8 +4629,6 @@ def render_geoapify_route_map(stop_points=None, path_coordinates=None, route_sum
         height=642,
         scrolling=False,
     )
-
-
 
 def route_itinerary_html(legs):
     rows = []
@@ -4553,7 +4662,7 @@ def _route_fragment_decorator(function):
 def render_route_tracking_page():
     tab_page_header(
         "Route Tracking",
-        "Plan multi-stop routes, road miles, driving time, and stop-by-stop ETA.",
+        "Plan multi-stop routes with estimated traffic and selectable route alternatives.",
     )
 
     api_key = geoapify_api_key()
@@ -4575,7 +4684,7 @@ def render_route_tracking_page():
             status_class = "route-status-chip" if api_key else "route-status-chip route-status-chip-missing"
             status_text = "Geoapify connected" if api_key else "Geoapify secret missing"
             st.markdown(
-                f'<div class="route-overview-strip"><div><div class="route-overview-title">Route setup</div><div class="route-overview-copy">Address search is cached and route settings are applied only when Calculate Route is selected.</div></div><div class="{status_class}">{status_text}</div></div>',
+                f'<div class="route-overview-strip"><div><div class="route-overview-title">Route setup</div><div class="route-overview-copy">Calculate three alternatives, then switch between them directly on the map.</div></div><div class="{status_class}">{status_text}</div></div>',
                 unsafe_allow_html=True,
             )
 
@@ -4619,7 +4728,7 @@ def render_route_tracking_page():
 
     with st.container(key="route_details_panel"):
         st.markdown('<div class="route-overview-title">Departure and route options</div>', unsafe_allow_html=True)
-        st.markdown('<div class="route-overview-copy">These controls are grouped to prevent a full rerun after every change.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="route-overview-copy">Estimated traffic uses Geoapify’s approximated traffic model; it is not live incident data.</div>', unsafe_allow_html=True)
         with st.form("route_plan_form", clear_on_submit=False):
             date_col, time_col, timezone_col, service_col, mode_col = st.columns([1.05, .95, 1.35, 1.15, 1.25])
             with date_col:
@@ -4646,15 +4755,17 @@ def render_route_tracking_page():
                     options=["Car / Van", "Light Truck", "Truck"],
                     key="route_vehicle_mode",
                 )
-            option_col_1, option_col_2, option_col_3, action_col = st.columns([1, 1, 1, 1.7])
+            option_col_1, option_col_2, option_col_3, option_col_4, action_col = st.columns([1, 1, 1, 1.25, 1.7])
             with option_col_1:
                 avoid_tolls = st.checkbox("Avoid tolls", key="route_avoid_tolls")
             with option_col_2:
                 avoid_highways = st.checkbox("Avoid highways", key="route_avoid_highways")
             with option_col_3:
                 avoid_ferries = st.checkbox("Avoid ferries", key="route_avoid_ferries")
+            with option_col_4:
+                use_estimated_traffic = st.checkbox("Estimated traffic", value=True, key="route_estimated_traffic")
             with action_col:
-                calculate_route = st.form_submit_button("Calculate Route", type="primary", use_container_width=True)
+                calculate_route = st.form_submit_button("Calculate Routes", type="primary", use_container_width=True)
 
     try:
         selected_zone = ZoneInfo(timezone_name)
@@ -4677,25 +4788,28 @@ def render_route_tracking_page():
                 "Light Truck": "light_truck",
                 "Truck": "truck",
             }[vehicle_label]
+            traffic_model = "approximated" if use_estimated_traffic else "free_flow"
             network_signature = route_network_signature(
                 stops,
                 mode,
                 avoid_tolls,
                 avoid_highways,
                 avoid_ferries,
+                traffic_model,
             )
             network_result = st.session_state.get("_route_network_result")
             try:
                 if not network_result or network_result.get("signature") != network_signature:
-                    with st.spinner("Calculating route..."):
+                    with st.spinner("Calculating route alternatives..."):
                         stop_points = resolve_geoapify_stops(stops, api_key)
                         stop_points_key = tuple((point["lat"], point["lon"]) for point in stop_points)
-                        route = compute_geoapify_route(
+                        route_response = compute_geoapify_routes(
                             stop_points_key,
                             mode,
                             avoid_tolls,
                             avoid_highways,
                             avoid_ferries,
+                            traffic_model,
                             _api_key=api_key,
                         )
                     network_result = {
@@ -4703,15 +4817,29 @@ def render_route_tracking_page():
                         "stop_signature": current_stop_signature,
                         "stops": list(stops),
                         "stop_points": stop_points,
-                        "route": route,
+                        "routes": route_response["routes"],
+                        "route_errors": route_response.get("errors", {}),
+                        "traffic_model": traffic_model,
                     }
                     st.session_state["_route_network_result"] = network_result
-                st.session_state["route_plan_result"] = build_route_plan(
-                    network_result,
-                    departure,
-                    int(stop_minutes),
-                    vehicle_label,
-                )
+
+                route_plans = {
+                    route_type: build_route_plan(
+                        network_result,
+                        route,
+                        departure,
+                        int(stop_minutes),
+                        vehicle_label,
+                        route_type,
+                    )
+                    for route_type, route in network_result.get("routes", {}).items()
+                }
+                st.session_state["route_plan_result"] = {
+                    "routes": route_plans,
+                    "default_route": "balanced" if "balanced" in route_plans else next(iter(route_plans), ""),
+                    "stop_signature": current_stop_signature,
+                    "route_errors": network_result.get("route_errors", {}),
+                }
             except RuntimeError as exc:
                 st.session_state.pop("route_plan_result", None)
                 st.error(str(exc))
@@ -4720,27 +4848,49 @@ def render_route_tracking_page():
     if result and tuple(result.get("stop_signature", ())) != current_stop_signature:
         result = None
 
-    if not result:
+    if not result or not result.get("routes"):
         with st.container(key="route_map_panel"):
             render_geoapify_route_map(api_key=api_key)
         return
 
-    middle_stop_count = max(0, len(result["stops"]) - 2)
-    service_text = f" · {result['stop_minutes']} min at each middle stop" if middle_stop_count else ""
-    route_summary = {
-        "title": f"{len(result['stops'])}-stop driving route",
-        "from": normalize_route_address(result["stop_points"][0].get("matched")) if result["stop_points"] else "",
-        "to": normalize_route_address(result["stop_points"][-1].get("matched")) if result["stop_points"] else "",
-        "miles": f"{result['total_miles']:.1f} mi",
-        "driveTime": format_route_duration(result["route_seconds"]),
-        "finalEta": result["final_arrival"].strftime("%b %d · %I:%M %p").replace(" 0", " "),
-        "meta": f"{result['vehicle']} · Departure {format_route_clock(result['departure'])}{service_text} · Live traffic not included",
+    route_descriptions = {
+        "balanced": "Balanced time, distance, and cost",
+        "short": "Optimized for the shortest distance",
+        "less_maneuvers": "Balanced route with fewer turns",
     }
+    route_order = ["balanced", "short", "less_maneuvers"]
+    route_options = []
+    for route_type in route_order:
+        route_plan = result["routes"].get(route_type)
+        if not route_plan:
+            continue
+        middle_stop_count = max(0, len(route_plan["stops"]) - 2)
+        service_text = f" · {route_plan['stop_minutes']} min at each middle stop" if middle_stop_count else ""
+        traffic_text = "Estimated traffic" if route_plan.get("traffic_model") == "approximated" else "Free-flow traffic"
+        route_options.append(
+            {
+                "id": route_type,
+                "label": route_plan["route_label"],
+                "description": route_descriptions.get(route_type, ""),
+                "path": route_plan["path_coordinates"],
+                "summary": {
+                    "title": route_plan["route_label"],
+                    "from": normalize_route_address(route_plan["stop_points"][0].get("matched")) if route_plan["stop_points"] else "",
+                    "to": normalize_route_address(route_plan["stop_points"][-1].get("matched")) if route_plan["stop_points"] else "",
+                    "miles": f"{route_plan['total_miles']:.1f} mi",
+                    "driveTime": format_route_duration(route_plan["route_seconds"]),
+                    "finalEta": route_plan["final_arrival"].strftime("%b %d · %I:%M %p").replace(" 0", " "),
+                    "meta": f"{route_plan['vehicle']} · Departure {format_route_clock(route_plan['departure'])}{service_text} · {traffic_text} (not live incidents)",
+                },
+            }
+        )
+
     with st.container(key="route_map_panel"):
+        first_plan = next(iter(result["routes"].values()))
         render_geoapify_route_map(
-            result["stop_points"],
-            result["path_coordinates"],
-            route_summary=route_summary,
+            first_plan["stop_points"],
+            route_options,
+            default_route=result.get("default_route", "balanced"),
             api_key=api_key,
         )
 
