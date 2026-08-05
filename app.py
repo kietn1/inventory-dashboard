@@ -629,7 +629,8 @@ st.markdown(
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(3)::before { content: "\E721"; }
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(4)::before { content: "\E9D5"; }
         div[data-testid="stTabs"] button[role="tab"]:nth-of-type(5)::before { content: "\E9D9"; }
-        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(6)::before { content: "\E897"; }
+        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(6)::before { content: "\E707"; }
+        div[data-testid="stTabs"] button[role="tab"]:nth-of-type(7)::before { content: "\E897"; }
         div[data-testid="stTabs"] button[role="tab"]:hover:not([aria-selected="true"]) {
             color: var(--win-text);
             background: rgba(0, 0, 0, .045);
@@ -724,6 +725,95 @@ st.markdown(
         }
         .section-block { height: 14px; }
         .kpi-row-gap { height: 8px; }
+
+        .st-key-route_control_panel,
+        .st-key-route_details_panel,
+        .st-key-route_map_panel,
+        .st-key-route_history_panel {
+            margin-bottom: 12px;
+            padding: 15px 16px 16px;
+            background: rgba(255,255,255,.82);
+            border: 1px solid var(--win-border);
+            border-radius: var(--win-radius-lg);
+            box-shadow: var(--win-shadow-card);
+            backdrop-filter: blur(20px) saturate(125%);
+            -webkit-backdrop-filter: blur(20px) saturate(125%);
+        }
+        .st-key-route_control_panel {
+            padding-top: 12px;
+            padding-bottom: 12px;
+        }
+        [class*="st-key-route_origin_panel_"],
+        [class*="st-key-route_destination_panel_"],
+        [class*="st-key-route_location_panel_"] {
+            height: 100%;
+            padding: 13px 13px 9px;
+            background: rgba(249,249,249,.78);
+            border: 1px solid var(--win-border);
+            border-radius: 10px;
+        }
+        [class*="st-key-route_origin_panel_"] .section-title,
+        [class*="st-key-route_destination_panel_"] .section-title,
+        [class*="st-key-route_location_panel_"] .section-title {
+            margin-bottom: 9px;
+            font-size: 13px;
+        }
+        .st-key-route_action_row { margin-top: 2px; }
+        .st-key-route_map_panel iframe {
+            display: block;
+            width: 100%;
+            border: 1px solid var(--win-border-strong) !important;
+            border-radius: 11px;
+            background: #f3f3f3;
+        }
+        .route-overview-strip {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 11px;
+        }
+        .route-overview-title {
+            color: var(--win-text);
+            font-size: 14px;
+            font-weight: 650;
+        }
+        .route-overview-copy {
+            margin-top: 2px;
+            color: var(--win-text-secondary);
+            font-size: 11px;
+        }
+        .route-status-chip {
+            min-height: 26px;
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 9px;
+            color: #004f88;
+            font-size: 10.5px;
+            font-weight: 650;
+            white-space: nowrap;
+            background: rgba(224,240,255,.82);
+            border: 1px solid rgba(0,103,192,.14);
+            border-radius: 999px;
+        }
+        .route-status-chip::before {
+            content: "";
+            width: 6px;
+            height: 6px;
+            margin-right: 6px;
+            background: var(--win-accent);
+            border-radius: 50%;
+        }
+        .route-status-delivered { color: #0f6c0f; background: rgba(223,246,227,.8); border-color: rgba(16,124,16,.15); }
+        .route-status-delivered::before { background: #107c10; }
+        .route-status-delayed, .route-status-cancelled { color: #a4262c; background: rgba(253,231,233,.9); border-color: rgba(196,43,28,.15); }
+        .route-status-delayed::before, .route-status-cancelled::before { background: #c42b1c; }
+        .route-map-note {
+            margin-top: 8px;
+            color: var(--win-text-tertiary);
+            font-size: 10.5px;
+            line-height: 1.35;
+        }
 
         
         .kpi-card {
@@ -1259,7 +1349,9 @@ st.markdown(
         .st-key-main_navigation button:nth-of-type(5)::before,
         .st-key-main_navigation [role="radio"]:nth-of-type(5)::before { content: "\E9D9"; }
         .st-key-main_navigation button:nth-of-type(6)::before,
-        .st-key-main_navigation [role="radio"]:nth-of-type(6)::before { content: "\E897"; }
+        .st-key-main_navigation [role="radio"]:nth-of-type(6)::before { content: "\E707"; }
+        .st-key-main_navigation button:nth-of-type(7)::before,
+        .st-key-main_navigation [role="radio"]:nth-of-type(7)::before { content: "\E897"; }
         .st-key-main_navigation button:hover,
         .st-key-main_navigation [role="radio"]:hover {
             color: var(--win-text) !important;
@@ -3830,6 +3922,450 @@ def reset_transaction_filters(search_key, mode_key, date_key, range_key):
     )
 
 
+def safe_coordinate(value, minimum, maximum):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(number) or number < minimum or number > maximum:
+        return None
+    return number
+
+
+def haversine_miles(lat1, lon1, lat2, lon2):
+    values = [lat1, lon1, lat2, lon2]
+    if any(value is None for value in values):
+        return None
+    earth_radius_miles = 3958.7613
+    lat1_rad, lon1_rad, lat2_rad, lon2_rad = map(np.radians, values)
+    delta_lat = lat2_rad - lat1_rad
+    delta_lon = lon2_rad - lon1_rad
+    a = np.sin(delta_lat / 2) ** 2 + np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(delta_lon / 2) ** 2
+    return float(2 * earth_radius_miles * np.arctan2(np.sqrt(a), np.sqrt(max(0.0, 1 - a))))
+
+
+def route_record_defaults():
+    return {
+        "do_number": "",
+        "driver": "",
+        "vehicle": "",
+        "status": "Scheduled",
+        "origin_name": "Warehouse",
+        "origin_lat": None,
+        "origin_lon": None,
+        "destination_name": "Destination",
+        "destination_lat": None,
+        "destination_lon": None,
+        "current_lat": None,
+        "current_lon": None,
+        "eta": "",
+        "notes": "",
+        "history": [],
+        "updated_at": "",
+    }
+
+
+def route_tracking_store():
+    if not isinstance(st.session_state.get("route_tracking_records"), dict):
+        st.session_state["route_tracking_records"] = {}
+    return st.session_state["route_tracking_records"]
+
+
+def route_status_class(status):
+    normalized = clean_text(status).lower().replace(" ", "-")
+    if normalized in {"delivered", "delayed", "cancelled"}:
+        return f"route-status-{normalized}"
+    return ""
+
+
+def render_route_map(point_rows, path_coordinates):
+    safe_points = [
+        {
+            "name": html.escape(clean_text(point.get("name"))),
+            "type": html.escape(clean_text(point.get("type"))),
+            "lat": float(point.get("lat")),
+            "lon": float(point.get("lon")),
+        }
+        for point in point_rows
+    ]
+    payload = {
+        "points": safe_points,
+        "path": [[float(item[1]), float(item[0])] for item in path_coordinates],
+    }
+    map_data = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    components.html(
+        f"""
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3ynhMZpG3PGZPpQXkYkZp2sQw6pVg=" crossorigin="">
+        <style>
+            html, body {{ margin: 0; padding: 0; background: #f3f3f3; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }}
+            #route-map {{ width: 100%; height: 488px; display: grid; place-items: center; color: #737373; font-size: 12px; background: #eef1f4; }}
+            .leaflet-container {{ font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }}
+            .leaflet-bar {{ overflow: hidden; border: 1px solid rgba(0,0,0,.14) !important; border-radius: 8px !important; box-shadow: 0 2px 8px rgba(0,0,0,.10) !important; }}
+            .leaflet-bar a {{ color: #1f1f1f !important; background: rgba(255,255,255,.94) !important; border-bottom-color: rgba(0,0,0,.08) !important; }}
+            .leaflet-bar a:hover {{ background: #ffffff !important; }}
+            .leaflet-control-attribution {{ color: #737373; font-size: 9px; background: rgba(255,255,255,.82) !important; }}
+            .route-pin {{ width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: #0067c0; border: 3px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,.28); }}
+            .route-pin::after {{ content: ""; width: 6px; height: 6px; border-radius: 50%; background: #ffffff; }}
+            .route-pin-origin {{ background: #5d5d5d; }}
+            .route-pin-destination {{ background: #107c10; }}
+            .route-pin-current {{ background: #0067c0; box-shadow: 0 0 0 6px rgba(0,103,192,.16), 0 2px 8px rgba(0,0,0,.28); }}
+            .leaflet-tooltip {{ color: #1f1f1f; font-size: 11px; background: rgba(255,255,255,.96); border: 1px solid rgba(0,0,0,.10); border-radius: 7px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }}
+        </style>
+        <div id="route-map">Loading route map...</div>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+        <script>
+            const routeData = {map_data};
+            const map = L.map("route-map", {{ zoomControl: true, attributionControl: true }});
+            L.tileLayer("https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png", {{
+                maxZoom: 19,
+                attribution: "&copy; OpenStreetMap contributors"
+            }}).addTo(map);
+            const bounds = [];
+            const pinClass = {{ Origin: "origin", Current: "current", Destination: "destination" }};
+            routeData.points.forEach((point) => {{
+                const latLng = [point.lat, point.lon];
+                bounds.push(latLng);
+                const kind = pinClass[point.type] || "current";
+                const icon = L.divIcon({{
+                    className: "",
+                    html: `<div class="route-pin route-pin-${{kind}}"></div>`,
+                    iconSize: [26, 26],
+                    iconAnchor: [13, 13]
+                }});
+                L.marker(latLng, {{ icon }}).addTo(map).bindTooltip(`<b>${{point.name}}</b><br>${{point.type}}`, {{ direction: "top", offset: [0, -10] }});
+            }});
+            if (routeData.path.length > 1) {{
+                L.polyline(routeData.path, {{ color: "#0067c0", weight: 5, opacity: .88, lineCap: "round", lineJoin: "round" }}).addTo(map);
+                routeData.path.forEach((latLng) => bounds.push(latLng));
+            }}
+            if (bounds.length > 1) {{
+                map.fitBounds(bounds, {{ padding: [38, 38], maxZoom: 13 }});
+            }} else if (bounds.length === 1) {{
+                map.setView(bounds[0], 11);
+            }} else {{
+                map.setView([39.5, -98.35], 4);
+            }}
+        </script>
+        """,
+        height=490,
+        scrolling=False,
+    )
+
+
+def render_route_tracking_page():
+    tab_page_header(
+        "Route Tracking",
+        "Manage delivery routes, driver updates, ETA, progress, and location history in a separate workspace.",
+    )
+
+    records = route_tracking_store()
+    route_ids = sorted(records.keys())
+    active_count = sum(record.get("status") not in {"Delivered", "Cancelled"} for record in records.values())
+    transit_count = sum(record.get("status") in {"En Route to Pickup", "At Pickup", "In Transit", "At Delivery"} for record in records.values())
+    delivered_count = sum(record.get("status") == "Delivered" for record in records.values())
+    delayed_count = sum(record.get("status") == "Delayed" for record in records.values())
+
+    summary_cols = st.columns(4)
+    with summary_cols[0]:
+        metric_card("Active Routes", f"{active_count:,}", "Scheduled or moving")
+    with summary_cols[1]:
+        metric_card("In Transit", f"{transit_count:,}", "Pickup through delivery")
+    with summary_cols[2]:
+        metric_card("Delivered", f"{delivered_count:,}", "Completed routes")
+    with summary_cols[3]:
+        metric_card("Delayed", f"{delayed_count:,}", "Requires attention", tone="danger" if delayed_count else "neutral")
+
+    selector_options = ["Create new route", *route_ids]
+    with st.container(key="route_control_panel"):
+        control_col, export_col = st.columns([4.8, 1.2])
+        with control_col:
+            active_selector = st.selectbox(
+                "Delivery route",
+                options=selector_options,
+                key="route_tracking_selector",
+                help="Select a saved delivery or create a new route.",
+            )
+        with export_col:
+            if records:
+                route_export_rows = []
+                for route_id, record in records.items():
+                    route_export_rows.append(
+                        {
+                            "DO / Axia #": route_id,
+                            "Driver": record.get("driver", ""),
+                            "Vehicle": record.get("vehicle", ""),
+                            "Status": record.get("status", ""),
+                            "Origin": record.get("origin_name", ""),
+                            "Destination": record.get("destination_name", ""),
+                            "ETA": record.get("eta", ""),
+                            "Updated": record.get("updated_at", ""),
+                        }
+                    )
+                st.download_button(
+                    "Export Routes",
+                    data=pd.DataFrame(route_export_rows).to_csv(index=False).encode("utf-8-sig"),
+                    file_name="route_tracking_summary.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="download_route_summary",
+                )
+
+    editing_new = active_selector == "Create new route"
+    active_record = route_record_defaults() if editing_new else records.get(active_selector, route_record_defaults()).copy()
+    active_status = active_record.get("status", "Scheduled")
+    selector_key = re.sub(r"[^A-Za-z0-9_-]+", "_", active_selector)
+
+    with st.container(key="route_details_panel"):
+        st.markdown(
+            f"""
+            <div class="route-overview-strip">
+                <div>
+                    <div class="route-overview-title">Delivery details</div>
+                    <div class="route-overview-copy">Enter coordinates manually now and connect a carrier API later.</div>
+                </div>
+                <span class="route-status-chip {route_status_class(active_status)}">{html.escape(active_status)}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        detail_col_1, detail_col_2, detail_col_3, detail_col_4 = st.columns([1.25, 1.1, 1.1, 1.2])
+        with detail_col_1:
+            do_number = st.text_input("DO / Axia #", value=active_record.get("do_number", ""), key=f"route_do_{selector_key}")
+        with detail_col_2:
+            driver = st.text_input("Driver", value=active_record.get("driver", ""), key=f"route_driver_{selector_key}")
+        with detail_col_3:
+            vehicle = st.text_input("Vehicle", value=active_record.get("vehicle", ""), key=f"route_vehicle_{selector_key}")
+        with detail_col_4:
+            status_options = ["Scheduled", "Driver Assigned", "En Route to Pickup", "At Pickup", "In Transit", "At Delivery", "Delivered", "Delayed", "Cancelled"]
+            current_status = active_status if active_status in status_options else "Scheduled"
+            status = st.selectbox("Status", options=status_options, index=status_options.index(current_status), key=f"route_status_{selector_key}")
+
+        origin_col, destination_col, location_col = st.columns(3)
+        with origin_col:
+            with st.container(key=f"route_origin_panel_{selector_key}"):
+                st.markdown('<div class="section-title">Origin</div>', unsafe_allow_html=True)
+                origin_name = st.text_input("Origin name", value=active_record.get("origin_name", "Warehouse"), key=f"route_origin_name_{selector_key}")
+                origin_lat = st.number_input(
+                    "Origin latitude",
+                    min_value=-90.0,
+                    max_value=90.0,
+                    value=float(active_record["origin_lat"]) if active_record.get("origin_lat") is not None else 0.0,
+                    format="%.6f",
+                    key=f"route_origin_lat_{selector_key}",
+                )
+                origin_lon = st.number_input(
+                    "Origin longitude",
+                    min_value=-180.0,
+                    max_value=180.0,
+                    value=float(active_record["origin_lon"]) if active_record.get("origin_lon") is not None else 0.0,
+                    format="%.6f",
+                    key=f"route_origin_lon_{selector_key}",
+                )
+        with destination_col:
+            with st.container(key=f"route_destination_panel_{selector_key}"):
+                st.markdown('<div class="section-title">Destination</div>', unsafe_allow_html=True)
+                destination_name = st.text_input("Destination name", value=active_record.get("destination_name", "Destination"), key=f"route_destination_name_{selector_key}")
+                destination_lat = st.number_input(
+                    "Destination latitude",
+                    min_value=-90.0,
+                    max_value=90.0,
+                    value=float(active_record["destination_lat"]) if active_record.get("destination_lat") is not None else 0.0,
+                    format="%.6f",
+                    key=f"route_destination_lat_{selector_key}",
+                )
+                destination_lon = st.number_input(
+                    "Destination longitude",
+                    min_value=-180.0,
+                    max_value=180.0,
+                    value=float(active_record["destination_lon"]) if active_record.get("destination_lon") is not None else 0.0,
+                    format="%.6f",
+                    key=f"route_destination_lon_{selector_key}",
+                )
+        with location_col:
+            with st.container(key=f"route_location_panel_{selector_key}"):
+                st.markdown('<div class="section-title">Current driver location</div>', unsafe_allow_html=True)
+                current_lat = st.number_input(
+                    "Current latitude",
+                    min_value=-90.0,
+                    max_value=90.0,
+                    value=float(active_record["current_lat"]) if active_record.get("current_lat") is not None else 0.0,
+                    format="%.6f",
+                    key=f"route_current_lat_{selector_key}",
+                )
+                current_lon = st.number_input(
+                    "Current longitude",
+                    min_value=-180.0,
+                    max_value=180.0,
+                    value=float(active_record["current_lon"]) if active_record.get("current_lon") is not None else 0.0,
+                    format="%.6f",
+                    key=f"route_current_lon_{selector_key}",
+                )
+                eta = st.text_input("ETA", value=active_record.get("eta", ""), placeholder="Example: 3:45 PM", key=f"route_eta_{selector_key}")
+
+        notes = st.text_area("Tracking notes", value=active_record.get("notes", ""), key=f"route_notes_{selector_key}")
+
+        with st.container(key="route_action_row"):
+            save_col, delete_col, spacer_col = st.columns([1.35, 1.05, 4.6])
+            with save_col:
+                save_route = st.button("Save / Update Route", type="primary", use_container_width=True, key=f"save_route_{selector_key}")
+            with delete_col:
+                delete_route = st.button("Delete Route", use_container_width=True, disabled=editing_new, key=f"delete_route_{selector_key}")
+
+    normalized_do = clean_text(do_number)
+    origin_lat_value = safe_coordinate(origin_lat, -90, 90)
+    origin_lon_value = safe_coordinate(origin_lon, -180, 180)
+    destination_lat_value = safe_coordinate(destination_lat, -90, 90)
+    destination_lon_value = safe_coordinate(destination_lon, -180, 180)
+    current_lat_value = safe_coordinate(current_lat, -90, 90)
+    current_lon_value = safe_coordinate(current_lon, -180, 180)
+
+    if save_route:
+        if not normalized_do:
+            st.error("Enter a DO or Axia number before saving the route.")
+        elif (origin_lat_value, origin_lon_value) == (0.0, 0.0) or (destination_lat_value, destination_lon_value) == (0.0, 0.0):
+            st.error("Enter valid origin and destination coordinates. Coordinates cannot both be 0.000000.")
+        else:
+            now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            route_key = normalized_do
+            previous = records.get(route_key, route_record_defaults())
+            history = list(previous.get("history", []))
+            location_changed = (
+                previous.get("current_lat") != current_lat_value
+                or previous.get("current_lon") != current_lon_value
+                or previous.get("status") != status
+            )
+            if current_lat_value is not None and current_lon_value is not None and (current_lat_value, current_lon_value) != (0.0, 0.0) and location_changed:
+                history.append(
+                    {
+                        "Timestamp": now_text,
+                        "Status": status,
+                        "Latitude": current_lat_value,
+                        "Longitude": current_lon_value,
+                        "ETA": clean_text(eta),
+                        "Note": clean_text(notes),
+                    }
+                )
+            if not editing_new and active_selector != route_key:
+                records.pop(active_selector, None)
+            records[route_key] = {
+                "do_number": route_key,
+                "driver": clean_text(driver),
+                "vehicle": clean_text(vehicle),
+                "status": status,
+                "origin_name": clean_text(origin_name) or "Warehouse",
+                "origin_lat": origin_lat_value,
+                "origin_lon": origin_lon_value,
+                "destination_name": clean_text(destination_name) or "Destination",
+                "destination_lat": destination_lat_value,
+                "destination_lon": destination_lon_value,
+                "current_lat": current_lat_value,
+                "current_lon": current_lon_value,
+                "eta": clean_text(eta),
+                "notes": clean_text(notes),
+                "history": history,
+                "updated_at": now_text,
+            }
+            st.session_state["route_tracking_records"] = records
+            update_persistent_app_state(values={"route_tracking_records": records})
+            st.session_state["route_tracking_selector"] = route_key
+            st.toast(f"Route {route_key} saved.")
+            st.rerun()
+
+    if delete_route and not editing_new:
+        records.pop(active_selector, None)
+        st.session_state["route_tracking_records"] = records
+        update_persistent_app_state(values={"route_tracking_records": records})
+        st.session_state["route_tracking_selector"] = "Create new route"
+        st.toast(f"Route {active_selector} deleted.")
+        st.rerun()
+
+    if editing_new:
+        st.info("Save the delivery to open the route map and tracking history.")
+        return
+
+    saved = records.get(active_selector, active_record)
+    origin_lat_value = safe_coordinate(saved.get("origin_lat"), -90, 90)
+    origin_lon_value = safe_coordinate(saved.get("origin_lon"), -180, 180)
+    destination_lat_value = safe_coordinate(saved.get("destination_lat"), -90, 90)
+    destination_lon_value = safe_coordinate(saved.get("destination_lon"), -180, 180)
+    current_lat_value = safe_coordinate(saved.get("current_lat"), -90, 90)
+    current_lon_value = safe_coordinate(saved.get("current_lon"), -180, 180)
+
+    direct_distance = haversine_miles(origin_lat_value, origin_lon_value, destination_lat_value, destination_lon_value)
+    remaining_distance = haversine_miles(current_lat_value, current_lon_value, destination_lat_value, destination_lon_value)
+    travelled_distance = haversine_miles(origin_lat_value, origin_lon_value, current_lat_value, current_lon_value)
+    progress_percent = None
+    if direct_distance and direct_distance > 0 and travelled_distance is not None:
+        progress_percent = max(0.0, min(100.0, (travelled_distance / direct_distance) * 100))
+
+    map_metric_cols = st.columns(4)
+    with map_metric_cols[0]:
+        metric_card("Status", saved.get("status", "Scheduled"), saved.get("updated_at", "Not updated"))
+    with map_metric_cols[1]:
+        metric_card("Direct Distance", f"{direct_distance:.1f} mi" if direct_distance is not None else "—", "Straight-line estimate")
+    with map_metric_cols[2]:
+        metric_card("Remaining", f"{remaining_distance:.1f} mi" if remaining_distance is not None else "—", "Straight-line estimate")
+    with map_metric_cols[3]:
+        metric_card("Route Progress", f"{progress_percent:.0f}%" if progress_percent is not None else "—", f"ETA {saved.get('eta') or 'not entered'}")
+
+    point_rows = []
+    path_coordinates = []
+    if origin_lat_value is not None and origin_lon_value is not None and (origin_lat_value, origin_lon_value) != (0.0, 0.0):
+        point_rows.append({"name": saved.get("origin_name", "Warehouse"), "type": "Origin", "lat": origin_lat_value, "lon": origin_lon_value})
+        path_coordinates.append([origin_lon_value, origin_lat_value])
+    history = saved.get("history", [])
+    for item in history:
+        item_lat = safe_coordinate(item.get("Latitude"), -90, 90)
+        item_lon = safe_coordinate(item.get("Longitude"), -180, 180)
+        if item_lat is not None and item_lon is not None:
+            path_coordinates.append([item_lon, item_lat])
+    if current_lat_value is not None and current_lon_value is not None and (current_lat_value, current_lon_value) != (0.0, 0.0):
+        point_rows.append({"name": saved.get("driver") or "Driver", "type": "Current", "lat": current_lat_value, "lon": current_lon_value})
+        current_pair = [current_lon_value, current_lat_value]
+        if not path_coordinates or path_coordinates[-1] != current_pair:
+            path_coordinates.append(current_pair)
+    if destination_lat_value is not None and destination_lon_value is not None and (destination_lat_value, destination_lon_value) != (0.0, 0.0):
+        point_rows.append({"name": saved.get("destination_name", "Destination"), "type": "Destination", "lat": destination_lat_value, "lon": destination_lon_value})
+        path_coordinates.append([destination_lon_value, destination_lat_value])
+
+    with st.container(key="route_map_panel"):
+        st.markdown('<div class="section-title">Live route view</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Origin, recorded driver updates, current location, and destination.</div>', unsafe_allow_html=True)
+        if point_rows:
+            render_route_map(point_rows, path_coordinates)
+            if origin_lat_value is not None and origin_lon_value is not None and destination_lat_value is not None and destination_lon_value is not None:
+                google_maps_url = (
+                    "https://www.google.com/maps/dir/?api=1"
+                    f"&origin={origin_lat_value},{origin_lon_value}"
+                    f"&destination={destination_lat_value},{destination_lon_value}"
+                    "&travelmode=driving"
+                )
+                link_col, note_col = st.columns([1.35, 4.65])
+                with link_col:
+                    st.link_button("Open Driving Route", google_maps_url, use_container_width=True)
+                with note_col:
+                    st.markdown('<div class="route-map-note">The in-app line connects saved GPS points. Google Maps opens the road-following route.</div>', unsafe_allow_html=True)
+        else:
+            st.warning("Add valid coordinates to display the map.")
+
+    with st.container(key="route_history_panel"):
+        st.markdown('<div class="section-title">Location history</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Each changed location or status is recorded when the route is saved.</div>', unsafe_allow_html=True)
+        if history:
+            history_df = pd.DataFrame(history)
+            show_limited_dataframe(history_df.iloc[::-1].reset_index(drop=True), height=260, limit=1000)
+            st.download_button(
+                "Download Tracking History",
+                data=history_df.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"{active_selector}_tracking_history.csv",
+                mime="text/csv",
+                key=f"download_route_history_{selector_key}",
+            )
+        else:
+            st.caption("No driver-location updates have been recorded yet.")
+
+
 restore_persistent_app_state()
 st.sidebar.markdown(
     """
@@ -4142,7 +4678,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-navigation_options = ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Help"]
+navigation_options = ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Route Tracking", "Help"]
 if st.session_state.get("main_page_navigation") not in navigation_options:
     st.session_state["main_page_navigation"] = "Overview"
 with st.container(key="main_navigation"):
@@ -5369,6 +5905,9 @@ elif selected_page == "Audit":
     if not model["beginning_balance_df"].empty:
         with st.expander("Beginning Balance Rows", expanded=False):
             show_limited_dataframe(model["beginning_balance_df"], height=260, limit=250)
+
+elif selected_page == "Route Tracking":
+    render_route_tracking_page()
 
 elif selected_page == "Help":
     tab_page_header("Help", "The shortest path through the dashboard for daily inventory work.")
