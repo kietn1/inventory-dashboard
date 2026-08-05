@@ -14,6 +14,10 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+try:
+    from streamlit_searchbox import st_searchbox
+except ImportError:
+    st_searchbox = None
 from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
@@ -3975,6 +3979,34 @@ def geoapify_get_json(endpoint, params, api_key):
         raise RuntimeError(f"Unable to connect to Geoapify: {exc.reason}") from exc
 
 
+def geoapify_address_suggestions(searchterm, api_key):
+    query = clean_text(searchterm)
+    if not api_key or len(query) < 3:
+        return []
+    try:
+        payload = geoapify_get_json(
+            "https://api.geoapify.com/v1/geocode/autocomplete",
+            {
+                "text": query,
+                "format": "json",
+                "lang": "en",
+                "filter": "countrycode:us",
+                "limit": 8,
+            },
+            api_key,
+        )
+    except RuntimeError:
+        return []
+    suggestions = []
+    seen = set()
+    for result in payload.get("results", []):
+        formatted = clean_text(result.get("formatted"))
+        if formatted and formatted.casefold() not in seen:
+            seen.add(formatted.casefold())
+            suggestions.append(formatted)
+    return suggestions
+
+
 def geocode_geoapify_address(api_key, address):
     payload = geoapify_get_json(
         "https://api.geoapify.com/v1/geocode/search",
@@ -4143,8 +4175,10 @@ def render_route_tracking_page():
     now_local = datetime.now(ZoneInfo("America/Los_Angeles"))
     default_departure = now_local + timedelta(minutes=30)
 
+    api_key = secret_api_key
+
     with st.container(key="route_control_panel"):
-        control_col_1, control_col_2, control_col_3 = st.columns([1.1, 1.45, 2.45])
+        control_col_1, control_col_2 = st.columns([1.1, 1.45])
         with control_col_1:
             stop_count = st.number_input(
                 "Number of stops",
@@ -4167,12 +4201,6 @@ def render_route_tracking_page():
                 ],
                 key="route_planner_timezone",
             )
-        with control_col_3:
-            if secret_api_key:
-                st.text_input("Geoapify API key", value="Connected through Streamlit secrets", disabled=True, key="route_api_connected")
-                api_key = secret_api_key
-            else:
-                api_key = st.text_input("Geoapify API key", type="password", key="route_geoapify_api_key")
 
     with st.container(key="route_stops_panel"):
         st.markdown('<div class="route-overview-title">Stops</div>', unsafe_allow_html=True)
@@ -4186,11 +4214,23 @@ def render_route_tracking_page():
             else:
                 label = f"{chr(65 + index)} · Stop {index}"
             with st.container(key=f"route_stop_card_{index}"):
-                address = st.text_input(
-                    label,
-                    key=f"route_stop_address_{index}",
-                    placeholder="Street address, city, state, ZIP",
-                )
+                if st_searchbox is not None and api_key:
+                    address = st_searchbox(
+                        geoapify_address_suggestions,
+                        api_key=api_key,
+                        key=f"route_stop_address_{index}",
+                        label=label,
+                        placeholder="Start typing an address...",
+                        default_use_searchterm=True,
+                        edit_after_submit="option",
+                        debounce=400,
+                    )
+                else:
+                    address = st.text_input(
+                        label,
+                        key=f"route_stop_address_fallback_{index}",
+                        placeholder="Street address, city, state, ZIP",
+                    )
                 stops.append(clean_text(address))
 
     with st.container(key="route_details_panel"):
@@ -4227,7 +4267,7 @@ def render_route_tracking_page():
             selected_zone = timezone.utc
         departure = datetime.combine(departure_date, departure_time).replace(tzinfo=selected_zone)
         if not api_key:
-            st.error("Enter a Geoapify API key or add GEOAPIFY_API_KEY to Streamlit secrets.")
+            st.error("GEOAPIFY_API_KEY is missing from Streamlit Secrets.")
         elif missing_stops:
             st.error("Enter an address for every stop.")
         else:
