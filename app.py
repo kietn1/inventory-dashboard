@@ -2,6 +2,7 @@ import hashlib
 import html
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
@@ -2788,8 +2789,9 @@ def html_pills(values, class_name, limit=36):
     return pills
 
 
-def metric_card(label, value, help_text=""):
+def metric_card(label, value, help_text="", tone=None):
     label_text = clean_text(label)
+    tone_override = clean_text(tone).lower() if tone else ""
     tone = "accent"
     icon_code = "E9D2"
     label_lower = label_text.lower()
@@ -2826,6 +2828,9 @@ def metric_card(label, value, help_text=""):
             tone = "success"
         else:
             tone = "neutral"
+
+    if tone_override in {"accent", "danger", "warning", "watch", "success", "neutral"}:
+        tone = tone_override
 
     st.markdown(
         f"""
@@ -3952,7 +3957,7 @@ def format_route_datetime(value):
     return value.strftime("%a, %b %d, %Y · %I:%M %p %Z").replace(" 0", " ")
 
 
-def geoapify_get_json(endpoint, params, api_key):
+def geoapify_get_json(endpoint, params, api_key, timeout=18):
     query = dict(params)
     query["apiKey"] = api_key
     url = endpoint + "?" + urlencode(query)
@@ -3960,12 +3965,13 @@ def geoapify_get_json(endpoint, params, api_key):
         url,
         headers={
             "Accept": "application/json",
-            "User-Agent": "Inventory-Route-Tracking/1.0",
+            "User-Agent": "Inventory-Route-Tracking/1.1",
+            "Connection": "keep-alive",
         },
         method="GET",
     )
     try:
-        with urlopen(request, timeout=35) as response:
+        with urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         error_text = exc.read().decode("utf-8", errors="replace")
@@ -3979,9 +3985,10 @@ def geoapify_get_json(endpoint, params, api_key):
         raise RuntimeError(f"Unable to connect to Geoapify: {exc.reason}") from exc
 
 
-def geoapify_address_suggestions(searchterm, api_key):
+@st.cache_data(ttl=86400, max_entries=1200, show_spinner=False)
+def geoapify_address_suggestions(searchterm, _api_key):
     query = clean_text(searchterm)
-    if not api_key or len(query) < 3:
+    if not _api_key or len(query) < 4:
         return []
     try:
         payload = geoapify_get_json(
@@ -3991,9 +3998,10 @@ def geoapify_address_suggestions(searchterm, api_key):
                 "format": "json",
                 "lang": "en",
                 "filter": "countrycode:us",
-                "limit": 8,
+                "limit": 5,
             },
-            api_key,
+            _api_key,
+            timeout=8,
         )
     except RuntimeError:
         return []
@@ -4001,26 +4009,30 @@ def geoapify_address_suggestions(searchterm, api_key):
     seen = set()
     for result in payload.get("results", []):
         formatted = clean_text(result.get("formatted"))
-        if formatted and formatted.casefold() not in seen:
-            seen.add(formatted.casefold())
+        normalized = formatted.casefold()
+        if formatted and normalized not in seen:
+            seen.add(normalized)
             suggestions.append(formatted)
     return suggestions
 
 
-def geocode_geoapify_address(api_key, address):
+@st.cache_data(ttl=604800, max_entries=3000, show_spinner=False)
+def geocode_geoapify_address(address, _api_key):
     payload = geoapify_get_json(
         "https://api.geoapify.com/v1/geocode/search",
         {
-            "text": address,
+            "text": clean_text(address),
             "format": "json",
             "lang": "en",
+            "filter": "countrycode:us",
             "limit": 1,
         },
-        api_key,
+        _api_key,
+        timeout=12,
     )
     results = payload.get("results", [])
     if not results:
-        raise RuntimeError(f"Address not found: {address}")
+        raise RuntimeError(f"Address not found: {clean_text(address)}")
     result = results[0]
     try:
         latitude = float(result["lat"])
@@ -4028,8 +4040,8 @@ def geocode_geoapify_address(api_key, address):
     except (KeyError, TypeError, ValueError) as exc:
         raise RuntimeError(f"Geoapify did not return coordinates for: {address}") from exc
     return {
-        "name": address,
-        "matched": clean_text(result.get("formatted")) or address,
+        "name": clean_text(address),
+        "matched": clean_text(result.get("formatted")) or clean_text(address),
         "lat": latitude,
         "lon": longitude,
     }
@@ -4056,7 +4068,20 @@ def geoapify_path_coordinates(geometry):
     return path
 
 
-def compute_geoapify_route(api_key, stop_points, mode, avoid_tolls, avoid_highways, avoid_ferries):
+def compact_route_path(path, max_points=900):
+    if len(path) <= max_points:
+        return path
+    last_index = len(path) - 1
+    indexes = sorted({round(index * last_index / (max_points - 1)) for index in range(max_points)})
+    return [path[index] for index in indexes]
+
+
+@st.cache_data(ttl=86400, max_entries=250, show_spinner=False)
+def compute_geoapify_route(stop_points_key, mode, avoid_tolls, avoid_highways, avoid_ferries, _api_key):
+    stop_points = [
+        {"lat": float(latitude), "lon": float(longitude)}
+        for latitude, longitude in stop_points_key
+    ]
     avoids = []
     if avoid_tolls:
         avoids.append("tolls")
@@ -4075,7 +4100,8 @@ def compute_geoapify_route(api_key, stop_points, mode, avoid_tolls, avoid_highwa
     payload = geoapify_get_json(
         "https://api.geoapify.com/v1/routing",
         params,
-        api_key,
+        _api_key,
+        timeout=18,
     )
     features = payload.get("features", [])
     if not features:
@@ -4089,7 +4115,7 @@ def compute_geoapify_route(api_key, stop_points, mode, avoid_tolls, avoid_highwa
         "distance": float(properties.get("distance", 0) or 0),
         "time": float(properties.get("time", 0) or 0),
         "legs": legs,
-        "path": geoapify_path_coordinates(feature.get("geometry")),
+        "path": compact_route_path(geoapify_path_coordinates(feature.get("geometry"))),
     }
 
 
@@ -4217,13 +4243,13 @@ def render_route_tracking_page():
                 if st_searchbox is not None and api_key:
                     address = st_searchbox(
                         geoapify_address_suggestions,
-                        api_key=api_key,
+                        _api_key=api_key,
                         key=f"route_stop_address_{index}",
                         label=label,
                         placeholder="Start typing an address...",
                         default_use_searchterm=True,
                         edit_after_submit="option",
-                        debounce=400,
+                        debounce=250,
                     )
                 else:
                     address = st.text_input(
@@ -4258,14 +4284,15 @@ def render_route_tracking_page():
         with action_col:
             calculate_route = st.button("Calculate Route", type="primary", use_container_width=True, key="calculate_geoapify_route")
 
+    try:
+        selected_zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        selected_zone = timezone.utc
+    departure = datetime.combine(departure_date, departure_time).replace(tzinfo=selected_zone)
+
     if calculate_route:
         st.session_state.pop("route_plan_result", None)
         missing_stops = [index + 1 for index, stop in enumerate(stops) if not stop]
-        try:
-            selected_zone = ZoneInfo(timezone_name)
-        except ZoneInfoNotFoundError:
-            selected_zone = timezone.utc
-        departure = datetime.combine(departure_date, departure_time).replace(tzinfo=selected_zone)
         if not api_key:
             st.error("GEOAPIFY_API_KEY is missing from Streamlit Secrets.")
         elif missing_stops:
@@ -4278,14 +4305,22 @@ def render_route_tracking_page():
             }[vehicle_label]
             try:
                 with st.spinner("Finding addresses and calculating route, mileage, and ETA..."):
-                    stop_points = [geocode_geoapify_address(api_key, stop) for stop in stops]
+                    worker_count = min(4, len(stops))
+                    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                        stop_points = list(
+                            executor.map(
+                                lambda address: geocode_geoapify_address(address, _api_key=api_key),
+                                stops,
+                            )
+                        )
+                    stop_points_key = tuple((point["lat"], point["lon"]) for point in stop_points)
                     route = compute_geoapify_route(
-                        api_key,
-                        stop_points,
+                        stop_points_key,
                         mode,
                         avoid_tolls,
                         avoid_highways,
                         avoid_ferries,
+                        _api_key=api_key,
                     )
                 legs = route.get("legs", [])
                 leg_rows = []
@@ -4317,11 +4352,39 @@ def render_route_tracking_page():
                     "legs": leg_rows,
                     "stop_points": stop_points,
                     "path_coordinates": route.get("path", []),
+                    "input_signature": json.dumps(
+                        {
+                            "stops": stops,
+                            "timezone": timezone_name,
+                            "departure": departure.isoformat(),
+                            "stop_minutes": int(stop_minutes),
+                            "vehicle": vehicle_label,
+                            "avoid_tolls": bool(avoid_tolls),
+                            "avoid_highways": bool(avoid_highways),
+                            "avoid_ferries": bool(avoid_ferries),
+                        },
+                        sort_keys=True,
+                    ),
                 }
             except RuntimeError as exc:
                 st.error(str(exc))
 
+    current_input_signature = json.dumps(
+        {
+            "stops": stops,
+            "timezone": timezone_name,
+            "departure": departure.isoformat(),
+            "stop_minutes": int(stop_minutes),
+            "vehicle": vehicle_label,
+            "avoid_tolls": bool(avoid_tolls),
+            "avoid_highways": bool(avoid_highways),
+            "avoid_ferries": bool(avoid_ferries),
+        },
+        sort_keys=True,
+    )
     result = st.session_state.get("route_plan_result")
+    if result and result.get("input_signature") != current_input_signature:
+        result = None
     if not result:
         with st.container(key="route_map_panel"):
             st.markdown('<div class="route-map-empty"><div class="route-map-empty-title">Route map</div><div class="route-map-empty-copy">Enter at least two stops and select Calculate Route.</div></div>', unsafe_allow_html=True)
@@ -4378,6 +4441,56 @@ st.sidebar.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+navigation_options = ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Route Tracking", "Help"]
+if st.session_state.get("main_page_navigation") not in navigation_options:
+    st.session_state["main_page_navigation"] = "Overview"
+app_header_slot = st.empty()
+navigation_slot = st.empty()
+with navigation_slot.container():
+    with st.container(key="main_navigation"):
+        if hasattr(st, "segmented_control"):
+            selected_page = st.segmented_control(
+                "Navigation",
+                options=navigation_options,
+                key="main_page_navigation",
+                selection_mode="single",
+                label_visibility="collapsed",
+            )
+        else:
+            selected_page = st.radio(
+                "Navigation",
+                options=navigation_options,
+                key="main_page_navigation",
+                horizontal=True,
+                label_visibility="collapsed",
+            )
+selected_page = selected_page or "Overview"
+update_persistent_app_state(values={"main_page_navigation": selected_page})
+
+if selected_page == "Route Tracking":
+    app_header_slot.markdown(
+        """
+        <div class="app-header">
+            <div class="app-header-main">
+                <div class="app-title-cluster">
+                    <div class="fluent-grid-icon app-product-icon" aria-hidden="true">
+                        <span></span><span></span><span></span><span></span>
+                    </div>
+                    <div class="app-title-copy">
+                        <div class="app-eyebrow">Operations route planner</div>
+                        <div class="app-title">Route Tracking</div>
+                    </div>
+                </div>
+                <div class="app-subtitle">Plan multi-stop routes, mileage, driving time, and stop-by-stop ETA.</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    render_route_tracking_page()
+    st.stop()
+
 warehouse_options = list(FORMAT_CONFIGS.keys())
 if st.session_state.get("report_format") not in warehouse_options:
     st.session_state["report_format"] = "Newark"
@@ -4650,7 +4763,7 @@ report_end = model["report_end"]
 windows = model["windows"]
 
 source_label = "Saved" if using_saved_report else "Uploaded"
-st.markdown(
+app_header_slot.markdown(
     f"""
     <div class="app-header">
         <div class="app-header-main">
@@ -4674,29 +4787,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-navigation_options = ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Route Tracking", "Help"]
-if st.session_state.get("main_page_navigation") not in navigation_options:
-    st.session_state["main_page_navigation"] = "Overview"
-with st.container(key="main_navigation"):
-    if hasattr(st, "segmented_control"):
-        selected_page = st.segmented_control(
-            "Navigation",
-            options=navigation_options,
-            key="main_page_navigation",
-            selection_mode="single",
-            label_visibility="collapsed",
-        )
-    else:
-        selected_page = st.radio(
-            "Navigation",
-            options=navigation_options,
-            key="main_page_navigation",
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-selected_page = selected_page or "Overview"
-update_persistent_app_state(values={"main_page_navigation": selected_page})
 
 if selected_page == "Overview":
     data_issue_count = int((sku_df["Risk Level"] == "Data Issue").sum())
@@ -5902,9 +5992,6 @@ elif selected_page == "Audit":
     if not model["beginning_balance_df"].empty:
         with st.expander("Beginning Balance Rows", expanded=False):
             show_limited_dataframe(model["beginning_balance_df"], height=260, limit=250)
-
-elif selected_page == "Route Tracking":
-    render_route_tracking_page()
 
 elif selected_page == "Help":
     tab_page_header("Help", "The shortest path through the dashboard for daily inventory work.")
