@@ -741,336 +741,280 @@ st.markdown(
         .st-key-route_map_panel,
         .st-key-route_itinerary_panel {
             position: relative;
-            margin-bottom: 14px;
-            padding: 17px 18px 18px;
+            margin-bottom: 10px;
+            padding: 12px 14px;
             overflow: hidden;
-            background: rgba(255,255,255,.88);
-            border: 1px solid rgba(0,0,0,.065);
-            border-radius: 14px;
-            box-shadow: 0 1px 2px rgba(0,0,0,.025), 0 8px 24px rgba(0,0,0,.045);
-            backdrop-filter: blur(20px) saturate(125%);
-            -webkit-backdrop-filter: blur(20px) saturate(125%);
-            animation: routePanelReveal .42s var(--win-ease) both;
-            transition:
-                border-color var(--win-normal) ease,
-                box-shadow var(--win-normal) var(--win-ease),
-                transform var(--win-normal) var(--win-ease),
-                background var(--win-normal) ease;
+            background: rgba(255,255,255,.94);
+            border: 1px solid rgba(0,0,0,.075);
+            border-radius: 11px;
+            box-shadow: 0 1px 2px rgba(0,0,0,.025), 0 5px 16px rgba(0,0,0,.035);
+            backdrop-filter: blur(16px) saturate(115%);
+            -webkit-backdrop-filter: blur(16px) saturate(115%);
+            animation: routePanelReveal .28s var(--win-ease) both;
         }
-        .st-key-route_control_panel { animation-delay: 20ms; }
-        .st-key-route_stops_panel { animation-delay: 70ms; }
-        .st-key-route_details_panel { animation-delay: 120ms; }
-        .st-key-route_map_panel { animation-delay: 170ms; }
-        .st-key-route_control_panel:hover,
-        .st-key-route_stops_panel:hover,
-        .st-key-route_details_panel:hover {
-            background: rgba(255,255,255,.96);
-            border-color: rgba(0,103,192,.12);
-            box-shadow: 0 2px 4px rgba(0,0,0,.035), 0 12px 30px rgba(0,0,0,.06);
-        }
+        .st-key-route_stops_panel { animation-delay: 20ms; }
+        .st-key-route_details_panel { animation-delay: 55ms; }
+        .st-key-route_map_panel { animation-delay: 90ms; }
         @keyframes routePanelReveal {
-            from { opacity: 0; transform: translateY(8px); }
+            from { opacity: 0; transform: translateY(4px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .st-key-route_control_panel {
-            padding-top: 14px;
-            padding-bottom: 14px;
-            background:
-                linear-gradient(112deg, rgba(0,103,192,.055), transparent 38%),
-                rgba(255,255,255,.90);
-        }
-        .route-step-heading {
+        .route-compact-header {
+            min-height: 34px;
             display: flex;
-            align-items: flex-start;
+            align-items: center;
             justify-content: space-between;
-            gap: 16px;
-            margin-bottom: 12px;
+            gap: 12px;
+            margin-bottom: 9px;
         }
-        .route-step-heading-main {
+        .route-compact-heading {
             min-width: 0;
             display: flex;
-            align-items: flex-start;
-            gap: 11px;
+            align-items: baseline;
+            gap: 8px;
+            overflow: hidden;
+            white-space: nowrap;
         }
-        .route-step-number {
-            width: 28px;
-            height: 28px;
+        .route-overview-title {
+            flex: 0 0 auto;
+            color: var(--win-text);
+            font-size: 13px;
+            font-weight: 650;
+            line-height: 1.2;
+            letter-spacing: -.01em;
+            white-space: nowrap;
+        }
+        .route-overview-copy {
+            min-width: 0;
+            overflow: hidden;
+            color: var(--win-text-tertiary);
+            font-size: 10.5px;
+            line-height: 1.2;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .route-header-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 7px;
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+        .route-status-chip,
+        .route-stop-count-badge,
+        .route-info-chip {
+            min-height: 24px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 8px;
+            color: var(--win-text-secondary);
+            font-size: 9.5px;
+            font-weight: 650;
+            line-height: 1;
+            white-space: nowrap;
+            background: rgba(0,0,0,.035);
+            border: 1px solid rgba(0,0,0,.06);
+            border-radius: 999px;
+        }
+        .route-status-chip { color: #0f6c0f; background: rgba(223,246,227,.72); border-color: rgba(16,124,16,.13); }
+        .route-status-chip::before {
+            content: "";
+            width: 6px;
+            height: 6px;
+            flex: 0 0 auto;
+            background: #107c10;
+            border-radius: 50%;
+        }
+        .route-status-chip-missing { color: #a4262c; background: rgba(253,231,233,.76); border-color: rgba(196,43,28,.14); }
+        .route-status-chip-missing::before { background: #c42b1c; }
+        .route-stop-count-badge { color: #004f88; background: rgba(224,240,255,.68); border-color: rgba(0,103,192,.12); }
+        .route-info-chip::before {
+            content: "\E946";
+            color: var(--win-accent);
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            font-size: 10px;
+        }
+        .st-key-route_stops_panel div[class*="st-key-route_stop_card_"] {
+            position: relative;
+            min-height: 48px;
+            margin-top: 5px;
+            padding: 5px 7px;
+            overflow: visible;
+            background: rgba(249,249,249,.74);
+            border: 1px solid rgba(0,0,0,.055);
+            border-radius: 9px;
+            transition: background var(--win-fast) ease, border-color var(--win-fast) ease, box-shadow var(--win-fast) ease;
+        }
+        .st-key-route_stops_panel div[class*="st-key-route_stop_card_"]:hover,
+        .st-key-route_stops_panel div[class*="st-key-route_stop_card_"]:focus-within {
+            background: #ffffff;
+            border-color: rgba(0,103,192,.18);
+            box-shadow: 0 0 0 3px rgba(0,103,192,.055);
+        }
+        .route-stop-row-label {
+            min-height: 37px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+        .route-stop-letter {
+            width: 25px;
+            height: 25px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             flex: 0 0 auto;
             color: #ffffff;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
             line-height: 1;
-            background: linear-gradient(180deg, #0a73c9, #0067c0);
-            border: 1px solid rgba(0,70,130,.24);
-            border-radius: 8px;
-            box-shadow: 0 3px 10px rgba(0,103,192,.18);
+            background: #5f6368;
+            border-radius: 7px;
         }
-        .route-step-copy { min-width: 0; }
-        .route-overview-title {
-            color: var(--win-text);
-            font-size: 14px;
-            font-weight: 650;
-            line-height: 1.25;
-            letter-spacing: -.012em;
-        }
-        .route-overview-copy {
-            margin-top: 3px;
+        .route-stop-letter-start { background: #202124; }
+        .route-stop-letter-end { background: #188038; }
+        .route-stop-role {
+            overflow: hidden;
             color: var(--win-text-secondary);
-            font-size: 11px;
-            line-height: 1.42;
-        }
-        .route-inline-note {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            margin-top: 8px;
-            color: var(--win-text-tertiary);
-            font-size: 10px;
-            line-height: 1.3;
-        }
-        .route-inline-note::before {
-            content: "\E946";
-            color: var(--win-accent);
-            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
-            font-size: 11px;
-        }
-        .route-status-chip {
-            min-height: 27px;
-            display: inline-flex;
-            align-items: center;
-            flex: 0 0 auto;
-            padding: 4px 10px;
-            color: #0f6c0f;
             font-size: 10.5px;
             font-weight: 650;
+            line-height: 1;
+            text-overflow: ellipsis;
             white-space: nowrap;
-            background: rgba(223,246,227,.86);
-            border: 1px solid rgba(16,124,16,.16);
-            border-radius: 999px;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.66);
         }
-        .route-status-chip::before {
-            content: "";
-            width: 6px;
-            height: 6px;
-            margin-right: 6px;
-            background: #107c10;
-            border-radius: 50%;
-            box-shadow: 0 0 0 3px rgba(16,124,16,.10);
-            animation: routeStatusPulse 2.4s ease-in-out infinite;
+        .st-key-route_stops_panel div[class*="st-key-route_stop_card_"] label {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            padding: 0 !important;
+            margin: -1px !important;
+            overflow: hidden !important;
+            clip: rect(0, 0, 0, 0) !important;
+            white-space: nowrap !important;
+            border: 0 !important;
         }
-        @keyframes routeStatusPulse {
-            0%, 100% { box-shadow: 0 0 0 3px rgba(16,124,16,.10); }
-            50% { box-shadow: 0 0 0 6px rgba(16,124,16,0); }
+        .st-key-route_stops_panel div[class*="st-key-route_stop_card_"] [data-baseweb="input"] > div,
+        .st-key-route_stops_panel div[class*="st-key-route_stop_card_"] [data-testid="stTextInput"] input {
+            min-height: 37px;
+            background: rgba(255,255,255,.96) !important;
+            border-radius: 7px !important;
         }
-        .route-status-chip-missing {
-            color: #a4262c;
-            background: rgba(253,231,233,.90);
-            border-color: rgba(196,43,28,.16);
-        }
-        .route-status-chip-missing::before {
-            background: #c42b1c;
-            box-shadow: none;
-            animation: none;
-        }
-        .route-stop-count-badge {
-            min-height: 25px;
-            display: inline-flex;
-            align-items: center;
-            padding: 3px 9px;
-            color: #004f88;
-            font-size: 10px;
-            font-weight: 700;
-            white-space: nowrap;
-            background: rgba(224,240,255,.86);
-            border: 1px solid rgba(0,103,192,.14);
-            border-radius: 999px;
-        }
-        [class*="st-key-route_stop_card_"] {
-            position: relative;
-            min-height: 92px;
-            height: 100%;
-            margin-top: 9px;
-            padding: 12px 13px 8px 15px;
-            overflow: hidden;
-            background: rgba(249,249,249,.86);
-            border: 1px solid rgba(0,0,0,.065);
-            border-radius: 11px;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.55);
-            transition:
-                transform var(--win-normal) var(--win-ease),
-                background var(--win-normal) ease,
-                border-color var(--win-normal) ease,
-                box-shadow var(--win-normal) var(--win-ease);
-        }
-        [class*="st-key-route_stop_card_"]::before {
-            content: "";
-            position: absolute;
-            inset: 12px auto 12px 0;
-            width: 3px;
-            background: rgba(0,103,192,.58);
-            border-radius: 0 999px 999px 0;
-        }
-        [class*="st-key-route_stop_card_"]:hover {
-            transform: translateY(-2px);
-            background: #ffffff;
-            border-color: rgba(0,103,192,.18);
-            box-shadow: 0 7px 20px rgba(0,0,0,.055);
-        }
-        [class*="st-key-route_stop_card_"]:focus-within {
-            background: #ffffff;
-            border-color: rgba(0,103,192,.32);
-            box-shadow: 0 0 0 3px rgba(0,103,192,.08), 0 7px 20px rgba(0,0,0,.05);
-        }
-        [class*="st-key-route_stop_card_"] label {
-            margin-bottom: 5px;
-            color: var(--win-text-secondary) !important;
-            font-size: 11px !important;
-            font-weight: 650 !important;
-        }
-        [class*="st-key-route_stop_card_"] [data-baseweb="input"] > div,
-        [class*="st-key-route_stop_card_"] [data-testid="stTextInput"] input {
-            min-height: 38px;
-            background: rgba(255,255,255,.94) !important;
-        }
-        .st-key-route_details_panel [data-testid="stForm"] {
-            margin: 0;
-            padding: 0;
-            border: 0;
-        }
-        .st-key-route_details_panel [data-testid="stHorizontalBlock"] {
-            row-gap: 9px;
-        }
+        .st-key-route_details_panel [data-testid="stForm"] { margin: 0; padding: 0; border: 0; }
+        .st-key-route_details_panel [data-testid="stHorizontalBlock"] { row-gap: 7px; }
         .st-key-route_details_panel label {
+            overflow: hidden;
             color: var(--win-text-secondary) !important;
-            font-size: 11px !important;
+            font-size: 10.5px !important;
             font-weight: 650 !important;
+            line-height: 1.1 !important;
+            text-overflow: ellipsis;
+            white-space: nowrap !important;
         }
         .st-key-route_details_panel [data-testid="stCheckbox"] {
-            min-height: 38px;
+            min-height: 34px;
             display: flex;
             align-items: center;
-            padding: 5px 9px;
-            background: rgba(249,249,249,.75);
-            border: 1px solid rgba(0,0,0,.055);
-            border-radius: 9px;
-            transition: background var(--win-fast) ease, border-color var(--win-fast) ease, transform var(--win-fast) ease;
+            padding: 4px 8px;
+            background: rgba(249,249,249,.72);
+            border: 1px solid rgba(0,0,0,.05);
+            border-radius: 8px;
         }
-        .st-key-route_details_panel [data-testid="stCheckbox"]:hover {
-            background: #ffffff;
-            border-color: rgba(0,103,192,.16);
-            transform: translateY(-1px);
-        }
+        .st-key-route_details_panel [data-testid="stCheckbox"] p,
+        .st-key-route_details_panel [data-testid="stCheckbox"] span { white-space: nowrap !important; }
         .st-key-route_details_panel [data-testid="stFormSubmitButton"] button {
-            min-height: 40px !important;
+            min-height: 37px !important;
             color: #ffffff !important;
             font-weight: 650 !important;
-            background: linear-gradient(180deg, #0a73c9 0%, #0067c0 100%) !important;
-            border-color: rgba(0,70,130,.36) !important;
-            box-shadow: 0 3px 10px rgba(0,103,192,.18), 0 8px 20px rgba(0,103,192,.13) !important;
-            transition: transform var(--win-fast) ease, box-shadow var(--win-normal) var(--win-ease), background var(--win-fast) ease !important;
+            white-space: nowrap !important;
+            background: #0067c0 !important;
+            border-color: #005a9e !important;
+            box-shadow: 0 2px 7px rgba(0,103,192,.18) !important;
+            transition: background var(--win-fast) ease, box-shadow var(--win-fast) ease, transform 80ms ease !important;
         }
         .st-key-route_details_panel [data-testid="stFormSubmitButton"] button:hover {
-            background: linear-gradient(180deg, #087bd9 0%, #005fae 100%) !important;
-            box-shadow: 0 4px 12px rgba(0,103,192,.22), 0 12px 26px rgba(0,103,192,.16) !important;
+            background: #005a9e !important;
+            box-shadow: 0 4px 12px rgba(0,103,192,.22) !important;
             transform: translateY(-1px);
         }
-        .st-key-route_details_panel [data-testid="stFormSubmitButton"] button:active {
-            transform: translateY(0) scale(.987);
+        .st-key-route_details_panel [data-testid="stFormSubmitButton"] button:active { transform: translateY(0) scale(.99); }
+        .route-result-progress {
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            margin: 2px 0 10px;
+            padding: 8px 10px;
+            color: var(--win-text-secondary);
+            font-size: 10.5px;
+            font-weight: 600;
+            white-space: nowrap;
+            background: rgba(224,240,255,.54);
+            border: 1px solid rgba(0,103,192,.11);
+            border-radius: 8px;
         }
+        .route-result-progress::before {
+            content: "";
+            width: 15px;
+            height: 15px;
+            flex: 0 0 auto;
+            border: 2px solid rgba(0,103,192,.18);
+            border-top-color: var(--win-accent);
+            border-radius: 50%;
+            animation: routeSpin .7s linear infinite;
+        }
+        @keyframes routeSpin { to { transform: rotate(360deg); } }
         .route-map-empty {
-            min-height: 520px;
+            min-height: 500px;
             display: grid;
             place-content: center;
-            padding: 28px;
+            padding: 24px;
             text-align: center;
-            background:
-                radial-gradient(circle at 50% 42%, rgba(0,103,192,.08), transparent 32%),
-                rgba(249,249,249,.82);
-            border: 1px dashed var(--win-border-strong);
-            border-radius: 12px;
+            background: #f6f7f8;
+            border: 1px dashed rgba(0,0,0,.14);
+            border-radius: 10px;
         }
-        .route-map-empty-title { color: var(--win-text); font-size: 16px; font-weight: 650; }
-        .route-map-empty-copy { max-width: 420px; margin-top: 6px; color: var(--win-text-secondary); font-size: 12px; line-height: 1.45; }
+        .route-map-empty-title { color: var(--win-text); font-size: 15px; font-weight: 650; white-space: nowrap; }
+        .route-map-empty-copy { max-width: 520px; margin-top: 5px; overflow: hidden; color: var(--win-text-secondary); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
         .st-key-route_map_panel {
             padding: 0 !important;
             overflow: hidden;
             background: #eef1f4;
             border-color: rgba(0,0,0,.08);
-            box-shadow: 0 2px 6px rgba(0,0,0,.04), 0 14px 38px rgba(0,0,0,.07);
-        }
-        .st-key-route_map_panel:hover {
-            border-color: rgba(0,103,192,.14);
-            box-shadow: 0 3px 8px rgba(0,0,0,.045), 0 18px 46px rgba(0,0,0,.085);
+            box-shadow: 0 2px 6px rgba(0,0,0,.035), 0 10px 28px rgba(0,0,0,.055);
         }
         .st-key-route_map_panel iframe {
             display: block;
             width: 100%;
-            min-height: 682px;
+            min-height: 642px;
             border: 0 !important;
-            border-radius: 13px;
+            border-radius: 10px;
             background: #eef1f4;
         }
-        .route-itinerary-list {
-            display: grid;
-            gap: 7px;
-            margin-top: 9px;
-        }
-        .route-leg-row {
-            display: grid;
-            grid-template-columns: 42px minmax(0, 1fr) auto;
-            align-items: center;
-            gap: 9px;
-            padding: 9px 10px;
-            background: rgba(249,249,249,.82);
-            border: 1px solid var(--win-border);
-            border-radius: 8px;
-        }
-        .route-leg-badge {
-            min-height: 25px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            color: #004f88;
-            font-size: 10px;
-            font-weight: 700;
-            background: rgba(224,240,255,.88);
-            border: 1px solid rgba(0,103,192,.13);
-            border-radius: 6px;
-        }
+        .route-itinerary-list { display: grid; gap: 7px; margin-top: 9px; }
+        .route-leg-row { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 7px 8px; background: rgba(249,249,249,.82); border: 1px solid var(--win-border); border-radius: 8px; }
+        .route-leg-badge { min-height: 25px; display: inline-flex; align-items: center; justify-content: center; color: #004f88; font-size: 10px; font-weight: 700; background: rgba(224,240,255,.88); border: 1px solid rgba(0,103,192,.13); border-radius: 6px; }
         .route-leg-main { min-width: 0; }
-        .route-leg-destination {
-            overflow: hidden;
-            color: var(--win-text);
-            font-size: 11.5px;
-            font-weight: 650;
-            line-height: 1.25;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .route-leg-meta { margin-top: 3px; color: var(--win-text-secondary); font-size: 10.5px; line-height: 1.25; }
+        .route-leg-destination { overflow: hidden; color: var(--win-text); font-size: 11.5px; font-weight: 650; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+        .route-leg-meta { margin-top: 3px; color: var(--win-text-secondary); font-size: 10.5px; line-height: 1.25; white-space: nowrap; }
         .route-leg-time { color: var(--win-text); font-size: 11px; font-weight: 650; text-align: right; white-space: nowrap; }
-        .route-leg-time span { display: block; margin-top: 2px; color: var(--win-text-tertiary); font-size: 9.5px; font-weight: 500; }
-        .route-summary-note { margin-top: 9px; padding: 8px 9px; color: var(--win-text-secondary); font-size: 10.5px; line-height: 1.4; background: rgba(0,0,0,.025); border-radius: 7px; }
+        .route-leg-time span { display: block; margin-top: 2px; color: var(--win-text-tertiary); font-size: 9.5px; font-weight: 500; white-space: nowrap; }
+        .route-summary-note { margin-top: 9px; padding: 8px 9px; color: var(--win-text-secondary); font-size: 10.5px; line-height: 1.4; background: rgba(0,0,0,.025); border-radius: 7px; white-space: nowrap; }
         @media (max-width: 900px) {
-            .route-step-heading { gap: 10px; }
-            .st-key-route_control_panel,
+            .route-overview-copy { display: none; }
+            .route-compact-header { align-items: flex-start; }
+            .route-header-actions { gap: 5px; }
             .st-key-route_stops_panel,
-            .st-key-route_details_panel { padding: 15px; }
+            .st-key-route_details_panel { padding: 11px; }
         }
         @media (prefers-reduced-motion: reduce) {
-            .st-key-route_control_panel,
             .st-key-route_stops_panel,
             .st-key-route_details_panel,
             .st-key-route_map_panel,
-            [class*="st-key-route_stop_card_"],
-            .route-status-chip::before {
-                animation: none !important;
-                transition: none !important;
-            }
+            .route-result-progress::before { animation: none !important; transition: none !important; }
         }
 
         .kpi-card {
@@ -4596,14 +4540,14 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
             .route-map-shell {
                 position: relative;
                 width: 100%;
-                height: 680px;
+                height: 640px;
                 overflow: hidden;
                 background: #eef1f4;
                 animation: mapShellReveal .48s var(--map-ease) both;
             }
             #route-map {
                 width: 100%;
-                height: 680px;
+                height: 640px;
                 color: var(--map-muted);
                 font-size: 12px;
                 background: #eef1f4;
@@ -4677,8 +4621,8 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
                 z-index: 700;
                 top: 16px;
                 left: 16px;
-                width: min(455px, calc(100% - 32px));
-                padding: 15px;
+                width: min(560px, calc(100% - 32px));
+                padding: 13px;
                 color: var(--map-text);
                 background: var(--map-panel);
                 border: 1px solid var(--map-border);
@@ -4713,6 +4657,7 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
             .route-count-chip,
             .route-context-chip {
                 min-height: 23px;
+                flex: 0 0 auto;
                 display: inline-flex;
                 align-items: center;
                 gap: 5px;
@@ -4737,7 +4682,7 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
                 margin-top: 5px;
                 overflow: hidden;
                 color: var(--map-text);
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: 700;
                 line-height: 1.24;
                 letter-spacing: -.02em;
@@ -4746,9 +4691,12 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
             }
             .route-map-description {
                 margin-top: 3px;
+                overflow: hidden;
                 color: var(--map-muted);
-                font-size: 10.5px;
-                line-height: 1.35;
+                font-size: 10px;
+                line-height: 1.25;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }
             .route-map-address {
                 margin-top: 7px;
@@ -4769,14 +4717,17 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
             .route-choice-list {
                 display: grid;
                 grid-template-columns: repeat(3, minmax(0, 1fr));
-                gap: 7px;
-                margin-top: 13px;
+                gap: 6px;
+                margin-top: 8px;
             }
             .route-choice {
                 position: relative;
                 min-width: 0;
-                min-height: 65px;
-                padding: 9px 9px 8px;
+                min-height: 40px;
+                display: flex;
+                align-items: center;
+                gap: 7px;
+                padding: 7px 8px;
                 overflow: hidden;
                 color: var(--map-text);
                 text-align: left;
@@ -4819,7 +4770,7 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
                 box-shadow: 0 4px 14px rgba(0,103,192,.10), inset 0 1px 0 rgba(255,255,255,.68);
             }
             .route-choice-selected::after { transform: scaleX(1); }
-            .route-choice-label-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+            .route-choice-label-row { min-width: 0; display: flex; align-items: center; gap: 6px; flex: 1 1 auto; }
             .route-choice-label {
                 overflow: hidden;
                 font-size: 10.5px;
@@ -4857,8 +4808,8 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
             .route-map-stats {
                 display: grid;
                 grid-template-columns: repeat(3, minmax(0, 1fr));
-                gap: 7px;
-                margin-top: 12px;
+                gap: 6px;
+                margin-top: 9px;
             }
             .route-map-stat {
                 min-width: 0;
@@ -4875,10 +4826,10 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
                 text-transform: uppercase;
             }
             .route-map-stat-value {
-                margin-top: 3px;
+                margin-top: 2px;
                 overflow: hidden;
                 color: var(--map-text);
-                font-size: 12.5px;
+                font-size: 11.5px;
                 font-weight: 700;
                 line-height: 1.2;
                 text-overflow: ellipsis;
@@ -4887,9 +4838,11 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
             .route-context-row {
                 display: flex;
                 align-items: center;
-                flex-wrap: wrap;
+                flex-wrap: nowrap;
                 gap: 5px;
-                margin-top: 10px;
+                margin-top: 8px;
+                overflow: hidden;
+                white-space: nowrap;
             }
             .route-context-chip-accent {
                 color: #004f88;
@@ -4897,10 +4850,13 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
                 border-color: rgba(0,103,192,.13);
             }
             .route-map-meta {
-                margin-top: 8px;
+                margin-top: 6px;
+                overflow: hidden;
                 color: var(--map-subtle);
-                font-size: 9.5px;
-                line-height: 1.35;
+                font-size: 9px;
+                line-height: 1.25;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }
             .route-map-empty-icon {
                 width: 36px;
@@ -5134,8 +5090,8 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
                     return `
                         <button class="route-choice${selectedClass}" style="--choice-delay:${index * 45}ms" type="button" data-route-id="${escapeHtml(route.id)}" aria-pressed="${route.id === selected.id}">
                             <div class="route-choice-label-row">
-                                <div class="route-choice-label">${escapeHtml(route.label)}</div>
                                 <span class="route-choice-check">✓</span>
+                                <div class="route-choice-label">${escapeHtml(route.label)}</div>
                             </div>
                             <div class="route-choice-meta">${escapeHtml(routeSummary.miles || "—")} · ${escapeHtml(routeSummary.driveTime || "—")}</div>
                         </button>
@@ -5213,7 +5169,7 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
     """
     components.html(
         map_html.replace("__MAP_DATA__", map_data),
-        height=682,
+        height=642,
         scrolling=False,
     )
 
@@ -5249,35 +5205,33 @@ def _route_fragment_decorator(function):
 def render_route_tracking_page():
     tab_page_header(
         "Route Tracking",
-        "Plan multi-stop routes with estimated traffic and selectable route alternatives.",
+        "Compare traffic-aware route alternatives and select the best option instantly.",
     )
 
     api_key = geoapify_api_key()
     now_local = datetime.now(ZoneInfo("America/Los_Angeles"))
     default_departure = now_local + timedelta(minutes=30)
 
-    with st.container(key="route_control_panel"):
-        setup_col, stop_count_col = st.columns([4.15, 1.15], gap="large")
-        with setup_col:
+    with st.container(key="route_stops_panel"):
+        header_col, count_col = st.columns([4.45, .85], gap="small")
+        with header_col:
             status_class = "route-status-chip" if api_key else "route-status-chip route-status-chip-missing"
             status_text = "Geoapify connected" if api_key else "Geoapify secret missing"
             st.markdown(
-                f'''<div class="route-step-heading" style="margin-bottom:0">
-                    <div class="route-step-heading-main">
-                        <span class="route-step-number">1</span>
-                        <div class="route-step-copy">
-                            <div class="route-overview-title">Build the route</div>
-                            <div class="route-overview-copy">Set the number of stops, then enter each address in driving order.</div>
-                            <div class="route-inline-note">Three route alternatives are calculated together and compared on the map.</div>
-                        </div>
+                f'''<div class="route-compact-header" style="margin-bottom:0">
+                    <div class="route-compact-heading">
+                        <div class="route-overview-title">Route stops</div>
+                        <div class="route-overview-copy">Enter every address in the exact driving order.</div>
                     </div>
-                    <div class="{status_class}">{status_text}</div>
+                    <div class="route-header-actions">
+                        <span class="{status_class}">{status_text}</span>
+                    </div>
                 </div>''',
                 unsafe_allow_html=True,
             )
-        with stop_count_col:
+        with count_col:
             stop_count = st.number_input(
-                "Number of stops",
+                "Stops",
                 min_value=2,
                 max_value=10,
                 value=2,
@@ -5285,78 +5239,69 @@ def render_route_tracking_page():
                 key="route_planner_stop_count",
             )
 
-    with st.container(key="route_stops_panel"):
-        st.markdown(
-            f'''<div class="route-step-heading">
-                <div class="route-step-heading-main">
-                    <span class="route-step-number">2</span>
-                    <div class="route-step-copy">
-                        <div class="route-overview-title">Stops</div>
-                        <div class="route-overview-copy">Enter stops in the exact order the driver will visit them. Suggestions begin after five characters.</div>
-                    </div>
-                </div>
-                <span class="route-stop-count-badge">{int(stop_count)} stops</span>
-            </div>''',
-            unsafe_allow_html=True,
-        )
         stops = []
         stop_count_int = int(stop_count)
-        for row_start in range(0, stop_count_int, 2):
-            row_columns = st.columns(2, gap="small")
-            for column_offset, column in enumerate(row_columns):
-                index = row_start + column_offset
-                if index >= stop_count_int:
-                    continue
-                if index == 0:
-                    label = "A · Starting point"
-                elif index == stop_count_int - 1:
-                    label = f"{chr(65 + index)} · Final destination"
-                else:
-                    label = f"{chr(65 + index)} · Stop {index}"
-                with column:
-                    with st.container(key=f"route_stop_card_{index}"):
-                        if st_searchbox is not None and api_key:
-                            address = st_searchbox(
-                                geoapify_address_suggestions,
-                                _api_key=api_key,
-                                key=f"route_stop_address_{index}",
-                                label=label,
-                                placeholder="Street address, city, state, ZIP",
-                                default_use_searchterm=True,
-                                edit_after_submit="option",
-                                debounce=450,
-                            )
-                        else:
-                            address = st.text_input(
-                                label,
-                                key=f"route_stop_address_fallback_{index}",
-                                placeholder="Street address, city, state, ZIP",
-                            )
-                        stops.append(normalize_route_address(address))
+        for index in range(stop_count_int):
+            letter = chr(65 + index)
+            if index == 0:
+                role = "Starting point"
+                letter_class = "route-stop-letter route-stop-letter-start"
+            elif index == stop_count_int - 1:
+                role = "Final destination"
+                letter_class = "route-stop-letter route-stop-letter-end"
+            else:
+                role = f"Stop {index}"
+                letter_class = "route-stop-letter"
+            label = f"{letter} · {role}"
+            with st.container(key=f"route_stop_card_{index}"):
+                label_col, address_col = st.columns([1.05, 5.2], gap="small", vertical_alignment="center")
+                with label_col:
+                    st.markdown(
+                        f'<div class="route-stop-row-label"><span class="{letter_class}">{letter}</span><span class="route-stop-role">{role}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                with address_col:
+                    if st_searchbox is not None and api_key:
+                        address = st_searchbox(
+                            geoapify_address_suggestions,
+                            _api_key=api_key,
+                            key=f"route_stop_address_{index}",
+                            label=label,
+                            placeholder="Street address, city, state, ZIP",
+                            default_use_searchterm=True,
+                            edit_after_submit="option",
+                            debounce=350,
+                        )
+                    else:
+                        address = st.text_input(
+                            label,
+                            key=f"route_stop_address_fallback_{index}",
+                            placeholder="Street address, city, state, ZIP",
+                        )
+                    stops.append(normalize_route_address(address))
 
     with st.container(key="route_details_panel"):
         st.markdown(
-            '''<div class="route-step-heading">
-                <div class="route-step-heading-main">
-                    <span class="route-step-number">3</span>
-                    <div class="route-step-copy">
-                        <div class="route-overview-title">Departure and preferences</div>
-                        <div class="route-overview-copy">Set timing, vehicle type, and road preferences before calculating the route alternatives.</div>
-                        <div class="route-inline-note">Estimated traffic models likely congestion; it does not include live incidents or closures.</div>
-                    </div>
+            '''<div class="route-compact-header">
+                <div class="route-compact-heading">
+                    <div class="route-overview-title">Route settings</div>
+                    <div class="route-overview-copy">Timing, vehicle, and road preferences apply to all three alternatives.</div>
+                </div>
+                <div class="route-header-actions">
+                    <span class="route-info-chip">Traffic is estimated, not live incidents</span>
                 </div>
             </div>''',
             unsafe_allow_html=True,
         )
         with st.form("route_plan_form", clear_on_submit=False):
-            date_col, time_col, timezone_col, service_col, mode_col = st.columns([1.05, .95, 1.35, 1.15, 1.25])
+            date_col, time_col, timezone_col, service_col, mode_col = st.columns([1.03, .92, 1.38, 1.12, 1.22], gap="small")
             with date_col:
                 departure_date = st.date_input("Departure date", value=default_departure.date(), key="route_departure_date")
             with time_col:
                 departure_time = st.time_input("Departure time", value=default_departure.time().replace(second=0, microsecond=0), key="route_departure_time")
             with timezone_col:
                 timezone_name = st.selectbox(
-                    "Route timezone",
+                    "Timezone",
                     options=[
                         "America/Los_Angeles",
                         "America/Denver",
@@ -5367,14 +5312,15 @@ def render_route_tracking_page():
                     key="route_planner_timezone",
                 )
             with service_col:
-                stop_minutes = st.number_input("Minutes per middle stop", min_value=0, max_value=240, value=0, step=5, key="route_stop_minutes")
+                stop_minutes = st.number_input("Middle-stop minutes", min_value=0, max_value=240, value=0, step=5, key="route_stop_minutes")
             with mode_col:
                 vehicle_label = st.selectbox(
                     "Vehicle",
                     options=["Car / Van", "Light Truck", "Truck"],
                     key="route_vehicle_mode",
                 )
-            option_col_1, option_col_2, option_col_3, option_col_4, action_col = st.columns([1, 1, 1, 1.25, 1.7])
+
+            option_col_1, option_col_2, option_col_3, option_col_4, action_col = st.columns([1, 1.12, 1, 1.25, 1.72], gap="small")
             with option_col_1:
                 avoid_tolls = st.checkbox("Avoid tolls", key="route_avoid_tolls")
             with option_col_2:
@@ -5384,7 +5330,7 @@ def render_route_tracking_page():
             with option_col_4:
                 use_estimated_traffic = st.checkbox("Estimated traffic", value=True, key="route_estimated_traffic")
             with action_col:
-                calculate_route = st.form_submit_button("Calculate Routes", type="primary", use_container_width=True)
+                calculate_route = st.form_submit_button("Calculate routes", type="primary", use_container_width=True)
 
     try:
         selected_zone = ZoneInfo(timezone_name)
@@ -5393,6 +5339,7 @@ def render_route_tracking_page():
     departure = datetime.combine(departure_date, departure_time).replace(tzinfo=selected_zone)
     current_stop_signature = tuple(route_address_key(stop) for stop in stops)
 
+    progress_slot = st.empty()
     if calculate_route:
         missing_stops = [index + 1 for index, stop in enumerate(stops) if not stop]
         if not api_key:
@@ -5419,18 +5366,21 @@ def render_route_tracking_page():
             network_result = st.session_state.get("_route_network_result")
             try:
                 if not network_result or network_result.get("signature") != network_signature:
-                    with st.spinner("Calculating route alternatives..."):
-                        stop_points = resolve_geoapify_stops(stops, api_key)
-                        stop_points_key = tuple((point["lat"], point["lon"]) for point in stop_points)
-                        route_response = compute_geoapify_routes(
-                            stop_points_key,
-                            mode,
-                            avoid_tolls,
-                            avoid_highways,
-                            avoid_ferries,
-                            traffic_model,
-                            _api_key=api_key,
-                        )
+                    progress_slot.markdown(
+                        '<div class="route-result-progress">Calculating Recommended, Shortest, and Fewer-turns routes…</div>',
+                        unsafe_allow_html=True,
+                    )
+                    stop_points = resolve_geoapify_stops(stops, api_key)
+                    stop_points_key = tuple((point["lat"], point["lon"]) for point in stop_points)
+                    route_response = compute_geoapify_routes(
+                        stop_points_key,
+                        mode,
+                        avoid_tolls,
+                        avoid_highways,
+                        avoid_ferries,
+                        traffic_model,
+                        _api_key=api_key,
+                    )
                     network_result = {
                         "signature": network_signature,
                         "stop_signature": current_stop_signature,
@@ -5462,6 +5412,8 @@ def render_route_tracking_page():
             except RuntimeError as exc:
                 st.session_state.pop("route_plan_result", None)
                 st.error(str(exc))
+            finally:
+                progress_slot.empty()
 
     result = st.session_state.get("route_plan_result")
     if result and tuple(result.get("stop_signature", ())) != current_stop_signature:
@@ -5484,7 +5436,6 @@ def render_route_tracking_page():
         if not route_plan:
             continue
         middle_stop_count = max(0, len(route_plan["stops"]) - 2)
-        service_text = f" · {route_plan['stop_minutes']} min at each middle stop" if middle_stop_count else ""
         traffic_text = "Estimated traffic" if route_plan.get("traffic_model") == "approximated" else "Free-flow traffic"
         route_options.append(
             {
@@ -5503,7 +5454,6 @@ def render_route_tracking_page():
                     "departure": f"Depart {format_route_clock(route_plan['departure'])}",
                     "trafficLabel": traffic_text,
                     "service": f"{route_plan['stop_minutes']} min per middle stop" if middle_stop_count else "",
-                    "meta": f"{route_plan['vehicle']} · Departure {format_route_clock(route_plan['departure'])}{service_text} · {traffic_text} (not live incidents)",
                 },
             }
         )
@@ -5516,7 +5466,6 @@ def render_route_tracking_page():
             default_route=result.get("default_route", "balanced"),
             api_key=api_key,
         )
-
 
 
 restore_persistent_app_state()
