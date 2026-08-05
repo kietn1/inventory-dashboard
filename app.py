@@ -740,89 +740,117 @@ st.markdown(
         .st-key-route_details_panel,
         .st-key-route_map_panel,
         .st-key-route_itinerary_panel {
-            margin-bottom: 12px;
-            padding: 14px 15px 15px;
-            background: rgba(255,255,255,.84);
-            border: 1px solid var(--win-border);
-            border-radius: var(--win-radius-lg);
-            box-shadow: 0 1px 2px rgba(0,0,0,.025), 0 5px 18px rgba(0,0,0,.045);
-            backdrop-filter: blur(18px) saturate(120%);
-            -webkit-backdrop-filter: blur(18px) saturate(120%);
+            position: relative;
+            margin-bottom: 14px;
+            padding: 17px 18px 18px;
+            overflow: hidden;
+            background: rgba(255,255,255,.88);
+            border: 1px solid rgba(0,0,0,.065);
+            border-radius: 14px;
+            box-shadow: 0 1px 2px rgba(0,0,0,.025), 0 8px 24px rgba(0,0,0,.045);
+            backdrop-filter: blur(20px) saturate(125%);
+            -webkit-backdrop-filter: blur(20px) saturate(125%);
+            animation: routePanelReveal .42s var(--win-ease) both;
+            transition:
+                border-color var(--win-normal) ease,
+                box-shadow var(--win-normal) var(--win-ease),
+                transform var(--win-normal) var(--win-ease),
+                background var(--win-normal) ease;
+        }
+        .st-key-route_control_panel { animation-delay: 20ms; }
+        .st-key-route_stops_panel { animation-delay: 70ms; }
+        .st-key-route_details_panel { animation-delay: 120ms; }
+        .st-key-route_map_panel { animation-delay: 170ms; }
+        .st-key-route_control_panel:hover,
+        .st-key-route_stops_panel:hover,
+        .st-key-route_details_panel:hover {
+            background: rgba(255,255,255,.96);
+            border-color: rgba(0,103,192,.12);
+            box-shadow: 0 2px 4px rgba(0,0,0,.035), 0 12px 30px rgba(0,0,0,.06);
+        }
+        @keyframes routePanelReveal {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         .st-key-route_control_panel {
-            padding-top: 11px;
-            padding-bottom: 11px;
+            padding-top: 14px;
+            padding-bottom: 14px;
+            background:
+                linear-gradient(112deg, rgba(0,103,192,.055), transparent 38%),
+                rgba(255,255,255,.90);
         }
-        [class*="st-key-route_stop_card_"] {
-            min-height: 88px;
-            height: 100%;
-            margin-top: 8px;
-            padding: 11px 12px 7px;
-            background: rgba(249,249,249,.82);
-            border: 1px solid var(--win-border);
-            border-radius: 9px;
-        }
-        [class*="st-key-route_stop_card_"] label {
-            margin-bottom: 4px;
-            color: var(--win-text-secondary) !important;
-            font-size: 11.5px !important;
-            font-weight: 650 !important;
-        }
-        .route-map-empty {
-            min-height: 444px;
-            display: grid;
-            place-content: center;
-            padding: 24px;
-            text-align: center;
-            background: rgba(249,249,249,.80);
-            border: 1px dashed var(--win-border-strong);
-            border-radius: 10px;
-        }
-        .route-map-empty-title { color: var(--win-text); font-size: 16px; font-weight: 650; }
-        .route-map-empty-copy { max-width: 420px; margin-top: 5px; color: var(--win-text-secondary); font-size: 12px; line-height: 1.4; }
-        .st-key-route_map_panel {
-            padding: 0 !important;
-            overflow: hidden;
-            background: #eef1f4;
-        }
-        .st-key-route_map_panel iframe {
-            display: block;
-            width: 100%;
-            min-height: 642px;
-            border: 0 !important;
-            border-radius: 11px;
-            background: #eef1f4;
-        }
-        .route-overview-strip {
+        .route-step-heading {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 8px;
+            gap: 16px;
+            margin-bottom: 12px;
         }
+        .route-step-heading-main {
+            min-width: 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 11px;
+        }
+        .route-step-number {
+            width: 28px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            background: linear-gradient(180deg, #0a73c9, #0067c0);
+            border: 1px solid rgba(0,70,130,.24);
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0,103,192,.18);
+        }
+        .route-step-copy { min-width: 0; }
         .route-overview-title {
             color: var(--win-text);
             font-size: 14px;
             font-weight: 650;
+            line-height: 1.25;
+            letter-spacing: -.012em;
         }
         .route-overview-copy {
-            margin-top: 2px;
+            margin-top: 3px;
             color: var(--win-text-secondary);
             font-size: 11px;
-            line-height: 1.35;
+            line-height: 1.42;
         }
-        .route-status-chip {
-            min-height: 26px;
+        .route-inline-note {
             display: inline-flex;
             align-items: center;
-            padding: 4px 9px;
+            gap: 6px;
+            margin-top: 8px;
+            color: var(--win-text-tertiary);
+            font-size: 10px;
+            line-height: 1.3;
+        }
+        .route-inline-note::before {
+            content: "\E946";
+            color: var(--win-accent);
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            font-size: 11px;
+        }
+        .route-status-chip {
+            min-height: 27px;
+            display: inline-flex;
+            align-items: center;
+            flex: 0 0 auto;
+            padding: 4px 10px;
             color: #0f6c0f;
             font-size: 10.5px;
             font-weight: 650;
             white-space: nowrap;
-            background: rgba(223,246,227,.80);
-            border: 1px solid rgba(16,124,16,.15);
+            background: rgba(223,246,227,.86);
+            border: 1px solid rgba(16,124,16,.16);
             border-radius: 999px;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.66);
         }
         .route-status-chip::before {
             content: "";
@@ -831,23 +859,160 @@ st.markdown(
             margin-right: 6px;
             background: #107c10;
             border-radius: 50%;
+            box-shadow: 0 0 0 3px rgba(16,124,16,.10);
+            animation: routeStatusPulse 2.4s ease-in-out infinite;
+        }
+        @keyframes routeStatusPulse {
+            0%, 100% { box-shadow: 0 0 0 3px rgba(16,124,16,.10); }
+            50% { box-shadow: 0 0 0 6px rgba(16,124,16,0); }
         }
         .route-status-chip-missing {
             color: #a4262c;
-            background: rgba(253,231,233,.88);
-            border-color: rgba(196,43,28,.15);
+            background: rgba(253,231,233,.90);
+            border-color: rgba(196,43,28,.16);
         }
-        .route-status-chip-missing::before { background: #c42b1c; }
-        .route-map-note {
-            margin-top: 8px;
-            color: var(--win-text-tertiary);
-            font-size: 10.5px;
-            line-height: 1.35;
+        .route-status-chip-missing::before {
+            background: #c42b1c;
+            box-shadow: none;
+            animation: none;
+        }
+        .route-stop-count-badge {
+            min-height: 25px;
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 9px;
+            color: #004f88;
+            font-size: 10px;
+            font-weight: 700;
+            white-space: nowrap;
+            background: rgba(224,240,255,.86);
+            border: 1px solid rgba(0,103,192,.14);
+            border-radius: 999px;
+        }
+        [class*="st-key-route_stop_card_"] {
+            position: relative;
+            min-height: 92px;
+            height: 100%;
+            margin-top: 9px;
+            padding: 12px 13px 8px 15px;
+            overflow: hidden;
+            background: rgba(249,249,249,.86);
+            border: 1px solid rgba(0,0,0,.065);
+            border-radius: 11px;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.55);
+            transition:
+                transform var(--win-normal) var(--win-ease),
+                background var(--win-normal) ease,
+                border-color var(--win-normal) ease,
+                box-shadow var(--win-normal) var(--win-ease);
+        }
+        [class*="st-key-route_stop_card_"]::before {
+            content: "";
+            position: absolute;
+            inset: 12px auto 12px 0;
+            width: 3px;
+            background: rgba(0,103,192,.58);
+            border-radius: 0 999px 999px 0;
+        }
+        [class*="st-key-route_stop_card_"]:hover {
+            transform: translateY(-2px);
+            background: #ffffff;
+            border-color: rgba(0,103,192,.18);
+            box-shadow: 0 7px 20px rgba(0,0,0,.055);
+        }
+        [class*="st-key-route_stop_card_"]:focus-within {
+            background: #ffffff;
+            border-color: rgba(0,103,192,.32);
+            box-shadow: 0 0 0 3px rgba(0,103,192,.08), 0 7px 20px rgba(0,0,0,.05);
+        }
+        [class*="st-key-route_stop_card_"] label {
+            margin-bottom: 5px;
+            color: var(--win-text-secondary) !important;
+            font-size: 11px !important;
+            font-weight: 650 !important;
+        }
+        [class*="st-key-route_stop_card_"] [data-baseweb="input"] > div,
+        [class*="st-key-route_stop_card_"] [data-testid="stTextInput"] input {
+            min-height: 38px;
+            background: rgba(255,255,255,.94) !important;
         }
         .st-key-route_details_panel [data-testid="stForm"] {
             margin: 0;
             padding: 0;
             border: 0;
+        }
+        .st-key-route_details_panel [data-testid="stHorizontalBlock"] {
+            row-gap: 9px;
+        }
+        .st-key-route_details_panel label {
+            color: var(--win-text-secondary) !important;
+            font-size: 11px !important;
+            font-weight: 650 !important;
+        }
+        .st-key-route_details_panel [data-testid="stCheckbox"] {
+            min-height: 38px;
+            display: flex;
+            align-items: center;
+            padding: 5px 9px;
+            background: rgba(249,249,249,.75);
+            border: 1px solid rgba(0,0,0,.055);
+            border-radius: 9px;
+            transition: background var(--win-fast) ease, border-color var(--win-fast) ease, transform var(--win-fast) ease;
+        }
+        .st-key-route_details_panel [data-testid="stCheckbox"]:hover {
+            background: #ffffff;
+            border-color: rgba(0,103,192,.16);
+            transform: translateY(-1px);
+        }
+        .st-key-route_details_panel [data-testid="stFormSubmitButton"] button {
+            min-height: 40px !important;
+            color: #ffffff !important;
+            font-weight: 650 !important;
+            background: linear-gradient(180deg, #0a73c9 0%, #0067c0 100%) !important;
+            border-color: rgba(0,70,130,.36) !important;
+            box-shadow: 0 3px 10px rgba(0,103,192,.18), 0 8px 20px rgba(0,103,192,.13) !important;
+            transition: transform var(--win-fast) ease, box-shadow var(--win-normal) var(--win-ease), background var(--win-fast) ease !important;
+        }
+        .st-key-route_details_panel [data-testid="stFormSubmitButton"] button:hover {
+            background: linear-gradient(180deg, #087bd9 0%, #005fae 100%) !important;
+            box-shadow: 0 4px 12px rgba(0,103,192,.22), 0 12px 26px rgba(0,103,192,.16) !important;
+            transform: translateY(-1px);
+        }
+        .st-key-route_details_panel [data-testid="stFormSubmitButton"] button:active {
+            transform: translateY(0) scale(.987);
+        }
+        .route-map-empty {
+            min-height: 520px;
+            display: grid;
+            place-content: center;
+            padding: 28px;
+            text-align: center;
+            background:
+                radial-gradient(circle at 50% 42%, rgba(0,103,192,.08), transparent 32%),
+                rgba(249,249,249,.82);
+            border: 1px dashed var(--win-border-strong);
+            border-radius: 12px;
+        }
+        .route-map-empty-title { color: var(--win-text); font-size: 16px; font-weight: 650; }
+        .route-map-empty-copy { max-width: 420px; margin-top: 6px; color: var(--win-text-secondary); font-size: 12px; line-height: 1.45; }
+        .st-key-route_map_panel {
+            padding: 0 !important;
+            overflow: hidden;
+            background: #eef1f4;
+            border-color: rgba(0,0,0,.08);
+            box-shadow: 0 2px 6px rgba(0,0,0,.04), 0 14px 38px rgba(0,0,0,.07);
+        }
+        .st-key-route_map_panel:hover {
+            border-color: rgba(0,103,192,.14);
+            box-shadow: 0 3px 8px rgba(0,0,0,.045), 0 18px 46px rgba(0,0,0,.085);
+        }
+        .st-key-route_map_panel iframe {
+            display: block;
+            width: 100%;
+            min-height: 682px;
+            border: 0 !important;
+            border-radius: 13px;
+            background: #eef1f4;
         }
         .route-itinerary-list {
             display: grid;
@@ -886,38 +1051,28 @@ st.markdown(
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .route-leg-meta {
-            margin-top: 3px;
-            color: var(--win-text-secondary);
-            font-size: 10.5px;
-            line-height: 1.25;
+        .route-leg-meta { margin-top: 3px; color: var(--win-text-secondary); font-size: 10.5px; line-height: 1.25; }
+        .route-leg-time { color: var(--win-text); font-size: 11px; font-weight: 650; text-align: right; white-space: nowrap; }
+        .route-leg-time span { display: block; margin-top: 2px; color: var(--win-text-tertiary); font-size: 9.5px; font-weight: 500; }
+        .route-summary-note { margin-top: 9px; padding: 8px 9px; color: var(--win-text-secondary); font-size: 10.5px; line-height: 1.4; background: rgba(0,0,0,.025); border-radius: 7px; }
+        @media (max-width: 900px) {
+            .route-step-heading { gap: 10px; }
+            .st-key-route_control_panel,
+            .st-key-route_stops_panel,
+            .st-key-route_details_panel { padding: 15px; }
         }
-        .route-leg-time {
-            color: var(--win-text);
-            font-size: 11px;
-            font-weight: 650;
-            text-align: right;
-            white-space: nowrap;
-        }
-        .route-leg-time span {
-            display: block;
-            margin-top: 2px;
-            color: var(--win-text-tertiary);
-            font-size: 9.5px;
-            font-weight: 500;
-        }
-        .route-summary-note {
-            margin-top: 9px;
-            padding: 8px 9px;
-            color: var(--win-text-secondary);
-            font-size: 10.5px;
-            line-height: 1.4;
-            background: rgba(0,0,0,.025);
-            border-radius: 7px;
+        @media (prefers-reduced-motion: reduce) {
+            .st-key-route_control_panel,
+            .st-key-route_stops_panel,
+            .st-key-route_details_panel,
+            .st-key-route_map_panel,
+            [class*="st-key-route_stop_card_"],
+            .route-status-chip::before {
+                animation: none !important;
+                transition: none !important;
+            }
         }
 
-
-        
         .kpi-card {
             position: relative;
             min-height: 104px;
@@ -4417,60 +4572,437 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
         <style>
             :root {
                 --map-text: #171717;
-                --map-muted: #666666;
-                --map-border: rgba(0,0,0,.12);
-                --map-panel: rgba(255,255,255,.96);
+                --map-muted: #686868;
+                --map-subtle: #8a8a8a;
+                --map-border: rgba(0,0,0,.115);
+                --map-panel: rgba(255,255,255,.955);
+                --map-panel-solid: #ffffff;
                 --map-route: #171717;
-                --map-alt-route: #777777;
+                --map-alt-route: #7d7d7d;
                 --map-accent: #0067c0;
+                --map-accent-soft: rgba(0,103,192,.10);
+                --map-success: #107c10;
+                --map-ease: cubic-bezier(.1,.9,.2,1);
             }
             * { box-sizing: border-box; }
-            html, body { margin: 0; padding: 0; overflow: hidden; background: #eef1f4; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
-            .route-map-shell { position: relative; width: 100%; height: 640px; overflow: hidden; background: #eef1f4; }
-            #route-map { width: 100%; height: 640px; color: var(--map-muted); font-size: 12px; background: #eef1f4; }
+            html, body {
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+                background: #eef1f4;
+                font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+            }
+            button { font: inherit; }
+            .route-map-shell {
+                position: relative;
+                width: 100%;
+                height: 680px;
+                overflow: hidden;
+                background: #eef1f4;
+                animation: mapShellReveal .48s var(--map-ease) both;
+            }
+            #route-map {
+                width: 100%;
+                height: 680px;
+                color: var(--map-muted);
+                font-size: 12px;
+                background: #eef1f4;
+                opacity: 0;
+                animation: mapCanvasReveal .55s 60ms var(--map-ease) forwards;
+            }
+            @keyframes mapShellReveal {
+                from { opacity: 0; transform: scale(.997); }
+                to { opacity: 1; transform: scale(1); }
+            }
+            @keyframes mapCanvasReveal { to { opacity: 1; } }
             .leaflet-container { font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
-            .leaflet-control-zoom { overflow: hidden; border: 1px solid var(--map-border) !important; border-radius: 10px !important; box-shadow: 0 4px 16px rgba(0,0,0,.13) !important; }
-            .leaflet-control-zoom a { width: 36px !important; height: 36px !important; line-height: 34px !important; color: var(--map-text) !important; background: rgba(255,255,255,.96) !important; border-bottom-color: rgba(0,0,0,.08) !important; }
-            .leaflet-control-attribution { color: #737373; font-size: 9px; background: rgba(255,255,255,.90) !important; }
-            .route-stop-pin { width: 30px; height: 30px; display: grid; place-items: center; color: #ffffff; font-size: 11px; font-weight: 700; border-radius: 50%; background: var(--map-accent); border: 3px solid #ffffff; box-shadow: 0 3px 11px rgba(0,0,0,.27); }
-            .route-stop-pin-start { border-radius: 8px; background: #171717; }
-            .route-stop-pin-end { background: #107c10; }
-            .leaflet-tooltip { max-width: 300px; color: var(--map-text); font-size: 11px; line-height: 1.35; background: rgba(255,255,255,.98); border: 1px solid rgba(0,0,0,.10); border-radius: 8px; box-shadow: 0 5px 18px rgba(0,0,0,.14); }
-            .route-map-summary { position: absolute; z-index: 700; top: 16px; left: 16px; width: min(430px, calc(100% - 32px)); padding: 14px 15px; color: var(--map-text); background: var(--map-panel); border: 1px solid var(--map-border); border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.15); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
-            .route-map-eyebrow { color: var(--map-accent); font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
-            .route-map-title { margin-top: 3px; overflow: hidden; color: var(--map-text); font-size: 16px; font-weight: 700; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-            .route-map-address { margin-top: 4px; overflow: hidden; color: var(--map-muted); font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-            .route-choice-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 11px; }
-            .route-choice { min-width: 0; padding: 8px 8px 7px; color: var(--map-text); text-align: left; cursor: pointer; background: rgba(0,0,0,.035); border: 1px solid transparent; border-radius: 8px; transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
-            .route-choice:hover { background: rgba(0,0,0,.065); }
-            .route-choice:active { transform: scale(.985); }
+            .leaflet-control-zoom {
+                overflow: hidden;
+                border: 1px solid var(--map-border) !important;
+                border-radius: 11px !important;
+                box-shadow: 0 5px 18px rgba(0,0,0,.14) !important;
+            }
+            .leaflet-control-zoom a {
+                width: 38px !important;
+                height: 38px !important;
+                line-height: 36px !important;
+                color: var(--map-text) !important;
+                background: rgba(255,255,255,.965) !important;
+                border-bottom-color: rgba(0,0,0,.075) !important;
+                transition: background 140ms ease, color 140ms ease, transform 100ms ease;
+            }
+            .leaflet-control-zoom a:hover { color: var(--map-accent) !important; background: #ffffff !important; }
+            .leaflet-control-zoom a:active { transform: scale(.96); }
+            .leaflet-control-attribution {
+                color: #737373;
+                font-size: 9px;
+                background: rgba(255,255,255,.90) !important;
+                border-radius: 6px 0 0 0;
+            }
+            .route-stop-pin {
+                --pin-delay: 0ms;
+                width: 32px;
+                height: 32px;
+                display: grid;
+                place-items: center;
+                color: #ffffff;
+                font-size: 11px;
+                font-weight: 700;
+                border-radius: 50%;
+                background: var(--map-accent);
+                border: 3px solid #ffffff;
+                box-shadow: 0 4px 14px rgba(0,0,0,.27);
+                animation: routePinDrop .48s var(--pin-delay) var(--map-ease) both;
+            }
+            .route-stop-pin-start { border-radius: 9px; background: #171717; }
+            .route-stop-pin-end { background: var(--map-success); }
+            @keyframes routePinDrop {
+                from { opacity: 0; transform: translateY(-12px) scale(.72); }
+                70% { transform: translateY(2px) scale(1.05); }
+                to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+            .leaflet-tooltip {
+                max-width: 320px;
+                padding: 7px 9px;
+                color: var(--map-text);
+                font-size: 11px;
+                line-height: 1.35;
+                background: rgba(255,255,255,.98);
+                border: 1px solid rgba(0,0,0,.10);
+                border-radius: 9px;
+                box-shadow: 0 7px 22px rgba(0,0,0,.15);
+            }
+            .route-map-summary {
+                position: absolute;
+                z-index: 700;
+                top: 16px;
+                left: 16px;
+                width: min(455px, calc(100% - 32px));
+                padding: 15px;
+                color: var(--map-text);
+                background: var(--map-panel);
+                border: 1px solid var(--map-border);
+                border-radius: 14px;
+                box-shadow: 0 12px 36px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.72);
+                backdrop-filter: blur(20px) saturate(130%);
+                -webkit-backdrop-filter: blur(20px) saturate(130%);
+                animation: summaryReveal .5s 110ms var(--map-ease) both;
+            }
+            @keyframes summaryReveal {
+                from { opacity: 0; transform: translateY(-8px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .route-summary-switch { animation: summarySwitch .24s var(--map-ease) both; }
+            @keyframes summarySwitch {
+                from { opacity: .55; transform: translateY(3px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .route-map-topline {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            .route-map-eyebrow {
+                color: var(--map-accent);
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: .075em;
+                text-transform: uppercase;
+            }
+            .route-count-chip,
+            .route-context-chip {
+                min-height: 23px;
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                padding: 3px 8px;
+                color: var(--map-muted);
+                font-size: 9.5px;
+                font-weight: 650;
+                white-space: nowrap;
+                background: rgba(0,0,0,.04);
+                border: 1px solid rgba(0,0,0,.055);
+                border-radius: 999px;
+            }
+            .route-count-chip::before {
+                content: "";
+                width: 6px;
+                height: 6px;
+                background: var(--map-success);
+                border-radius: 50%;
+                box-shadow: 0 0 0 3px rgba(16,124,16,.10);
+            }
+            .route-map-title {
+                margin-top: 5px;
+                overflow: hidden;
+                color: var(--map-text);
+                font-size: 18px;
+                font-weight: 700;
+                line-height: 1.24;
+                letter-spacing: -.02em;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .route-map-description {
+                margin-top: 3px;
+                color: var(--map-muted);
+                font-size: 10.5px;
+                line-height: 1.35;
+            }
+            .route-map-address {
+                margin-top: 7px;
+                display: flex;
+                align-items: center;
+                gap: 7px;
+                min-width: 0;
+                color: var(--map-muted);
+                font-size: 10.5px;
+                line-height: 1.35;
+            }
+            .route-map-address span {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .route-map-address-arrow { color: var(--map-accent); flex: 0 0 auto; font-weight: 700; }
+            .route-choice-list {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 7px;
+                margin-top: 13px;
+            }
+            .route-choice {
+                position: relative;
+                min-width: 0;
+                min-height: 65px;
+                padding: 9px 9px 8px;
+                overflow: hidden;
+                color: var(--map-text);
+                text-align: left;
+                cursor: pointer;
+                background: rgba(0,0,0,.032);
+                border: 1px solid rgba(0,0,0,.045);
+                border-radius: 10px;
+                transition:
+                    background 150ms ease,
+                    border-color 150ms ease,
+                    box-shadow 180ms var(--map-ease),
+                    transform 110ms ease;
+                animation: choiceReveal .36s var(--choice-delay, 0ms) var(--map-ease) both;
+            }
+            @keyframes choiceReveal {
+                from { opacity: 0; transform: translateY(5px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .route-choice::after {
+                content: "";
+                position: absolute;
+                inset: auto 8px 0;
+                height: 2px;
+                border-radius: 999px 999px 0 0;
+                background: var(--map-accent);
+                transform: scaleX(0);
+                transition: transform 180ms var(--map-ease);
+            }
+            .route-choice:hover {
+                background: rgba(255,255,255,.98);
+                border-color: rgba(0,103,192,.15);
+                box-shadow: 0 5px 14px rgba(0,0,0,.07);
+                transform: translateY(-1px);
+            }
+            .route-choice:active { transform: translateY(0) scale(.985); }
             .route-choice:focus-visible { outline: 2px solid rgba(0,103,192,.65); outline-offset: 2px; }
-            .route-choice-selected { background: rgba(224,240,255,.95); border-color: rgba(0,103,192,.28); box-shadow: inset 0 -2px 0 var(--map-accent); }
-            .route-choice-label { overflow: hidden; font-size: 10.5px; font-weight: 700; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
-            .route-choice-meta { margin-top: 3px; overflow: hidden; color: var(--map-muted); font-size: 9.5px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-            .route-map-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 11px; }
-            .route-map-stat { min-width: 0; padding: 8px 9px; background: rgba(0,0,0,.035); border-radius: 8px; }
-            .route-map-stat-label { color: var(--map-muted); font-size: 9px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
-            .route-map-stat-value { margin-top: 3px; overflow: hidden; color: var(--map-text); font-size: 12px; font-weight: 700; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
-            .route-map-meta { margin-top: 9px; color: var(--map-muted); font-size: 10px; line-height: 1.35; }
-            .route-map-empty-title { margin-top: 3px; color: var(--map-text); font-size: 16px; font-weight: 700; }
-            .route-map-empty-copy { margin-top: 5px; max-width: 350px; color: var(--map-muted); font-size: 11px; line-height: 1.45; }
-            .route-recenter { position: absolute; z-index: 700; right: 14px; bottom: 94px; width: 38px; height: 38px; display: grid; place-items: center; padding: 0; color: var(--map-text); font-size: 21px; line-height: 1; cursor: pointer; background: rgba(255,255,255,.96); border: 1px solid var(--map-border); border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.13); }
-            .route-recenter:hover { background: #ffffff; }
+            .route-choice-selected {
+                background: rgba(224,240,255,.94);
+                border-color: rgba(0,103,192,.27);
+                box-shadow: 0 4px 14px rgba(0,103,192,.10), inset 0 1px 0 rgba(255,255,255,.68);
+            }
+            .route-choice-selected::after { transform: scaleX(1); }
+            .route-choice-label-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+            .route-choice-label {
+                overflow: hidden;
+                font-size: 10.5px;
+                font-weight: 700;
+                line-height: 1.2;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .route-choice-check {
+                width: 17px;
+                height: 17px;
+                display: grid;
+                place-items: center;
+                flex: 0 0 auto;
+                color: transparent;
+                font-size: 10px;
+                border: 1px solid rgba(0,0,0,.12);
+                border-radius: 50%;
+                background: rgba(255,255,255,.68);
+            }
+            .route-choice-selected .route-choice-check {
+                color: #ffffff;
+                background: var(--map-accent);
+                border-color: var(--map-accent);
+            }
+            .route-choice-meta {
+                margin-top: 5px;
+                overflow: hidden;
+                color: var(--map-muted);
+                font-size: 9.5px;
+                line-height: 1.25;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .route-map-stats {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 7px;
+                margin-top: 12px;
+            }
+            .route-map-stat {
+                min-width: 0;
+                padding: 9px 10px;
+                background: rgba(0,0,0,.033);
+                border: 1px solid rgba(0,0,0,.035);
+                border-radius: 9px;
+            }
+            .route-map-stat-label {
+                color: var(--map-subtle);
+                font-size: 8.5px;
+                font-weight: 700;
+                letter-spacing: .055em;
+                text-transform: uppercase;
+            }
+            .route-map-stat-value {
+                margin-top: 3px;
+                overflow: hidden;
+                color: var(--map-text);
+                font-size: 12.5px;
+                font-weight: 700;
+                line-height: 1.2;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .route-context-row {
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 5px;
+                margin-top: 10px;
+            }
+            .route-context-chip-accent {
+                color: #004f88;
+                background: rgba(224,240,255,.82);
+                border-color: rgba(0,103,192,.13);
+            }
+            .route-map-meta {
+                margin-top: 8px;
+                color: var(--map-subtle);
+                font-size: 9.5px;
+                line-height: 1.35;
+            }
+            .route-map-empty-icon {
+                width: 36px;
+                height: 36px;
+                display: grid;
+                place-items: center;
+                color: var(--map-accent);
+                font-size: 18px;
+                background: var(--map-accent-soft);
+                border-radius: 10px;
+            }
+            .route-map-empty-title { margin-top: 9px; color: var(--map-text); font-size: 17px; font-weight: 700; }
+            .route-map-empty-copy { margin-top: 5px; max-width: 365px; color: var(--map-muted); font-size: 11px; line-height: 1.45; }
+            .route-map-hint {
+                position: absolute;
+                z-index: 690;
+                left: 50%;
+                bottom: 19px;
+                transform: translateX(-50%);
+                min-height: 28px;
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+                padding: 5px 10px;
+                color: var(--map-muted);
+                font-size: 9.5px;
+                font-weight: 600;
+                white-space: nowrap;
+                pointer-events: none;
+                background: rgba(255,255,255,.91);
+                border: 1px solid rgba(0,0,0,.09);
+                border-radius: 999px;
+                box-shadow: 0 5px 16px rgba(0,0,0,.10);
+                backdrop-filter: blur(12px);
+                animation: hintReveal .4s 500ms var(--map-ease) both;
+            }
+            @keyframes hintReveal {
+                from { opacity: 0; transform: translate(-50%, 5px); }
+                to { opacity: 1; transform: translate(-50%, 0); }
+            }
+            .route-map-hint-dot { width: 7px; height: 7px; background: var(--map-route); border: 2px solid #ffffff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.22); }
+            .route-recenter {
+                position: absolute;
+                z-index: 700;
+                right: 14px;
+                bottom: 104px;
+                width: 40px;
+                height: 40px;
+                display: grid;
+                place-items: center;
+                padding: 0;
+                color: var(--map-text);
+                cursor: pointer;
+                background: rgba(255,255,255,.965);
+                border: 1px solid var(--map-border);
+                border-radius: 11px;
+                box-shadow: 0 5px 18px rgba(0,0,0,.14);
+                transition: color 140ms ease, background 140ms ease, transform 110ms ease, box-shadow 160ms ease;
+            }
+            .route-recenter svg { width: 17px; height: 17px; }
+            .route-recenter:hover { color: var(--map-accent); background: #ffffff; box-shadow: 0 7px 22px rgba(0,0,0,.17); transform: translateY(-1px); }
+            .route-recenter:active { transform: translateY(0) scale(.96); }
             .route-recenter:focus-visible { outline: 2px solid rgba(0,103,192,.65); outline-offset: 2px; }
-            @media (max-width: 620px) {
+            .route-recenter-active svg { animation: recenterSpin .45s var(--map-ease); }
+            @keyframes recenterSpin { from { transform: rotate(-100deg); } to { transform: rotate(0); } }
+            @media (max-width: 720px) {
                 .route-map-summary { top: 10px; left: 10px; width: calc(100% - 20px); padding: 12px; }
-                .route-choice-list { grid-template-columns: 1fr; }
-                .route-choice { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; }
+                .route-map-title { font-size: 16px; }
+                .route-choice-list { grid-template-columns: 1fr; gap: 5px; }
+                .route-choice { min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 8px 9px; }
                 .route-choice-meta { margin-top: 0; }
+                .route-choice-label-row { min-width: 0; }
                 .route-map-stats { gap: 5px; }
                 .route-map-stat { padding: 7px; }
+                .route-map-hint { display: none; }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                .route-map-shell,
+                #route-map,
+                .route-map-summary,
+                .route-summary-switch,
+                .route-choice,
+                .route-stop-pin,
+                .route-map-hint,
+                .route-recenter-active svg {
+                    animation: none !important;
+                    transition: none !important;
+                }
+                #route-map { opacity: 1; }
             }
         </style>
         <div class="route-map-shell">
             <div id="route-map">Loading route map...</div>
             <div id="route-summary" class="route-map-summary" aria-live="polite"></div>
-            <button id="route-recenter" class="route-recenter" type="button" aria-label="Recenter routes" title="Recenter routes">⌖</button>
+            <div id="route-hint" class="route-map-hint"><span class="route-map-hint-dot"></span>Click any route line to compare</div>
+            <button id="route-recenter" class="route-recenter" type="button" aria-label="Recenter all routes" title="Recenter all routes">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 3V6M12 18V21M3 12H6M18 12H21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <circle cx="12" cy="12" r="5.5" stroke="currentColor" stroke-width="1.8"/>
+                    <circle cx="12" cy="12" r="1.6" fill="currentColor"/>
+                </svg>
+            </button>
         </div>
         <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
@@ -4482,7 +5014,10 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
             const map = L.map("route-map", {
                 zoomControl: false,
                 attributionControl: true,
-                preferCanvas: true
+                preferCanvas: true,
+                zoomAnimation: true,
+                fadeAnimation: true,
+                markerZoomAnimation: true
             });
             L.control.zoom({ position: "bottomright" }).addTo(map);
 
@@ -4501,27 +5036,38 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
 
             let bounds = L.latLngBounds([]);
             const routeLayers = new Map();
-            routeData.routes.forEach((route) => {
+            const routeOrder = new Map(routeData.routes.map((route, index) => [route.id, index]));
+            routeData.routes.forEach((route, index) => {
                 if (!Array.isArray(route.path) || route.path.length < 2) return;
                 const outline = L.polyline(route.path, {
                     color: "#ffffff",
                     weight: 8,
-                    opacity: .72,
+                    opacity: 0,
                     lineCap: "round",
                     lineJoin: "round",
                     interactive: false
                 }).addTo(map);
                 const line = L.polyline(route.path, {
-                    color: "#777777",
+                    color: "#7d7d7d",
                     weight: 4,
-                    opacity: .58,
+                    opacity: 0,
                     lineCap: "round",
                     lineJoin: "round"
                 }).addTo(map);
                 line.on("click", () => selectRoute(route.id));
+                line.on("mouseover", () => {
+                    if (route.id !== selectedRouteId) line.setStyle({ opacity: .78, weight: 5 });
+                });
+                line.on("mouseout", () => {
+                    if (route.id !== selectedRouteId) line.setStyle({ opacity: .46, weight: 4 });
+                });
                 line.bindTooltip(`${escapeHtml(route.label)} · ${escapeHtml(route.summary?.miles || "")} · ${escapeHtml(route.summary?.driveTime || "")}`, { sticky: true });
                 routeLayers.set(route.id, { outline, line });
                 bounds.extend(outline.getBounds());
+                window.setTimeout(() => {
+                    outline.setStyle({ opacity: .58 });
+                    line.setStyle({ opacity: .46 });
+                }, 150 + index * 85);
             });
 
             routeData.points.forEach((point, index) => {
@@ -4530,22 +5076,23 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
                 const kind = index === 0 ? "start" : index === routeData.points.length - 1 ? "end" : "middle";
                 const icon = L.divIcon({
                     className: "",
-                    html: `<div class="route-stop-pin route-stop-pin-${kind}">${escapeHtml(point.label)}</div>`,
-                    iconSize: [36, 36],
-                    iconAnchor: [18, 18]
+                    html: `<div class="route-stop-pin route-stop-pin-${kind}" style="--pin-delay:${220 + index * 70}ms">${escapeHtml(point.label)}</div>`,
+                    iconSize: [38, 38],
+                    iconAnchor: [19, 19]
                 });
                 L.marker(latLng, { icon })
                     .addTo(map)
-                    .bindTooltip(`<b>${escapeHtml(point.label)} · ${escapeHtml(point.name)}</b>`, { direction: "top", offset: [0, -12] });
+                    .bindTooltip(`<b>${escapeHtml(point.label)} · ${escapeHtml(point.name)}</b>`, { direction: "top", offset: [0, -13] });
             });
 
             const fitRoute = () => {
                 if (bounds.isValid()) {
-                    const leftPadding = window.innerWidth > 760 ? 465 : 32;
-                    map.fitBounds(bounds, {
-                        paddingTopLeft: [leftPadding, 40],
-                        paddingBottomRight: [48, 48],
-                        maxZoom: 15
+                    const leftPadding = window.innerWidth > 780 ? 492 : 28;
+                    map.flyToBounds(bounds, {
+                        paddingTopLeft: [leftPadding, 46],
+                        paddingBottomRight: [52, 56],
+                        maxZoom: 15,
+                        duration: .55
                     });
                 } else {
                     map.setView([39.5, -98.35], 4);
@@ -4553,46 +5100,77 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
             };
 
             const summaryElement = document.getElementById("route-summary");
+            const hintElement = document.getElementById("route-hint");
             let selectedRouteId = routeData.routes.some((route) => route.id === routeData.defaultRoute)
                 ? routeData.defaultRoute
                 : routeData.routes[0]?.id;
 
+            const contextChip = (value, accent = false) => value
+                ? `<span class="route-context-chip${accent ? " route-context-chip-accent" : ""}">${escapeHtml(value)}</span>`
+                : "";
+
+            function animateSummary() {
+                summaryElement.classList.remove("route-summary-switch");
+                void summaryElement.offsetWidth;
+                summaryElement.classList.add("route-summary-switch");
+            }
+
             function renderSummary() {
                 if (!routeData.routes.length || routeData.points.length < 2) {
                     summaryElement.innerHTML = `
-                        <div class="route-map-eyebrow">Route tracking</div>
-                        <div class="route-map-empty-title">Map ready</div>
-                        <div class="route-map-empty-copy">Enter the stops and route options above, then select Calculate Routes. Recommended, shortest, and fewer-turn alternatives will appear here.</div>
+                        <div class="route-map-empty-icon">⌁</div>
+                        <div class="route-map-empty-title">Ready to plan</div>
+                        <div class="route-map-empty-copy">Enter stops and route preferences above, then calculate routes. Recommended, shortest, and fewer-turn alternatives will appear here.</div>
                     `;
+                    hintElement.style.display = "none";
                     return;
                 }
+                hintElement.style.display = "inline-flex";
                 const selected = routeData.routes.find((route) => route.id === selectedRouteId) || routeData.routes[0];
                 const summary = selected.summary || {};
-                const choices = routeData.routes.map((route) => {
+                const choices = routeData.routes.map((route, index) => {
                     const routeSummary = route.summary || {};
                     const selectedClass = route.id === selected.id ? " route-choice-selected" : "";
                     return `
-                        <button class="route-choice${selectedClass}" type="button" data-route-id="${escapeHtml(route.id)}" aria-pressed="${route.id === selected.id}">
-                            <div class="route-choice-label">${escapeHtml(route.label)}</div>
+                        <button class="route-choice${selectedClass}" style="--choice-delay:${index * 45}ms" type="button" data-route-id="${escapeHtml(route.id)}" aria-pressed="${route.id === selected.id}">
+                            <div class="route-choice-label-row">
+                                <div class="route-choice-label">${escapeHtml(route.label)}</div>
+                                <span class="route-choice-check">✓</span>
+                            </div>
                             <div class="route-choice-meta">${escapeHtml(routeSummary.miles || "—")} · ${escapeHtml(routeSummary.driveTime || "—")}</div>
                         </button>
                     `;
                 }).join("");
                 summaryElement.innerHTML = `
-                    <div class="route-map-eyebrow">Choose a route</div>
+                    <div class="route-map-topline">
+                        <div class="route-map-eyebrow">Route comparison</div>
+                        <div class="route-count-chip">${routeData.routes.length} options</div>
+                    </div>
                     <div class="route-map-title">${escapeHtml(summary.title || selected.label || "Driving route")}</div>
-                    <div class="route-map-address">${escapeHtml(summary.from || "")} → ${escapeHtml(summary.to || "")}</div>
+                    <div class="route-map-description">${escapeHtml(selected.description || "Select the route that best fits this delivery.")}</div>
+                    <div class="route-map-address">
+                        <span>${escapeHtml(summary.from || "")}</span>
+                        <span class="route-map-address-arrow">→</span>
+                        <span>${escapeHtml(summary.to || "")}</span>
+                    </div>
                     <div class="route-choice-list">${choices}</div>
                     <div class="route-map-stats">
                         <div class="route-map-stat"><div class="route-map-stat-label">Distance</div><div class="route-map-stat-value">${escapeHtml(summary.miles || "—")}</div></div>
                         <div class="route-map-stat"><div class="route-map-stat-label">Drive time</div><div class="route-map-stat-value">${escapeHtml(summary.driveTime || "—")}</div></div>
                         <div class="route-map-stat"><div class="route-map-stat-label">Final ETA</div><div class="route-map-stat-value">${escapeHtml(summary.finalEta || "—")}</div></div>
                     </div>
-                    <div class="route-map-meta">${escapeHtml(summary.meta || "")}</div>
+                    <div class="route-context-row">
+                        ${contextChip(summary.vehicle)}
+                        ${contextChip(summary.departure)}
+                        ${contextChip(summary.trafficLabel, true)}
+                        ${contextChip(summary.service)}
+                    </div>
+                    <div class="route-map-meta">Traffic is estimated and does not include live incidents or closures.</div>
                 `;
                 summaryElement.querySelectorAll("[data-route-id]").forEach((button) => {
                     button.addEventListener("click", () => selectRoute(button.dataset.routeId));
                 });
+                animateSummary();
             }
 
             function selectRoute(routeId) {
@@ -4600,11 +5178,14 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
                 selectedRouteId = routeId;
                 routeLayers.forEach((layers, id) => {
                     const selected = id === selectedRouteId;
-                    layers.outline.setStyle({ weight: selected ? 11 : 8, opacity: selected ? .94 : .58 });
-                    layers.line.setStyle({
-                        color: selected ? "#171717" : "#777777",
-                        weight: selected ? 6 : 4,
+                    layers.outline.setStyle({
+                        weight: selected ? 11 : 8,
                         opacity: selected ? .96 : .52
+                    });
+                    layers.line.setStyle({
+                        color: selected ? "#171717" : "#7d7d7d",
+                        weight: selected ? 6 : 4,
+                        opacity: selected ? .98 : .46
                     });
                     if (selected) {
                         layers.outline.bringToFront();
@@ -4620,13 +5201,19 @@ def render_geoapify_route_map(stop_points=None, route_options=None, default_rout
             } else {
                 renderSummary();
             }
-            window.setTimeout(() => map.invalidateSize(), 80);
-            document.getElementById("route-recenter").addEventListener("click", fitRoute);
+            window.setTimeout(() => map.invalidateSize(), 90);
+            const recenterButton = document.getElementById("route-recenter");
+            recenterButton.addEventListener("click", () => {
+                recenterButton.classList.remove("route-recenter-active");
+                void recenterButton.offsetWidth;
+                recenterButton.classList.add("route-recenter-active");
+                fitRoute();
+            });
         </script>
     """
     components.html(
         map_html.replace("__MAP_DATA__", map_data),
-        height=642,
+        height=682,
         scrolling=False,
     )
 
@@ -4670,8 +5257,25 @@ def render_route_tracking_page():
     default_departure = now_local + timedelta(minutes=30)
 
     with st.container(key="route_control_panel"):
-        control_col_1, control_col_2 = st.columns([1.15, 3.85])
-        with control_col_1:
+        setup_col, stop_count_col = st.columns([4.15, 1.15], gap="large")
+        with setup_col:
+            status_class = "route-status-chip" if api_key else "route-status-chip route-status-chip-missing"
+            status_text = "Geoapify connected" if api_key else "Geoapify secret missing"
+            st.markdown(
+                f'''<div class="route-step-heading" style="margin-bottom:0">
+                    <div class="route-step-heading-main">
+                        <span class="route-step-number">1</span>
+                        <div class="route-step-copy">
+                            <div class="route-overview-title">Build the route</div>
+                            <div class="route-overview-copy">Set the number of stops, then enter each address in driving order.</div>
+                            <div class="route-inline-note">Three route alternatives are calculated together and compared on the map.</div>
+                        </div>
+                    </div>
+                    <div class="{status_class}">{status_text}</div>
+                </div>''',
+                unsafe_allow_html=True,
+            )
+        with stop_count_col:
             stop_count = st.number_input(
                 "Number of stops",
                 min_value=2,
@@ -4680,17 +5284,21 @@ def render_route_tracking_page():
                 step=1,
                 key="route_planner_stop_count",
             )
-        with control_col_2:
-            status_class = "route-status-chip" if api_key else "route-status-chip route-status-chip-missing"
-            status_text = "Geoapify connected" if api_key else "Geoapify secret missing"
-            st.markdown(
-                f'<div class="route-overview-strip"><div><div class="route-overview-title">Route setup</div><div class="route-overview-copy">Calculate three alternatives, then switch between them directly on the map.</div></div><div class="{status_class}">{status_text}</div></div>',
-                unsafe_allow_html=True,
-            )
 
     with st.container(key="route_stops_panel"):
-        st.markdown('<div class="route-overview-title">Stops</div>', unsafe_allow_html=True)
-        st.markdown('<div class="route-overview-copy">Enter stops in the exact order the driver will visit them. Suggestions begin after five characters.</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'''<div class="route-step-heading">
+                <div class="route-step-heading-main">
+                    <span class="route-step-number">2</span>
+                    <div class="route-step-copy">
+                        <div class="route-overview-title">Stops</div>
+                        <div class="route-overview-copy">Enter stops in the exact order the driver will visit them. Suggestions begin after five characters.</div>
+                    </div>
+                </div>
+                <span class="route-stop-count-badge">{int(stop_count)} stops</span>
+            </div>''',
+            unsafe_allow_html=True,
+        )
         stops = []
         stop_count_int = int(stop_count)
         for row_start in range(0, stop_count_int, 2):
@@ -4727,8 +5335,19 @@ def render_route_tracking_page():
                         stops.append(normalize_route_address(address))
 
     with st.container(key="route_details_panel"):
-        st.markdown('<div class="route-overview-title">Departure and route options</div>', unsafe_allow_html=True)
-        st.markdown('<div class="route-overview-copy">Estimated traffic uses Geoapify’s approximated traffic model; it is not live incident data.</div>', unsafe_allow_html=True)
+        st.markdown(
+            '''<div class="route-step-heading">
+                <div class="route-step-heading-main">
+                    <span class="route-step-number">3</span>
+                    <div class="route-step-copy">
+                        <div class="route-overview-title">Departure and preferences</div>
+                        <div class="route-overview-copy">Set timing, vehicle type, and road preferences before calculating the route alternatives.</div>
+                        <div class="route-inline-note">Estimated traffic models likely congestion; it does not include live incidents or closures.</div>
+                    </div>
+                </div>
+            </div>''',
+            unsafe_allow_html=True,
+        )
         with st.form("route_plan_form", clear_on_submit=False):
             date_col, time_col, timezone_col, service_col, mode_col = st.columns([1.05, .95, 1.35, 1.15, 1.25])
             with date_col:
@@ -4880,6 +5499,10 @@ def render_route_tracking_page():
                     "miles": f"{route_plan['total_miles']:.1f} mi",
                     "driveTime": format_route_duration(route_plan["route_seconds"]),
                     "finalEta": route_plan["final_arrival"].strftime("%b %d · %I:%M %p").replace(" 0", " "),
+                    "vehicle": route_plan["vehicle"],
+                    "departure": f"Depart {format_route_clock(route_plan['departure'])}",
+                    "trafficLabel": traffic_text,
+                    "service": f"{route_plan['stop_minutes']} min per middle stop" if middle_stop_count else "",
                     "meta": f"{route_plan['vehicle']} · Departure {format_route_clock(route_plan['departure'])}{service_text} · {traffic_text} (not live incidents)",
                 },
             }
