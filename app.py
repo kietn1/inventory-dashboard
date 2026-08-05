@@ -739,49 +739,60 @@ st.markdown(
         .st-key-route_stops_panel,
         .st-key-route_details_panel,
         .st-key-route_map_panel,
-        .st-key-route_results_panel {
+        .st-key-route_itinerary_panel {
             margin-bottom: 12px;
-            padding: 15px 16px 16px;
-            background: rgba(255,255,255,.82);
+            padding: 14px 15px 15px;
+            background: rgba(255,255,255,.84);
             border: 1px solid var(--win-border);
             border-radius: var(--win-radius-lg);
-            box-shadow: var(--win-shadow-card);
-            backdrop-filter: blur(20px) saturate(125%);
-            -webkit-backdrop-filter: blur(20px) saturate(125%);
+            box-shadow: 0 1px 2px rgba(0,0,0,.025), 0 5px 18px rgba(0,0,0,.045);
+            backdrop-filter: blur(18px) saturate(120%);
+            -webkit-backdrop-filter: blur(18px) saturate(120%);
         }
         .st-key-route_control_panel {
-            padding-top: 12px;
-            padding-bottom: 12px;
+            padding-top: 11px;
+            padding-bottom: 11px;
         }
         [class*="st-key-route_stop_card_"] {
+            min-height: 88px;
             height: 100%;
-            padding: 13px 13px 9px;
-            background: rgba(249,249,249,.78);
+            margin-top: 8px;
+            padding: 11px 12px 7px;
+            background: rgba(249,249,249,.82);
             border: 1px solid var(--win-border);
-            border-radius: 10px;
+            border-radius: 9px;
         }
         [class*="st-key-route_stop_card_"] label {
-            margin-bottom: 5px;
-            font-size: 12px;
-            font-weight: 600;
+            margin-bottom: 4px;
+            color: var(--win-text-secondary) !important;
+            font-size: 11.5px !important;
+            font-weight: 650 !important;
         }
-        [class*="st-key-route_stop_card_"] { margin-top: 8px; }
-        .route-map-empty { min-height: 360px; display: grid; place-content: center; text-align: center; background: rgba(249,249,249,.78); border: 1px dashed var(--win-border-strong); border-radius: 11px; }
+        .route-map-empty {
+            min-height: 444px;
+            display: grid;
+            place-content: center;
+            padding: 24px;
+            text-align: center;
+            background: rgba(249,249,249,.80);
+            border: 1px dashed var(--win-border-strong);
+            border-radius: 10px;
+        }
         .route-map-empty-title { color: var(--win-text); font-size: 16px; font-weight: 650; }
-        .route-map-empty-copy { margin-top: 5px; color: var(--win-text-secondary); font-size: 12px; }
+        .route-map-empty-copy { max-width: 420px; margin-top: 5px; color: var(--win-text-secondary); font-size: 12px; line-height: 1.4; }
         .st-key-route_map_panel iframe {
             display: block;
             width: 100%;
             border: 1px solid var(--win-border-strong) !important;
-            border-radius: 11px;
-            background: #f3f3f3;
+            border-radius: 10px;
+            background: #eef1f4;
         }
         .route-overview-strip {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            margin-bottom: 11px;
+            margin-bottom: 8px;
         }
         .route-overview-title {
             color: var(--win-text);
@@ -792,18 +803,19 @@ st.markdown(
             margin-top: 2px;
             color: var(--win-text-secondary);
             font-size: 11px;
+            line-height: 1.35;
         }
         .route-status-chip {
             min-height: 26px;
             display: inline-flex;
             align-items: center;
             padding: 4px 9px;
-            color: #004f88;
+            color: #0f6c0f;
             font-size: 10.5px;
             font-weight: 650;
             white-space: nowrap;
-            background: rgba(224,240,255,.82);
-            border: 1px solid rgba(0,103,192,.14);
+            background: rgba(223,246,227,.80);
+            border: 1px solid rgba(16,124,16,.15);
             border-radius: 999px;
         }
         .route-status-chip::before {
@@ -811,19 +823,93 @@ st.markdown(
             width: 6px;
             height: 6px;
             margin-right: 6px;
-            background: var(--win-accent);
+            background: #107c10;
             border-radius: 50%;
         }
-        .route-status-delivered { color: #0f6c0f; background: rgba(223,246,227,.8); border-color: rgba(16,124,16,.15); }
-        .route-status-delivered::before { background: #107c10; }
-        .route-status-delayed, .route-status-cancelled { color: #a4262c; background: rgba(253,231,233,.9); border-color: rgba(196,43,28,.15); }
-        .route-status-delayed::before, .route-status-cancelled::before { background: #c42b1c; }
+        .route-status-chip-missing {
+            color: #a4262c;
+            background: rgba(253,231,233,.88);
+            border-color: rgba(196,43,28,.15);
+        }
+        .route-status-chip-missing::before { background: #c42b1c; }
         .route-map-note {
             margin-top: 8px;
             color: var(--win-text-tertiary);
             font-size: 10.5px;
             line-height: 1.35;
         }
+        .st-key-route_details_panel [data-testid="stForm"] {
+            margin: 0;
+            padding: 0;
+            border: 0;
+        }
+        .route-itinerary-list {
+            display: grid;
+            gap: 7px;
+            margin-top: 9px;
+        }
+        .route-leg-row {
+            display: grid;
+            grid-template-columns: 42px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 9px;
+            padding: 9px 10px;
+            background: rgba(249,249,249,.82);
+            border: 1px solid var(--win-border);
+            border-radius: 8px;
+        }
+        .route-leg-badge {
+            min-height: 25px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #004f88;
+            font-size: 10px;
+            font-weight: 700;
+            background: rgba(224,240,255,.88);
+            border: 1px solid rgba(0,103,192,.13);
+            border-radius: 6px;
+        }
+        .route-leg-main { min-width: 0; }
+        .route-leg-destination {
+            overflow: hidden;
+            color: var(--win-text);
+            font-size: 11.5px;
+            font-weight: 650;
+            line-height: 1.25;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .route-leg-meta {
+            margin-top: 3px;
+            color: var(--win-text-secondary);
+            font-size: 10.5px;
+            line-height: 1.25;
+        }
+        .route-leg-time {
+            color: var(--win-text);
+            font-size: 11px;
+            font-weight: 650;
+            text-align: right;
+            white-space: nowrap;
+        }
+        .route-leg-time span {
+            display: block;
+            margin-top: 2px;
+            color: var(--win-text-tertiary);
+            font-size: 9.5px;
+            font-weight: 500;
+        }
+        .route-summary-note {
+            margin-top: 9px;
+            padding: 8px 9px;
+            color: var(--win-text-secondary);
+            font-size: 10.5px;
+            line-height: 1.4;
+            background: rgba(0,0,0,.025);
+            border-radius: 7px;
+        }
+
 
         
         .kpi-card {
@@ -3943,6 +4029,14 @@ def geoapify_api_key():
         return ""
 
 
+def normalize_route_address(value):
+    return re.sub(r"\s+", " ", clean_text(value)).strip()
+
+
+def route_address_key(value):
+    return normalize_route_address(value).casefold()
+
+
 def format_route_duration(seconds):
     total_minutes = max(0, int(round(float(seconds) / 60)))
     hours, minutes = divmod(total_minutes, 60)
@@ -3957,6 +4051,10 @@ def format_route_datetime(value):
     return value.strftime("%a, %b %d, %Y · %I:%M %p %Z").replace(" 0", " ")
 
 
+def format_route_clock(value):
+    return value.strftime("%I:%M %p").lstrip("0")
+
+
 def geoapify_get_json(endpoint, params, api_key, timeout=18):
     query = dict(params)
     query["apiKey"] = api_key
@@ -3965,7 +4063,7 @@ def geoapify_get_json(endpoint, params, api_key, timeout=18):
         url,
         headers={
             "Accept": "application/json",
-            "User-Agent": "Inventory-Route-Tracking/1.1",
+            "User-Agent": "Inventory-Route-Tracking/1.2",
             "Connection": "keep-alive",
         },
         method="GET",
@@ -3985,66 +4083,123 @@ def geoapify_get_json(endpoint, params, api_key, timeout=18):
         raise RuntimeError(f"Unable to connect to Geoapify: {exc.reason}") from exc
 
 
-@st.cache_data(ttl=86400, max_entries=1200, show_spinner=False)
-def geoapify_address_suggestions(searchterm, _api_key):
-    query = clean_text(searchterm)
-    if not _api_key or len(query) < 4:
-        return []
-    try:
-        payload = geoapify_get_json(
-            "https://api.geoapify.com/v1/geocode/autocomplete",
-            {
-                "text": query,
-                "format": "json",
-                "lang": "en",
-                "filter": "countrycode:us",
-                "limit": 5,
-            },
-            _api_key,
-            timeout=8,
-        )
-    except RuntimeError:
-        return []
-    suggestions = []
+@st.cache_data(ttl=604800, max_entries=2500, show_spinner=False)
+def _geoapify_suggestion_records(query, _api_key):
+    payload = geoapify_get_json(
+        "https://api.geoapify.com/v1/geocode/autocomplete",
+        {
+            "text": query,
+            "format": "json",
+            "lang": "en",
+            "filter": "countrycode:us",
+            "limit": 4,
+        },
+        _api_key,
+        timeout=7,
+    )
+    records = []
     seen = set()
     for result in payload.get("results", []):
-        formatted = clean_text(result.get("formatted"))
-        normalized = formatted.casefold()
+        formatted = normalize_route_address(result.get("formatted"))
+        normalized = route_address_key(formatted)
+        try:
+            latitude = float(result["lat"])
+            longitude = float(result["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
         if formatted and normalized not in seen:
             seen.add(normalized)
-            suggestions.append(formatted)
-    return suggestions
+            records.append((formatted, latitude, longitude))
+    return records
 
 
-@st.cache_data(ttl=604800, max_entries=3000, show_spinner=False)
+def geoapify_address_suggestions(searchterm, _api_key):
+    query = normalize_route_address(searchterm)
+    if not _api_key or len(query) < 5:
+        return []
+    try:
+        records = _geoapify_suggestion_records(query, _api_key=_api_key)
+    except RuntimeError:
+        return []
+    hints = st.session_state.setdefault("_route_geocode_hints", {})
+    for formatted, latitude, longitude in records:
+        hints[route_address_key(formatted)] = {
+            "matched": formatted,
+            "lat": latitude,
+            "lon": longitude,
+        }
+    while len(hints) > 180:
+        hints.pop(next(iter(hints)))
+    return [record[0] for record in records]
+
+
+@st.cache_data(ttl=2592000, max_entries=3000, show_spinner=False)
 def geocode_geoapify_address(address, _api_key):
+    normalized_address = normalize_route_address(address)
     payload = geoapify_get_json(
         "https://api.geoapify.com/v1/geocode/search",
         {
-            "text": clean_text(address),
+            "text": normalized_address,
             "format": "json",
             "lang": "en",
             "filter": "countrycode:us",
             "limit": 1,
         },
         _api_key,
-        timeout=12,
+        timeout=10,
     )
     results = payload.get("results", [])
     if not results:
-        raise RuntimeError(f"Address not found: {clean_text(address)}")
+        raise RuntimeError(f"Address not found: {normalized_address}")
     result = results[0]
     try:
         latitude = float(result["lat"])
         longitude = float(result["lon"])
     except (KeyError, TypeError, ValueError) as exc:
-        raise RuntimeError(f"Geoapify did not return coordinates for: {address}") from exc
+        raise RuntimeError(f"Geoapify did not return coordinates for: {normalized_address}") from exc
     return {
-        "name": clean_text(address),
-        "matched": clean_text(result.get("formatted")) or clean_text(address),
+        "name": normalized_address,
+        "matched": normalize_route_address(result.get("formatted")) or normalized_address,
         "lat": latitude,
         "lon": longitude,
     }
+
+
+def resolve_geoapify_stops(stops, api_key):
+    hints = dict(st.session_state.get("_route_geocode_hints", {}))
+    points = [None] * len(stops)
+    unresolved = {}
+    for index, address in enumerate(stops):
+        normalized = normalize_route_address(address)
+        key = route_address_key(normalized)
+        hint = hints.get(key)
+        if hint:
+            points[index] = {
+                "name": normalized,
+                "matched": normalize_route_address(hint.get("matched")) or normalized,
+                "lat": float(hint["lat"]),
+                "lon": float(hint["lon"]),
+            }
+        else:
+            unresolved.setdefault(key, normalized)
+    if unresolved:
+        addresses = list(unresolved.values())
+        worker_count = min(6, len(addresses))
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            resolved = list(
+                executor.map(
+                    lambda item: geocode_geoapify_address(item, _api_key=api_key),
+                    addresses,
+                )
+            )
+        resolved_by_key = {
+            route_address_key(address): point
+            for address, point in zip(addresses, resolved)
+        }
+        for index, address in enumerate(stops):
+            if points[index] is None:
+                points[index] = dict(resolved_by_key[route_address_key(address)])
+    return points
 
 
 def geoapify_path_coordinates(geometry):
@@ -4068,7 +4223,7 @@ def geoapify_path_coordinates(geometry):
     return path
 
 
-def compact_route_path(path, max_points=900):
+def compact_route_path(path, max_points=520):
     if len(path) <= max_points:
         return path
     last_index = len(path) - 1
@@ -4076,7 +4231,7 @@ def compact_route_path(path, max_points=900):
     return [path[index] for index in indexes]
 
 
-@st.cache_data(ttl=86400, max_entries=250, show_spinner=False)
+@st.cache_data(ttl=604800, max_entries=500, show_spinner=False)
 def compute_geoapify_route(stop_points_key, mode, avoid_tolls, avoid_highways, avoid_ferries, _api_key):
     stop_points = [
         {"lat": float(latitude), "lon": float(longitude)}
@@ -4119,13 +4274,75 @@ def compute_geoapify_route(stop_points_key, mode, avoid_tolls, avoid_highways, a
     }
 
 
+def route_network_signature(stops, mode, avoid_tolls, avoid_highways, avoid_ferries):
+    return json.dumps(
+        {
+            "stops": [route_address_key(stop) for stop in stops],
+            "mode": mode,
+            "avoid_tolls": bool(avoid_tolls),
+            "avoid_highways": bool(avoid_highways),
+            "avoid_ferries": bool(avoid_ferries),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def build_route_plan(network_result, departure, stop_minutes, vehicle_label):
+    route = network_result["route"]
+    stop_points = network_result["stop_points"]
+    legs = route.get("legs", [])
+    selected_zone = departure.tzinfo or timezone.utc
+    current_utc = departure.astimezone(timezone.utc)
+    leg_rows = []
+    for index, leg in enumerate(legs):
+        leg_seconds = float(leg.get("time", 0) or 0)
+        arrival_utc = current_utc + timedelta(seconds=leg_seconds)
+        arrival = arrival_utc.astimezone(selected_zone)
+        next_departure = None
+        next_departure_utc = arrival_utc
+        if index < len(legs) - 1:
+            next_departure_utc += timedelta(minutes=int(stop_minutes))
+            next_departure = next_departure_utc.astimezone(selected_zone)
+        leg_rows.append(
+            {
+                "Leg": f"{chr(65 + index)} → {chr(66 + index)}",
+                "From": stop_points[index]["matched"],
+                "To": stop_points[index + 1]["matched"],
+                "Miles": round(float(leg.get("distance", 0) or 0) / 1609.344, 1),
+                "Drive Time": format_route_duration(leg_seconds),
+                "Arrival": arrival.strftime("%a · %I:%M %p").replace(" 0", " "),
+                "Depart": next_departure.strftime("%a · %I:%M %p").replace(" 0", " ") if next_departure else "Final stop",
+                "Arrival ETA": format_route_datetime(arrival),
+                "Next Departure": format_route_datetime(next_departure) if next_departure else "Final stop",
+            }
+        )
+        current_utc = next_departure_utc
+    stop_seconds = max(0, len(legs) - 1) * int(stop_minutes) * 60
+    return {
+        "stops": network_result["stops"],
+        "departure": departure,
+        "final_arrival": current_utc.astimezone(selected_zone),
+        "total_miles": float(route.get("distance", 0) or 0) / 1609.344,
+        "route_seconds": float(route.get("time", 0) or 0),
+        "total_elapsed_seconds": float(route.get("time", 0) or 0) + stop_seconds,
+        "stop_minutes": int(stop_minutes),
+        "vehicle": vehicle_label,
+        "legs": leg_rows,
+        "stop_points": stop_points,
+        "path_coordinates": route.get("path", []),
+        "stop_signature": network_result["stop_signature"],
+    }
+
+
 def render_geoapify_route_map(stop_points, path_coordinates):
     points = []
     for index, point in enumerate(stop_points):
         points.append(
             {
                 "label": chr(65 + index),
-                "name": html.escape(clean_text(point.get("matched")) or clean_text(point.get("name"))),
+                "name": html.escape(normalize_route_address(point.get("matched")) or normalize_route_address(point.get("name"))),
                 "lat": float(point.get("lat")),
                 "lon": float(point.get("lon")),
             }
@@ -4134,296 +4351,307 @@ def render_geoapify_route_map(stop_points, path_coordinates):
         "points": points,
         "path": [[float(item[0]), float(item[1])] for item in path_coordinates],
     }
-    map_data = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    map_data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     components.html(
         f"""
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
         <style>
-            html, body {{ margin: 0; padding: 0; background: #f3f3f3; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }}
-            #route-map {{ width: 100%; height: 520px; display: grid; place-items: center; color: #737373; font-size: 12px; background: #eef1f4; }}
+            html, body {{ margin: 0; padding: 0; background: #eef1f4; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }}
+            #route-map {{ width: 100%; height: 444px; display: grid; place-items: center; color: #737373; font-size: 12px; background: #eef1f4; }}
             .leaflet-container {{ font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }}
             .leaflet-bar {{ overflow: hidden; border: 1px solid rgba(0,0,0,.14) !important; border-radius: 8px !important; box-shadow: 0 2px 8px rgba(0,0,0,.10) !important; }}
-            .leaflet-bar a {{ color: #1f1f1f !important; background: rgba(255,255,255,.95) !important; border-bottom-color: rgba(0,0,0,.08) !important; }}
-            .leaflet-control-attribution {{ color: #737373; font-size: 9px; background: rgba(255,255,255,.88) !important; }}
-            .route-stop-pin {{ width: 28px; height: 28px; display: grid; place-items: center; color: #ffffff; font-size: 12px; font-weight: 700; border-radius: 50%; background: #0067c0; border: 3px solid #ffffff; box-shadow: 0 2px 9px rgba(0,0,0,.28); }}
+            .leaflet-bar a {{ color: #1f1f1f !important; background: rgba(255,255,255,.96) !important; border-bottom-color: rgba(0,0,0,.08) !important; }}
+            .leaflet-control-attribution {{ color: #737373; font-size: 9px; background: rgba(255,255,255,.90) !important; }}
+            .route-stop-pin {{ width: 27px; height: 27px; display: grid; place-items: center; color: #ffffff; font-size: 11px; font-weight: 700; border-radius: 50%; background: #0067c0; border: 3px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,.25); }}
             .route-stop-pin-start {{ background: #5d5d5d; }}
             .route-stop-pin-end {{ background: #107c10; }}
             .leaflet-tooltip {{ color: #1f1f1f; font-size: 11px; background: rgba(255,255,255,.97); border: 1px solid rgba(0,0,0,.10); border-radius: 7px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }}
         </style>
         <div id="route-map">Loading route map...</div>
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+        <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
             const routeData = {map_data};
-            const map = L.map("route-map", {{ zoomControl: true, attributionControl: true }});
+            const map = L.map("route-map", {{ zoomControl: true, attributionControl: true, preferCanvas: true }});
             L.tileLayer("https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png", {{
                 maxZoom: 19,
+                updateWhenIdle: true,
+                keepBuffer: 2,
                 attribution: 'Routing &copy; <a href="https://www.geoapify.com/">Geoapify</a> · Map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }}).addTo(map);
-            const bounds = [];
+            let bounds = L.latLngBounds([]);
             routeData.points.forEach((point, index) => {{
                 const latLng = [point.lat, point.lon];
-                bounds.push(latLng);
+                bounds.extend(latLng);
                 const kind = index === 0 ? "start" : index === routeData.points.length - 1 ? "end" : "middle";
                 const icon = L.divIcon({{
                     className: "",
                     html: `<div class="route-stop-pin route-stop-pin-${{kind}}">${{point.label}}</div>`,
-                    iconSize: [34, 34],
-                    iconAnchor: [17, 17]
+                    iconSize: [33, 33],
+                    iconAnchor: [16.5, 16.5]
                 }});
-                L.marker(latLng, {{ icon }}).addTo(map).bindTooltip(`<b>${{point.label}} · ${{point.name}}</b>`, {{ direction: "top", offset: [0, -12] }});
+                L.marker(latLng, {{ icon }}).addTo(map).bindTooltip(`<b>${{point.label}} · ${{point.name}}</b>`, {{ direction: "top", offset: [0, -11] }});
             }});
             if (routeData.path.length > 1) {{
-                L.polyline(routeData.path, {{ color: "#0067c0", weight: 6, opacity: .9, lineCap: "round", lineJoin: "round" }}).addTo(map);
-                routeData.path.forEach((latLng) => bounds.push(latLng));
+                const routeLine = L.polyline(routeData.path, {{ color: "#0067c0", weight: 5, opacity: .9, lineCap: "round", lineJoin: "round" }}).addTo(map);
+                bounds.extend(routeLine.getBounds());
             }}
-            if (bounds.length > 1) {{
-                map.fitBounds(bounds, {{ padding: [42, 42], maxZoom: 14 }});
+            if (bounds.isValid()) {{
+                map.fitBounds(bounds, {{ padding: [34, 34], maxZoom: 14 }});
             }} else {{
                 map.setView([39.5, -98.35], 4);
             }}
         </script>
         """,
-        height=522,
+        height=446,
         scrolling=False,
     )
 
 
+def route_itinerary_html(legs):
+    rows = []
+    for leg in legs:
+        destination = html.escape(normalize_route_address(leg.get("To")))
+        miles = html.escape(str(leg.get("Miles", "")))
+        drive_time = html.escape(clean_text(leg.get("Drive Time")))
+        arrival = html.escape(clean_text(leg.get("Arrival")) or clean_text(leg.get("Arrival ETA")))
+        next_departure = html.escape(clean_text(leg.get("Depart")) or clean_text(leg.get("Next Departure")))
+        rows.append(
+            f"""
+            <div class="route-leg-row">
+                <div class="route-leg-badge">{html.escape(clean_text(leg.get('Leg')))}</div>
+                <div class="route-leg-main">
+                    <div class="route-leg-destination">{destination}</div>
+                    <div class="route-leg-meta">{miles} mi · {drive_time}</div>
+                </div>
+                <div class="route-leg-time">{arrival}<span>{next_departure}</span></div>
+            </div>
+            """
+        )
+    return '<div class="route-itinerary-list">' + "".join(rows) + "</div>"
+
+
+def _route_fragment_decorator(function):
+    fragment = getattr(st, "fragment", None)
+    return fragment(function) if callable(fragment) else function
+
+
+@_route_fragment_decorator
 def render_route_tracking_page():
     tab_page_header(
         "Route Tracking",
-        "Plan a driving route across two or more stops, calculate road miles, and estimate arrival times from a selected departure date and time.",
+        "Plan multi-stop routes, road miles, driving time, and stop-by-stop ETA.",
     )
 
-    if "route_planner_stop_count" not in st.session_state:
-        st.session_state["route_planner_stop_count"] = 2
-
-    secret_api_key = geoapify_api_key()
+    api_key = geoapify_api_key()
     now_local = datetime.now(ZoneInfo("America/Los_Angeles"))
     default_departure = now_local + timedelta(minutes=30)
 
-    api_key = secret_api_key
-
     with st.container(key="route_control_panel"):
-        control_col_1, control_col_2 = st.columns([1.1, 1.45])
+        control_col_1, control_col_2 = st.columns([1.15, 3.85])
         with control_col_1:
             stop_count = st.number_input(
                 "Number of stops",
                 min_value=2,
                 max_value=10,
-                value=int(st.session_state.get("route_planner_stop_count", 2)),
+                value=2,
                 step=1,
-                key="route_planner_stop_count_input",
+                key="route_planner_stop_count",
             )
-            st.session_state["route_planner_stop_count"] = int(stop_count)
         with control_col_2:
-            timezone_name = st.selectbox(
-                "Route timezone",
-                options=[
-                    "America/Los_Angeles",
-                    "America/Denver",
-                    "America/Chicago",
-                    "America/New_York",
-                    "UTC",
-                ],
-                key="route_planner_timezone",
+            status_class = "route-status-chip" if api_key else "route-status-chip route-status-chip-missing"
+            status_text = "Geoapify connected" if api_key else "Geoapify secret missing"
+            st.markdown(
+                f'<div class="route-overview-strip"><div><div class="route-overview-title">Route setup</div><div class="route-overview-copy">Address search is cached and route settings are applied only when Calculate Route is selected.</div></div><div class="{status_class}">{status_text}</div></div>',
+                unsafe_allow_html=True,
             )
 
     with st.container(key="route_stops_panel"):
         st.markdown('<div class="route-overview-title">Stops</div>', unsafe_allow_html=True)
-        st.markdown('<div class="route-overview-copy">Enter stops in the exact order the driver will visit them.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="route-overview-copy">Enter stops in the exact order the driver will visit them. Suggestions begin after five characters.</div>', unsafe_allow_html=True)
         stops = []
-        for index in range(int(stop_count)):
-            if index == 0:
-                label = "A · Starting point"
-            elif index == int(stop_count) - 1:
-                label = f"{chr(65 + index)} · Final destination"
-            else:
-                label = f"{chr(65 + index)} · Stop {index}"
-            with st.container(key=f"route_stop_card_{index}"):
-                if st_searchbox is not None and api_key:
-                    address = st_searchbox(
-                        geoapify_address_suggestions,
-                        _api_key=api_key,
-                        key=f"route_stop_address_{index}",
-                        label=label,
-                        placeholder="Start typing an address...",
-                        default_use_searchterm=True,
-                        edit_after_submit="option",
-                        debounce=250,
-                    )
+        stop_count_int = int(stop_count)
+        for row_start in range(0, stop_count_int, 2):
+            row_columns = st.columns(2, gap="small")
+            for column_offset, column in enumerate(row_columns):
+                index = row_start + column_offset
+                if index >= stop_count_int:
+                    continue
+                if index == 0:
+                    label = "A · Starting point"
+                elif index == stop_count_int - 1:
+                    label = f"{chr(65 + index)} · Final destination"
                 else:
-                    address = st.text_input(
-                        label,
-                        key=f"route_stop_address_fallback_{index}",
-                        placeholder="Street address, city, state, ZIP",
-                    )
-                stops.append(clean_text(address))
+                    label = f"{chr(65 + index)} · Stop {index}"
+                with column:
+                    with st.container(key=f"route_stop_card_{index}"):
+                        if st_searchbox is not None and api_key:
+                            address = st_searchbox(
+                                geoapify_address_suggestions,
+                                _api_key=api_key,
+                                key=f"route_stop_address_{index}",
+                                label=label,
+                                placeholder="Street address, city, state, ZIP",
+                                default_use_searchterm=True,
+                                edit_after_submit="option",
+                                debounce=450,
+                            )
+                        else:
+                            address = st.text_input(
+                                label,
+                                key=f"route_stop_address_fallback_{index}",
+                                placeholder="Street address, city, state, ZIP",
+                            )
+                        stops.append(normalize_route_address(address))
 
     with st.container(key="route_details_panel"):
-        st.markdown('<div class="route-overview-title">Departure and route</div>', unsafe_allow_html=True)
-        date_col, time_col, service_col, mode_col = st.columns([1.15, 1.05, 1.2, 1.45])
-        with date_col:
-            departure_date = st.date_input("Departure date", value=default_departure.date(), key="route_departure_date")
-        with time_col:
-            departure_time = st.time_input("Departure time", value=default_departure.time().replace(second=0, microsecond=0), key="route_departure_time")
-        with service_col:
-            stop_minutes = st.number_input("Minutes at each middle stop", min_value=0, max_value=240, value=0, step=5, key="route_stop_minutes")
-        with mode_col:
-            vehicle_label = st.selectbox(
-                "Vehicle",
-                options=["Car / Van", "Light Truck", "Truck"],
-                key="route_vehicle_mode",
-            )
-        option_col_1, option_col_2, option_col_3, action_col = st.columns([1.05, 1.05, 1.05, 1.85])
-        with option_col_1:
-            avoid_tolls = st.checkbox("Avoid tolls", key="route_avoid_tolls")
-        with option_col_2:
-            avoid_highways = st.checkbox("Avoid highways", key="route_avoid_highways")
-        with option_col_3:
-            avoid_ferries = st.checkbox("Avoid ferries", key="route_avoid_ferries")
-        with action_col:
-            calculate_route = st.button("Calculate Route", type="primary", use_container_width=True, key="calculate_geoapify_route")
+        st.markdown('<div class="route-overview-title">Departure and route options</div>', unsafe_allow_html=True)
+        st.markdown('<div class="route-overview-copy">These controls are grouped to prevent a full rerun after every change.</div>', unsafe_allow_html=True)
+        with st.form("route_plan_form", clear_on_submit=False):
+            date_col, time_col, timezone_col, service_col, mode_col = st.columns([1.05, .95, 1.35, 1.15, 1.25])
+            with date_col:
+                departure_date = st.date_input("Departure date", value=default_departure.date(), key="route_departure_date")
+            with time_col:
+                departure_time = st.time_input("Departure time", value=default_departure.time().replace(second=0, microsecond=0), key="route_departure_time")
+            with timezone_col:
+                timezone_name = st.selectbox(
+                    "Route timezone",
+                    options=[
+                        "America/Los_Angeles",
+                        "America/Denver",
+                        "America/Chicago",
+                        "America/New_York",
+                        "UTC",
+                    ],
+                    key="route_planner_timezone",
+                )
+            with service_col:
+                stop_minutes = st.number_input("Minutes per middle stop", min_value=0, max_value=240, value=0, step=5, key="route_stop_minutes")
+            with mode_col:
+                vehicle_label = st.selectbox(
+                    "Vehicle",
+                    options=["Car / Van", "Light Truck", "Truck"],
+                    key="route_vehicle_mode",
+                )
+            option_col_1, option_col_2, option_col_3, action_col = st.columns([1, 1, 1, 1.7])
+            with option_col_1:
+                avoid_tolls = st.checkbox("Avoid tolls", key="route_avoid_tolls")
+            with option_col_2:
+                avoid_highways = st.checkbox("Avoid highways", key="route_avoid_highways")
+            with option_col_3:
+                avoid_ferries = st.checkbox("Avoid ferries", key="route_avoid_ferries")
+            with action_col:
+                calculate_route = st.form_submit_button("Calculate Route", type="primary", use_container_width=True)
 
     try:
         selected_zone = ZoneInfo(timezone_name)
     except ZoneInfoNotFoundError:
         selected_zone = timezone.utc
     departure = datetime.combine(departure_date, departure_time).replace(tzinfo=selected_zone)
+    current_stop_signature = tuple(route_address_key(stop) for stop in stops)
 
     if calculate_route:
-        st.session_state.pop("route_plan_result", None)
         missing_stops = [index + 1 for index, stop in enumerate(stops) if not stop]
         if not api_key:
             st.error("GEOAPIFY_API_KEY is missing from Streamlit Secrets.")
         elif missing_stops:
             st.error("Enter an address for every stop.")
+        elif len(set(current_stop_signature)) < len(current_stop_signature):
+            st.error("Each stop must use a different address.")
         else:
             mode = {
                 "Car / Van": "drive",
                 "Light Truck": "light_truck",
                 "Truck": "truck",
             }[vehicle_label]
+            network_signature = route_network_signature(
+                stops,
+                mode,
+                avoid_tolls,
+                avoid_highways,
+                avoid_ferries,
+            )
+            network_result = st.session_state.get("_route_network_result")
             try:
-                with st.spinner("Finding addresses and calculating route, mileage, and ETA..."):
-                    worker_count = min(4, len(stops))
-                    with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                        stop_points = list(
-                            executor.map(
-                                lambda address: geocode_geoapify_address(address, _api_key=api_key),
-                                stops,
-                            )
+                if not network_result or network_result.get("signature") != network_signature:
+                    with st.spinner("Calculating route..."):
+                        stop_points = resolve_geoapify_stops(stops, api_key)
+                        stop_points_key = tuple((point["lat"], point["lon"]) for point in stop_points)
+                        route = compute_geoapify_route(
+                            stop_points_key,
+                            mode,
+                            avoid_tolls,
+                            avoid_highways,
+                            avoid_ferries,
+                            _api_key=api_key,
                         )
-                    stop_points_key = tuple((point["lat"], point["lon"]) for point in stop_points)
-                    route = compute_geoapify_route(
-                        stop_points_key,
-                        mode,
-                        avoid_tolls,
-                        avoid_highways,
-                        avoid_ferries,
-                        _api_key=api_key,
-                    )
-                legs = route.get("legs", [])
-                leg_rows = []
-                current_departure = departure
-                for index, leg in enumerate(legs):
-                    leg_seconds = float(leg.get("time", 0) or 0)
-                    leg_arrival = current_departure + timedelta(seconds=leg_seconds)
-                    leg_rows.append(
-                        {
-                            "Leg": f"{chr(65 + index)} → {chr(66 + index)}",
-                            "From": stop_points[index]["matched"],
-                            "To": stop_points[index + 1]["matched"],
-                            "Miles": round(float(leg.get("distance", 0) or 0) / 1609.344, 1),
-                            "Drive Time": format_route_duration(leg_seconds),
-                            "ETA": format_route_datetime(leg_arrival),
-                        }
-                    )
-                    current_departure = leg_arrival
-                    if index < len(legs) - 1:
-                        current_departure += timedelta(minutes=int(stop_minutes))
-                st.session_state["route_plan_result"] = {
-                    "stops": stops,
-                    "departure": departure,
-                    "final_arrival": current_departure,
-                    "total_miles": float(route.get("distance", 0) or 0) / 1609.344,
-                    "route_seconds": float(route.get("time", 0) or 0),
-                    "stop_minutes": int(stop_minutes),
-                    "vehicle": vehicle_label,
-                    "legs": leg_rows,
-                    "stop_points": stop_points,
-                    "path_coordinates": route.get("path", []),
-                    "input_signature": json.dumps(
-                        {
-                            "stops": stops,
-                            "timezone": timezone_name,
-                            "departure": departure.isoformat(),
-                            "stop_minutes": int(stop_minutes),
-                            "vehicle": vehicle_label,
-                            "avoid_tolls": bool(avoid_tolls),
-                            "avoid_highways": bool(avoid_highways),
-                            "avoid_ferries": bool(avoid_ferries),
-                        },
-                        sort_keys=True,
-                    ),
-                }
+                    network_result = {
+                        "signature": network_signature,
+                        "stop_signature": current_stop_signature,
+                        "stops": list(stops),
+                        "stop_points": stop_points,
+                        "route": route,
+                    }
+                    st.session_state["_route_network_result"] = network_result
+                st.session_state["route_plan_result"] = build_route_plan(
+                    network_result,
+                    departure,
+                    int(stop_minutes),
+                    vehicle_label,
+                )
             except RuntimeError as exc:
+                st.session_state.pop("route_plan_result", None)
                 st.error(str(exc))
 
-    current_input_signature = json.dumps(
-        {
-            "stops": stops,
-            "timezone": timezone_name,
-            "departure": departure.isoformat(),
-            "stop_minutes": int(stop_minutes),
-            "vehicle": vehicle_label,
-            "avoid_tolls": bool(avoid_tolls),
-            "avoid_highways": bool(avoid_highways),
-            "avoid_ferries": bool(avoid_ferries),
-        },
-        sort_keys=True,
-    )
     result = st.session_state.get("route_plan_result")
-    if result and result.get("input_signature") != current_input_signature:
+    if result and tuple(result.get("stop_signature", ())) != current_stop_signature:
         result = None
+
     if not result:
         with st.container(key="route_map_panel"):
-            st.markdown('<div class="route-map-empty"><div class="route-map-empty-title">Route map</div><div class="route-map-empty-copy">Enter at least two stops and select Calculate Route.</div></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="route-map-empty"><div><div class="route-map-empty-title">Route map</div><div class="route-map-empty-copy">Select an address suggestion for each stop, set the departure details, and choose Calculate Route.</div></div></div>',
+                unsafe_allow_html=True,
+            )
         return
 
     metric_cols = st.columns(4)
     with metric_cols[0]:
         metric_card("Total Miles", f"{result['total_miles']:.1f} mi", f"{len(result['stops'])} stops")
     with metric_cols[1]:
-        metric_card("Driving Time", format_route_duration(result["route_seconds"]), "Estimated without live traffic")
+        metric_card("Drive Time", format_route_duration(result["route_seconds"]), "Estimated without live traffic")
     with metric_cols[2]:
-        metric_card("Departure", result["departure"].strftime("%b %d · %I:%M %p").replace(" 0", " "), result["departure"].strftime("%Z"))
+        metric_card("Total Trip Time", format_route_duration(result["total_elapsed_seconds"]), "Includes time at middle stops")
     with metric_cols[3]:
-        metric_card("Final ETA", result["final_arrival"].strftime("%b %d · %I:%M %p").replace(" 0", " "), result["final_arrival"].strftime("%Z"), tone="success")
+        metric_card("Final ETA", result["final_arrival"].strftime("%b %d · %I:%M %p").replace(" 0", " "), result["final_arrival"].strftime("%Z"))
 
-    with st.container(key="route_map_panel"):
-        st.markdown('<div class="section-title">Driving route</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-subtitle">The line follows the Geoapify-calculated road route through every stop.</div>', unsafe_allow_html=True)
-        if result["stop_points"] and result["path_coordinates"]:
-            render_geoapify_route_map(result["stop_points"], result["path_coordinates"])
-        middle_stop_count = max(0, len(result["stops"]) - 2)
-        service_text = f" · {result['stop_minutes']} min at each middle stop" if middle_stop_count else ""
-        st.markdown(
-            f'<div class="route-map-note">Departure: {html.escape(format_route_datetime(result["departure"]))} · {html.escape(result["vehicle"])}{html.escape(service_text)} · Live traffic not included</div>',
-            unsafe_allow_html=True,
-        )
-
-    with st.container(key="route_results_panel"):
-        st.markdown('<div class="section-title">Miles and ETA by stop</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-subtitle">Each ETA includes estimated driving time and the selected time spent at earlier middle stops.</div>', unsafe_allow_html=True)
-        leg_df = pd.DataFrame(result["legs"])
-        show_limited_dataframe(leg_df, height=min(420, 95 + len(leg_df) * 38), limit=100)
-        st.download_button(
-            "Download Route Details",
-            data=leg_df.to_csv(index=False).encode("utf-8-sig"),
-            file_name="route_plan.csv",
-            mime="text/csv",
-            key="download_route_plan",
-        )
+    map_col, itinerary_col = st.columns([1.72, 1], gap="medium")
+    with map_col:
+        with st.container(key="route_map_panel"):
+            st.markdown('<div class="section-title">Driving route</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-subtitle">Road route through every stop.</div>', unsafe_allow_html=True)
+            if result["stop_points"] and result["path_coordinates"]:
+                render_geoapify_route_map(result["stop_points"], result["path_coordinates"])
+            middle_stop_count = max(0, len(result["stops"]) - 2)
+            service_text = f" · {result['stop_minutes']} min at each middle stop" if middle_stop_count else ""
+            st.markdown(
+                f'<div class="route-map-note">Departure: {html.escape(format_route_datetime(result["departure"]))} · {html.escape(result["vehicle"])}{html.escape(service_text)} · Live traffic not included</div>',
+                unsafe_allow_html=True,
+            )
+    with itinerary_col:
+        with st.container(key="route_itinerary_panel"):
+            st.markdown('<div class="section-title">Miles and ETA by stop</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-subtitle">Arrival and next-departure time for each leg.</div>', unsafe_allow_html=True)
+            st.markdown(route_itinerary_html(result["legs"]), unsafe_allow_html=True)
+            st.markdown('<div class="route-summary-note">ETA uses Geoapify estimated drive time. It does not include live traffic or unexpected loading delays.</div>', unsafe_allow_html=True)
+            leg_df = pd.DataFrame(result["legs"])
+            st.download_button(
+                "Download Route Details",
+                data=leg_df.to_csv(index=False).encode("utf-8-sig"),
+                file_name="route_plan.csv",
+                mime="text/csv",
+                key="download_route_plan",
+                use_container_width=True,
+            )
 
 
 restore_persistent_app_state()
