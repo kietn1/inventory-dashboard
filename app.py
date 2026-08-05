@@ -780,11 +780,17 @@ st.markdown(
         }
         .route-map-empty-title { color: var(--win-text); font-size: 16px; font-weight: 650; }
         .route-map-empty-copy { max-width: 420px; margin-top: 5px; color: var(--win-text-secondary); font-size: 12px; line-height: 1.4; }
+        .st-key-route_map_panel {
+            padding: 0 !important;
+            overflow: hidden;
+            background: #eef1f4;
+        }
         .st-key-route_map_panel iframe {
             display: block;
             width: 100%;
-            border: 1px solid var(--win-border-strong) !important;
-            border-radius: 10px;
+            min-height: 642px;
+            border: 0 !important;
+            border-radius: 11px;
             background: #eef1f4;
         }
         .route-overview-strip {
@@ -4336,13 +4342,15 @@ def build_route_plan(network_result, departure, stop_minutes, vehicle_label):
     }
 
 
-def render_geoapify_route_map(stop_points, path_coordinates):
+def render_geoapify_route_map(stop_points=None, path_coordinates=None, route_summary=None, api_key=""):
+    stop_points = stop_points or []
+    path_coordinates = path_coordinates or []
     points = []
     for index, point in enumerate(stop_points):
         points.append(
             {
                 "label": chr(65 + index),
-                "name": html.escape(normalize_route_address(point.get("matched")) or normalize_route_address(point.get("name"))),
+                "name": normalize_route_address(point.get("matched")) or normalize_route_address(point.get("name")),
                 "lat": float(point.get("lat")),
                 "lon": float(point.get("lon")),
             }
@@ -4350,61 +4358,167 @@ def render_geoapify_route_map(stop_points, path_coordinates):
     payload = {
         "points": points,
         "path": [[float(item[0]), float(item[1])] for item in path_coordinates],
+        "summary": route_summary or {},
+        "apiKey": clean_text(api_key),
     }
     map_data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    components.html(
-        f"""
+    map_html = r"""
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
         <style>
-            html, body {{ margin: 0; padding: 0; background: #eef1f4; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }}
-            #route-map {{ width: 100%; height: 444px; display: grid; place-items: center; color: #737373; font-size: 12px; background: #eef1f4; }}
-            .leaflet-container {{ font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }}
-            .leaflet-bar {{ overflow: hidden; border: 1px solid rgba(0,0,0,.14) !important; border-radius: 8px !important; box-shadow: 0 2px 8px rgba(0,0,0,.10) !important; }}
-            .leaflet-bar a {{ color: #1f1f1f !important; background: rgba(255,255,255,.96) !important; border-bottom-color: rgba(0,0,0,.08) !important; }}
-            .leaflet-control-attribution {{ color: #737373; font-size: 9px; background: rgba(255,255,255,.90) !important; }}
-            .route-stop-pin {{ width: 27px; height: 27px; display: grid; place-items: center; color: #ffffff; font-size: 11px; font-weight: 700; border-radius: 50%; background: #0067c0; border: 3px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,.25); }}
-            .route-stop-pin-start {{ background: #5d5d5d; }}
-            .route-stop-pin-end {{ background: #107c10; }}
-            .leaflet-tooltip {{ color: #1f1f1f; font-size: 11px; background: rgba(255,255,255,.97); border: 1px solid rgba(0,0,0,.10); border-radius: 7px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }}
+            :root {
+                --map-text: #171717;
+                --map-muted: #666666;
+                --map-border: rgba(0,0,0,.12);
+                --map-panel: rgba(255,255,255,.95);
+                --map-route: #171717;
+                --map-accent: #0067c0;
+            }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; overflow: hidden; background: #eef1f4; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+            .route-map-shell { position: relative; width: 100%; height: 640px; overflow: hidden; background: #eef1f4; }
+            #route-map { width: 100%; height: 640px; color: var(--map-muted); font-size: 12px; background: #eef1f4; }
+            .leaflet-container { font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+            .leaflet-control-zoom { overflow: hidden; border: 1px solid var(--map-border) !important; border-radius: 10px !important; box-shadow: 0 4px 16px rgba(0,0,0,.13) !important; }
+            .leaflet-control-zoom a { width: 36px !important; height: 36px !important; line-height: 34px !important; color: var(--map-text) !important; background: rgba(255,255,255,.96) !important; border-bottom-color: rgba(0,0,0,.08) !important; }
+            .leaflet-control-attribution { color: #737373; font-size: 9px; background: rgba(255,255,255,.90) !important; }
+            .route-stop-pin { width: 30px; height: 30px; display: grid; place-items: center; color: #ffffff; font-size: 11px; font-weight: 700; border-radius: 50%; background: var(--map-accent); border: 3px solid #ffffff; box-shadow: 0 3px 11px rgba(0,0,0,.27); }
+            .route-stop-pin-start { border-radius: 8px; background: #171717; }
+            .route-stop-pin-end { background: #107c10; }
+            .leaflet-tooltip { max-width: 300px; color: var(--map-text); font-size: 11px; line-height: 1.35; background: rgba(255,255,255,.98); border: 1px solid rgba(0,0,0,.10); border-radius: 8px; box-shadow: 0 5px 18px rgba(0,0,0,.14); }
+            .route-map-summary { position: absolute; z-index: 700; top: 16px; left: 16px; width: min(370px, calc(100% - 32px)); padding: 14px 15px; color: var(--map-text); background: var(--map-panel); border: 1px solid var(--map-border); border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.15); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); pointer-events: none; }
+            .route-map-eyebrow { color: var(--map-accent); font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+            .route-map-title { margin-top: 3px; overflow: hidden; color: var(--map-text); font-size: 16px; font-weight: 700; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+            .route-map-address { margin-top: 4px; overflow: hidden; color: var(--map-muted); font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+            .route-map-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+            .route-map-stat { min-width: 0; padding: 8px 9px; background: rgba(0,0,0,.035); border-radius: 8px; }
+            .route-map-stat-label { color: var(--map-muted); font-size: 9px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
+            .route-map-stat-value { margin-top: 3px; overflow: hidden; color: var(--map-text); font-size: 12px; font-weight: 700; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+            .route-map-meta { margin-top: 9px; color: var(--map-muted); font-size: 10px; line-height: 1.35; }
+            .route-map-empty-title { margin-top: 3px; color: var(--map-text); font-size: 16px; font-weight: 700; }
+            .route-map-empty-copy { margin-top: 5px; max-width: 315px; color: var(--map-muted); font-size: 11px; line-height: 1.45; }
+            .route-recenter { position: absolute; z-index: 700; right: 14px; bottom: 94px; width: 38px; height: 38px; display: grid; place-items: center; padding: 0; color: var(--map-text); font-size: 21px; line-height: 1; cursor: pointer; background: rgba(255,255,255,.96); border: 1px solid var(--map-border); border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.13); }
+            .route-recenter:hover { background: #ffffff; }
+            .route-recenter:focus-visible { outline: 2px solid rgba(0,103,192,.65); outline-offset: 2px; }
+            @media (max-width: 560px) {
+                .route-map-summary { top: 10px; left: 10px; width: calc(100% - 20px); padding: 12px; }
+                .route-map-stats { gap: 5px; }
+                .route-map-stat { padding: 7px; }
+            }
         </style>
-        <div id="route-map">Loading route map...</div>
+        <div class="route-map-shell">
+            <div id="route-map">Loading route map...</div>
+            <div id="route-summary" class="route-map-summary" aria-live="polite"></div>
+            <button id="route-recenter" class="route-recenter" type="button" aria-label="Recenter route" title="Recenter route">⌖</button>
+        </div>
         <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
-            const routeData = {map_data};
-            const map = L.map("route-map", {{ zoomControl: true, attributionControl: true, preferCanvas: true }});
-            L.tileLayer("https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png", {{
-                maxZoom: 19,
+            const routeData = __MAP_DATA__;
+            const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
+                "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+            })[character]);
+
+            const map = L.map("route-map", {
+                zoomControl: false,
+                attributionControl: true,
+                preferCanvas: true
+            });
+            L.control.zoom({ position: "bottomright" }).addTo(map);
+
+            const tileUrl = routeData.apiKey
+                ? `https://maps.geoapify.com/v1/tile/positron/{z}/{x}/{y}.png?apiKey=${encodeURIComponent(routeData.apiKey)}`
+                : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+            const attribution = routeData.apiKey
+                ? 'Powered by <a href="https://www.geoapify.com/">Geoapify</a> · <a href="https://www.openstreetmap.org/copyright">&copy; OpenStreetMap contributors</a> · <a href="https://openmaptiles.org/">&copy; OpenMapTiles</a>'
+                : 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+            L.tileLayer(tileUrl, {
+                maxZoom: 20,
                 updateWhenIdle: true,
-                keepBuffer: 2,
-                attribution: 'Routing &copy; <a href="https://www.geoapify.com/">Geoapify</a> · Map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            }}).addTo(map);
+                keepBuffer: 3,
+                attribution
+            }).addTo(map);
+
             let bounds = L.latLngBounds([]);
-            routeData.points.forEach((point, index) => {{
+            routeData.points.forEach((point, index) => {
                 const latLng = [point.lat, point.lon];
                 bounds.extend(latLng);
                 const kind = index === 0 ? "start" : index === routeData.points.length - 1 ? "end" : "middle";
-                const icon = L.divIcon({{
+                const icon = L.divIcon({
                     className: "",
-                    html: `<div class="route-stop-pin route-stop-pin-${{kind}}">${{point.label}}</div>`,
-                    iconSize: [33, 33],
-                    iconAnchor: [16.5, 16.5]
-                }});
-                L.marker(latLng, {{ icon }}).addTo(map).bindTooltip(`<b>${{point.label}} · ${{point.name}}</b>`, {{ direction: "top", offset: [0, -11] }});
-            }});
-            if (routeData.path.length > 1) {{
-                const routeLine = L.polyline(routeData.path, {{ color: "#0067c0", weight: 5, opacity: .9, lineCap: "round", lineJoin: "round" }}).addTo(map);
+                    html: `<div class="route-stop-pin route-stop-pin-${kind}">${escapeHtml(point.label)}</div>`,
+                    iconSize: [36, 36],
+                    iconAnchor: [18, 18]
+                });
+                L.marker(latLng, { icon })
+                    .addTo(map)
+                    .bindTooltip(`<b>${escapeHtml(point.label)} · ${escapeHtml(point.name)}</b>`, { direction: "top", offset: [0, -12] });
+            });
+
+            if (routeData.path.length > 1) {
+                const routeOutline = L.polyline(routeData.path, {
+                    color: "#ffffff",
+                    weight: 10,
+                    opacity: .92,
+                    lineCap: "round",
+                    lineJoin: "round",
+                    interactive: false
+                }).addTo(map);
+                const routeLine = L.polyline(routeData.path, {
+                    color: "#171717",
+                    weight: 5,
+                    opacity: .94,
+                    lineCap: "round",
+                    lineJoin: "round"
+                }).addTo(map);
+                bounds.extend(routeOutline.getBounds());
                 bounds.extend(routeLine.getBounds());
-            }}
-            if (bounds.isValid()) {{
-                map.fitBounds(bounds, {{ padding: [34, 34], maxZoom: 14 }});
-            }} else {{
-                map.setView([39.5, -98.35], 4);
-            }}
+            }
+
+            const fitRoute = () => {
+                if (bounds.isValid()) {
+                    const leftPadding = window.innerWidth > 720 ? 405 : 32;
+                    map.fitBounds(bounds, {
+                        paddingTopLeft: [leftPadding, 40],
+                        paddingBottomRight: [48, 48],
+                        maxZoom: 15
+                    });
+                } else {
+                    map.setView([39.5, -98.35], 4);
+                }
+            };
+            fitRoute();
+            window.setTimeout(() => map.invalidateSize(), 80);
+
+            const summary = routeData.summary || {};
+            const summaryElement = document.getElementById("route-summary");
+            if (routeData.points.length > 1) {
+                summaryElement.innerHTML = `
+                    <div class="route-map-eyebrow">Active route</div>
+                    <div class="route-map-title">${escapeHtml(summary.title || "Driving route")}</div>
+                    <div class="route-map-address">${escapeHtml(summary.from || "")} → ${escapeHtml(summary.to || "")}</div>
+                    <div class="route-map-stats">
+                        <div class="route-map-stat"><div class="route-map-stat-label">Distance</div><div class="route-map-stat-value">${escapeHtml(summary.miles || "—")}</div></div>
+                        <div class="route-map-stat"><div class="route-map-stat-label">Drive time</div><div class="route-map-stat-value">${escapeHtml(summary.driveTime || "—")}</div></div>
+                        <div class="route-map-stat"><div class="route-map-stat-label">Final ETA</div><div class="route-map-stat-value">${escapeHtml(summary.finalEta || "—")}</div></div>
+                    </div>
+                    <div class="route-map-meta">${escapeHtml(summary.meta || "Live traffic not included")}</div>
+                `;
+            } else {
+                summaryElement.innerHTML = `
+                    <div class="route-map-eyebrow">Route tracking</div>
+                    <div class="route-map-empty-title">Map ready</div>
+                    <div class="route-map-empty-copy">Enter the stops and route options above, then select Calculate Route. The route will fill this map.</div>
+                `;
+            }
+
+            document.getElementById("route-recenter").addEventListener("click", fitRoute);
         </script>
-        """,
-        height=446,
+    """
+    components.html(
+        map_html.replace("__MAP_DATA__", map_data),
+        height=642,
         scrolling=False,
     )
+
 
 
 def route_itinerary_html(legs):
@@ -4608,50 +4722,28 @@ def render_route_tracking_page():
 
     if not result:
         with st.container(key="route_map_panel"):
-            st.markdown(
-                '<div class="route-map-empty"><div><div class="route-map-empty-title">Route map</div><div class="route-map-empty-copy">Select an address suggestion for each stop, set the departure details, and choose Calculate Route.</div></div></div>',
-                unsafe_allow_html=True,
-            )
+            render_geoapify_route_map(api_key=api_key)
         return
 
-    metric_cols = st.columns(4)
-    with metric_cols[0]:
-        metric_card("Total Miles", f"{result['total_miles']:.1f} mi", f"{len(result['stops'])} stops")
-    with metric_cols[1]:
-        metric_card("Drive Time", format_route_duration(result["route_seconds"]), "Estimated without live traffic")
-    with metric_cols[2]:
-        metric_card("Total Trip Time", format_route_duration(result["total_elapsed_seconds"]), "Includes time at middle stops")
-    with metric_cols[3]:
-        metric_card("Final ETA", result["final_arrival"].strftime("%b %d · %I:%M %p").replace(" 0", " "), result["final_arrival"].strftime("%Z"))
+    middle_stop_count = max(0, len(result["stops"]) - 2)
+    service_text = f" · {result['stop_minutes']} min at each middle stop" if middle_stop_count else ""
+    route_summary = {
+        "title": f"{len(result['stops'])}-stop driving route",
+        "from": normalize_route_address(result["stop_points"][0].get("matched")) if result["stop_points"] else "",
+        "to": normalize_route_address(result["stop_points"][-1].get("matched")) if result["stop_points"] else "",
+        "miles": f"{result['total_miles']:.1f} mi",
+        "driveTime": format_route_duration(result["route_seconds"]),
+        "finalEta": result["final_arrival"].strftime("%b %d · %I:%M %p").replace(" 0", " "),
+        "meta": f"{result['vehicle']} · Departure {format_route_clock(result['departure'])}{service_text} · Live traffic not included",
+    }
+    with st.container(key="route_map_panel"):
+        render_geoapify_route_map(
+            result["stop_points"],
+            result["path_coordinates"],
+            route_summary=route_summary,
+            api_key=api_key,
+        )
 
-    map_col, itinerary_col = st.columns([1.72, 1], gap="medium")
-    with map_col:
-        with st.container(key="route_map_panel"):
-            st.markdown('<div class="section-title">Driving route</div>', unsafe_allow_html=True)
-            st.markdown('<div class="section-subtitle">Road route through every stop.</div>', unsafe_allow_html=True)
-            if result["stop_points"] and result["path_coordinates"]:
-                render_geoapify_route_map(result["stop_points"], result["path_coordinates"])
-            middle_stop_count = max(0, len(result["stops"]) - 2)
-            service_text = f" · {result['stop_minutes']} min at each middle stop" if middle_stop_count else ""
-            st.markdown(
-                f'<div class="route-map-note">Departure: {html.escape(format_route_datetime(result["departure"]))} · {html.escape(result["vehicle"])}{html.escape(service_text)} · Live traffic not included</div>',
-                unsafe_allow_html=True,
-            )
-    with itinerary_col:
-        with st.container(key="route_itinerary_panel"):
-            st.markdown('<div class="section-title">Miles and ETA by stop</div>', unsafe_allow_html=True)
-            st.markdown('<div class="section-subtitle">Arrival and next-departure time for each leg.</div>', unsafe_allow_html=True)
-            st.markdown(route_itinerary_html(result["legs"]), unsafe_allow_html=True)
-            st.markdown('<div class="route-summary-note">ETA uses Geoapify estimated drive time. It does not include live traffic or unexpected loading delays.</div>', unsafe_allow_html=True)
-            leg_df = pd.DataFrame(result["legs"])
-            st.download_button(
-                "Download Route Details",
-                data=leg_df.to_csv(index=False).encode("utf-8-sig"),
-                file_name="route_plan.csv",
-                mime="text/csv",
-                key="download_route_plan",
-                use_container_width=True,
-            )
 
 
 restore_persistent_app_state()
