@@ -3927,51 +3927,11 @@ def reset_transaction_filters(search_key, mode_key, date_key, range_key):
     )
 
 
-def google_routes_api_key():
+def geoapify_api_key():
     try:
-        return clean_text(st.secrets.get("GOOGLE_MAPS_API_KEY", ""))
+        return clean_text(st.secrets.get("GEOAPIFY_API_KEY", ""))
     except Exception:
         return ""
-
-
-def decode_google_polyline(encoded):
-    coordinates = []
-    index = 0
-    latitude = 0
-    longitude = 0
-    while index < len(encoded):
-        result = 0
-        shift = 0
-        while True:
-            value = ord(encoded[index]) - 63
-            index += 1
-            result |= (value & 0x1F) << shift
-            shift += 5
-            if value < 0x20:
-                break
-        latitude += ~(result >> 1) if result & 1 else result >> 1
-        result = 0
-        shift = 0
-        while True:
-            value = ord(encoded[index]) - 63
-            index += 1
-            result |= (value & 0x1F) << shift
-            shift += 5
-            if value < 0x20:
-                break
-        longitude += ~(result >> 1) if result & 1 else result >> 1
-        coordinates.append([latitude / 100000.0, longitude / 100000.0])
-    return coordinates
-
-
-def google_duration_seconds(value):
-    text = clean_text(value)
-    if not text.endswith("s"):
-        return 0.0
-    try:
-        return float(text[:-1])
-    except ValueError:
-        return 0.0
 
 
 def format_route_duration(seconds):
@@ -3988,80 +3948,126 @@ def format_route_datetime(value):
     return value.strftime("%a, %b %d, %Y · %I:%M %p %Z").replace(" 0", " ")
 
 
-def waypoint_location(location):
-    lat_lng = (location or {}).get("latLng", {})
-    try:
-        return [float(lat_lng["latitude"]), float(lat_lng["longitude"])]
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
-def compute_google_route(api_key, stops, departure, traffic_model, avoid_tolls, avoid_highways, avoid_ferries):
-    request_body = {
-        "origin": {"address": stops[0]},
-        "destination": {"address": stops[-1]},
-        "intermediates": [{"address": stop} for stop in stops[1:-1]],
-        "travelMode": "DRIVE",
-        "routingPreference": "TRAFFIC_AWARE_OPTIMAL",
-        "departureTime": departure.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "trafficModel": traffic_model,
-        "computeAlternativeRoutes": False,
-        "languageCode": "en-US",
-        "units": "IMPERIAL",
-        "routeModifiers": {
-            "avoidTolls": bool(avoid_tolls),
-            "avoidHighways": bool(avoid_highways),
-            "avoidFerries": bool(avoid_ferries),
-        },
-    }
-    field_mask = ",".join(
-        [
-            "routes.distanceMeters",
-            "routes.duration",
-            "routes.staticDuration",
-            "routes.polyline.encodedPolyline",
-            "routes.legs.distanceMeters",
-            "routes.legs.duration",
-            "routes.legs.staticDuration",
-            "routes.legs.startLocation",
-            "routes.legs.endLocation",
-        ]
-    )
+def geoapify_get_json(endpoint, params, api_key):
+    query = dict(params)
+    query["apiKey"] = api_key
+    url = endpoint + "?" + urlencode(query)
     request = Request(
-        "https://routes.googleapis.com/directions/v2:computeRoutes",
-        data=json.dumps(request_body).encode("utf-8"),
+        url,
         headers={
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": api_key,
-            "X-Goog-FieldMask": field_mask,
+            "Accept": "application/json",
+            "User-Agent": "Inventory-Route-Tracking/1.0",
         },
-        method="POST",
+        method="GET",
     )
     try:
         with urlopen(request, timeout=35) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            return json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         error_text = exc.read().decode("utf-8", errors="replace")
         try:
-            message = json.loads(error_text).get("error", {}).get("message", error_text)
+            error_payload = json.loads(error_text)
+            message = error_payload.get("message") or error_payload.get("error") or error_text
         except json.JSONDecodeError:
             message = error_text
-        raise RuntimeError(message or f"Google Routes API returned HTTP {exc.code}.") from exc
+        raise RuntimeError(message or f"Geoapify returned HTTP {exc.code}.") from exc
     except URLError as exc:
-        raise RuntimeError(f"Unable to connect to Google Routes API: {exc.reason}") from exc
-    routes = payload.get("routes", [])
-    if not routes:
+        raise RuntimeError(f"Unable to connect to Geoapify: {exc.reason}") from exc
+
+
+def geocode_geoapify_address(api_key, address):
+    payload = geoapify_get_json(
+        "https://api.geoapify.com/v1/geocode/search",
+        {
+            "text": address,
+            "format": "json",
+            "lang": "en",
+            "limit": 1,
+        },
+        api_key,
+    )
+    results = payload.get("results", [])
+    if not results:
+        raise RuntimeError(f"Address not found: {address}")
+    result = results[0]
+    try:
+        latitude = float(result["lat"])
+        longitude = float(result["lon"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"Geoapify did not return coordinates for: {address}") from exc
+    return {
+        "name": address,
+        "matched": clean_text(result.get("formatted")) or address,
+        "lat": latitude,
+        "lon": longitude,
+    }
+
+
+def geoapify_path_coordinates(geometry):
+    geometry = geometry or {}
+    geometry_type = geometry.get("type")
+    coordinates = geometry.get("coordinates", [])
+    if geometry_type == "LineString":
+        lines = [coordinates]
+    elif geometry_type == "MultiLineString":
+        lines = coordinates
+    else:
+        lines = []
+    path = []
+    for line in lines:
+        for coordinate in line:
+            if not isinstance(coordinate, (list, tuple)) or len(coordinate) < 2:
+                continue
+            point = [float(coordinate[1]), float(coordinate[0])]
+            if not path or point != path[-1]:
+                path.append(point)
+    return path
+
+
+def compute_geoapify_route(api_key, stop_points, mode, avoid_tolls, avoid_highways, avoid_ferries):
+    avoids = []
+    if avoid_tolls:
+        avoids.append("tolls")
+    if avoid_highways:
+        avoids.append("highways")
+    if avoid_ferries:
+        avoids.append("ferries")
+    params = {
+        "waypoints": "|".join(f"{point['lat']},{point['lon']}" for point in stop_points),
+        "mode": mode,
+        "units": "metric",
+        "lang": "en",
+    }
+    if avoids:
+        params["avoid"] = "|".join(avoids)
+    payload = geoapify_get_json(
+        "https://api.geoapify.com/v1/routing",
+        params,
+        api_key,
+    )
+    features = payload.get("features", [])
+    if not features:
         raise RuntimeError("No driving route was returned for these stops.")
-    return routes[0]
+    feature = features[0]
+    properties = feature.get("properties", {})
+    legs = properties.get("legs", [])
+    if not legs:
+        raise RuntimeError("Geoapify returned a route without stop-by-stop details.")
+    return {
+        "distance": float(properties.get("distance", 0) or 0),
+        "time": float(properties.get("time", 0) or 0),
+        "legs": legs,
+        "path": geoapify_path_coordinates(feature.get("geometry")),
+    }
 
 
-def render_google_route_map(stop_points, path_coordinates):
+def render_geoapify_route_map(stop_points, path_coordinates):
     points = []
     for index, point in enumerate(stop_points):
         points.append(
             {
                 "label": chr(65 + index),
-                "name": html.escape(clean_text(point.get("name"))),
+                "name": html.escape(clean_text(point.get("matched")) or clean_text(point.get("name"))),
                 "lat": float(point.get("lat")),
                 "lon": float(point.get("lon")),
             }
@@ -4080,7 +4086,7 @@ def render_google_route_map(stop_points, path_coordinates):
             .leaflet-container {{ font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }}
             .leaflet-bar {{ overflow: hidden; border: 1px solid rgba(0,0,0,.14) !important; border-radius: 8px !important; box-shadow: 0 2px 8px rgba(0,0,0,.10) !important; }}
             .leaflet-bar a {{ color: #1f1f1f !important; background: rgba(255,255,255,.95) !important; border-bottom-color: rgba(0,0,0,.08) !important; }}
-            .leaflet-control-attribution {{ color: #737373; font-size: 9px; background: rgba(255,255,255,.84) !important; }}
+            .leaflet-control-attribution {{ color: #737373; font-size: 9px; background: rgba(255,255,255,.88) !important; }}
             .route-stop-pin {{ width: 28px; height: 28px; display: grid; place-items: center; color: #ffffff; font-size: 12px; font-weight: 700; border-radius: 50%; background: #0067c0; border: 3px solid #ffffff; box-shadow: 0 2px 9px rgba(0,0,0,.28); }}
             .route-stop-pin-start {{ background: #5d5d5d; }}
             .route-stop-pin-end {{ background: #107c10; }}
@@ -4093,7 +4099,7 @@ def render_google_route_map(stop_points, path_coordinates):
             const map = L.map("route-map", {{ zoomControl: true, attributionControl: true }});
             L.tileLayer("https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png", {{
                 maxZoom: 19,
-                attribution: "&copy; OpenStreetMap contributors"
+                attribution: 'Routing &copy; <a href="https://www.geoapify.com/">Geoapify</a> · Map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }}).addTo(map);
             const bounds = [];
             routeData.points.forEach((point, index) => {{
@@ -4133,7 +4139,7 @@ def render_route_tracking_page():
     if "route_planner_stop_count" not in st.session_state:
         st.session_state["route_planner_stop_count"] = 2
 
-    secret_api_key = google_routes_api_key()
+    secret_api_key = geoapify_api_key()
     now_local = datetime.now(ZoneInfo("America/Los_Angeles"))
     default_departure = now_local + timedelta(minutes=30)
 
@@ -4163,10 +4169,10 @@ def render_route_tracking_page():
             )
         with control_col_3:
             if secret_api_key:
-                st.text_input("Google Maps API key", value="Connected through Streamlit secrets", disabled=True, key="route_api_connected")
+                st.text_input("Geoapify API key", value="Connected through Streamlit secrets", disabled=True, key="route_api_connected")
                 api_key = secret_api_key
             else:
-                api_key = st.text_input("Google Maps API key", type="password", key="route_google_api_key")
+                api_key = st.text_input("Geoapify API key", type="password", key="route_geoapify_api_key")
 
     with st.container(key="route_stops_panel"):
         st.markdown('<div class="route-overview-title">Stops</div>', unsafe_allow_html=True)
@@ -4188,19 +4194,19 @@ def render_route_tracking_page():
                 stops.append(clean_text(address))
 
     with st.container(key="route_details_panel"):
-        st.markdown('<div class="route-overview-title">Departure and traffic</div>', unsafe_allow_html=True)
-        date_col, time_col, service_col, model_col = st.columns([1.15, 1.05, 1.2, 1.45])
+        st.markdown('<div class="route-overview-title">Departure and route</div>', unsafe_allow_html=True)
+        date_col, time_col, service_col, mode_col = st.columns([1.15, 1.05, 1.2, 1.45])
         with date_col:
             departure_date = st.date_input("Departure date", value=default_departure.date(), key="route_departure_date")
         with time_col:
             departure_time = st.time_input("Departure time", value=default_departure.time().replace(second=0, microsecond=0), key="route_departure_time")
         with service_col:
             stop_minutes = st.number_input("Minutes at each middle stop", min_value=0, max_value=240, value=0, step=5, key="route_stop_minutes")
-        with model_col:
-            traffic_label = st.selectbox(
-                "Traffic estimate",
-                options=["Best guess", "Pessimistic", "Optimistic"],
-                key="route_traffic_model",
+        with mode_col:
+            vehicle_label = st.selectbox(
+                "Vehicle",
+                options=["Car / Van", "Light Truck", "Truck"],
+                key="route_vehicle_mode",
             )
         option_col_1, option_col_2, option_col_3, action_col = st.columns([1.05, 1.05, 1.05, 1.85])
         with option_col_1:
@@ -4210,9 +4216,10 @@ def render_route_tracking_page():
         with option_col_3:
             avoid_ferries = st.checkbox("Avoid ferries", key="route_avoid_ferries")
         with action_col:
-            calculate_route = st.button("Calculate Route", type="primary", use_container_width=True, key="calculate_google_route")
+            calculate_route = st.button("Calculate Route", type="primary", use_container_width=True, key="calculate_geoapify_route")
 
     if calculate_route:
+        st.session_state.pop("route_plan_result", None)
         missing_stops = [index + 1 for index, stop in enumerate(stops) if not stop]
         try:
             selected_zone = ZoneInfo(timezone_name)
@@ -4220,51 +4227,38 @@ def render_route_tracking_page():
             selected_zone = timezone.utc
         departure = datetime.combine(departure_date, departure_time).replace(tzinfo=selected_zone)
         if not api_key:
-            st.error("Enter a Google Maps API key or add GOOGLE_MAPS_API_KEY to Streamlit secrets.")
+            st.error("Enter a Geoapify API key or add GEOAPIFY_API_KEY to Streamlit secrets.")
         elif missing_stops:
             st.error("Enter an address for every stop.")
-        elif departure <= datetime.now(selected_zone):
-            st.error("Choose a departure date and time in the future so traffic-aware ETA can be calculated.")
         else:
-            traffic_model = {
-                "Best guess": "BEST_GUESS",
-                "Pessimistic": "PESSIMISTIC",
-                "Optimistic": "OPTIMISTIC",
-            }[traffic_label]
+            mode = {
+                "Car / Van": "drive",
+                "Light Truck": "light_truck",
+                "Truck": "truck",
+            }[vehicle_label]
             try:
-                with st.spinner("Calculating driving route, mileage, and ETA..."):
-                    route = compute_google_route(
+                with st.spinner("Finding addresses and calculating route, mileage, and ETA..."):
+                    stop_points = [geocode_geoapify_address(api_key, stop) for stop in stops]
+                    route = compute_geoapify_route(
                         api_key,
-                        stops,
-                        departure,
-                        traffic_model,
+                        stop_points,
+                        mode,
                         avoid_tolls,
                         avoid_highways,
                         avoid_ferries,
                     )
                 legs = route.get("legs", [])
-                encoded_polyline = route.get("polyline", {}).get("encodedPolyline", "")
-                path_coordinates = decode_google_polyline(encoded_polyline) if encoded_polyline else []
-                stop_points = []
-                if legs:
-                    first_location = waypoint_location(legs[0].get("startLocation"))
-                    if first_location:
-                        stop_points.append({"name": stops[0], "lat": first_location[0], "lon": first_location[1]})
-                    for index, leg in enumerate(legs):
-                        end_location = waypoint_location(leg.get("endLocation"))
-                        if end_location:
-                            stop_points.append({"name": stops[index + 1], "lat": end_location[0], "lon": end_location[1]})
                 leg_rows = []
                 current_departure = departure
                 for index, leg in enumerate(legs):
-                    leg_seconds = google_duration_seconds(leg.get("duration"))
+                    leg_seconds = float(leg.get("time", 0) or 0)
                     leg_arrival = current_departure + timedelta(seconds=leg_seconds)
                     leg_rows.append(
                         {
                             "Leg": f"{chr(65 + index)} → {chr(66 + index)}",
-                            "From": stops[index],
-                            "To": stops[index + 1],
-                            "Miles": round(float(leg.get("distanceMeters", 0)) / 1609.344, 1),
+                            "From": stop_points[index]["matched"],
+                            "To": stop_points[index + 1]["matched"],
+                            "Miles": round(float(leg.get("distance", 0) or 0) / 1609.344, 1),
                             "Drive Time": format_route_duration(leg_seconds),
                             "ETA": format_route_datetime(leg_arrival),
                         }
@@ -4272,19 +4266,17 @@ def render_route_tracking_page():
                     current_departure = leg_arrival
                     if index < len(legs) - 1:
                         current_departure += timedelta(minutes=int(stop_minutes))
-                route_seconds = google_duration_seconds(route.get("duration"))
-                total_miles = float(route.get("distanceMeters", 0)) / 1609.344
-                final_arrival = current_departure
                 st.session_state["route_plan_result"] = {
                     "stops": stops,
                     "departure": departure,
-                    "final_arrival": final_arrival,
-                    "total_miles": total_miles,
-                    "route_seconds": route_seconds,
+                    "final_arrival": current_departure,
+                    "total_miles": float(route.get("distance", 0) or 0) / 1609.344,
+                    "route_seconds": float(route.get("time", 0) or 0),
                     "stop_minutes": int(stop_minutes),
+                    "vehicle": vehicle_label,
                     "legs": leg_rows,
                     "stop_points": stop_points,
-                    "path_coordinates": path_coordinates,
+                    "path_coordinates": route.get("path", []),
                 }
             except RuntimeError as exc:
                 st.error(str(exc))
@@ -4299,7 +4291,7 @@ def render_route_tracking_page():
     with metric_cols[0]:
         metric_card("Total Miles", f"{result['total_miles']:.1f} mi", f"{len(result['stops'])} stops")
     with metric_cols[1]:
-        metric_card("Driving Time", format_route_duration(result["route_seconds"]), "Traffic-aware estimate")
+        metric_card("Driving Time", format_route_duration(result["route_seconds"]), "Estimated without live traffic")
     with metric_cols[2]:
         metric_card("Departure", result["departure"].strftime("%b %d · %I:%M %p").replace(" 0", " "), result["departure"].strftime("%Z"))
     with metric_cols[3]:
@@ -4307,29 +4299,19 @@ def render_route_tracking_page():
 
     with st.container(key="route_map_panel"):
         st.markdown('<div class="section-title">Driving route</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-subtitle">The line follows the Google-calculated road route through every stop.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">The line follows the Geoapify-calculated road route through every stop.</div>', unsafe_allow_html=True)
         if result["stop_points"] and result["path_coordinates"]:
-            render_google_route_map(result["stop_points"], result["path_coordinates"])
-        params = {
-            "api": "1",
-            "origin": result["stops"][0],
-            "destination": result["stops"][-1],
-            "travelmode": "driving",
-        }
-        if len(result["stops"]) > 2:
-            params["waypoints"] = "|".join(result["stops"][1:-1])
-        google_maps_url = "https://www.google.com/maps/dir/?" + urlencode(params)
-        link_col, detail_col = st.columns([1.45, 4.55])
-        with link_col:
-            st.link_button("Open in Google Maps", google_maps_url, use_container_width=True)
-        with detail_col:
-            middle_stop_count = max(0, len(result["stops"]) - 2)
-            service_text = f" · {result['stop_minutes']} min at each middle stop" if middle_stop_count else ""
-            st.markdown(f'<div class="route-map-note">Departure: {html.escape(format_route_datetime(result["departure"]))}{html.escape(service_text)}</div>', unsafe_allow_html=True)
+            render_geoapify_route_map(result["stop_points"], result["path_coordinates"])
+        middle_stop_count = max(0, len(result["stops"]) - 2)
+        service_text = f" · {result['stop_minutes']} min at each middle stop" if middle_stop_count else ""
+        st.markdown(
+            f'<div class="route-map-note">Departure: {html.escape(format_route_datetime(result["departure"]))} · {html.escape(result["vehicle"])}{html.escape(service_text)} · Live traffic not included</div>',
+            unsafe_allow_html=True,
+        )
 
     with st.container(key="route_results_panel"):
         st.markdown('<div class="section-title">Miles and ETA by stop</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-subtitle">Each ETA includes traffic-aware driving time and the selected time spent at earlier middle stops.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Each ETA includes estimated driving time and the selected time spent at earlier middle stops.</div>', unsafe_allow_html=True)
         leg_df = pd.DataFrame(result["legs"])
         show_limited_dataframe(leg_df, height=min(420, 95 + len(leg_df) * 38), limit=100)
         st.download_button(
