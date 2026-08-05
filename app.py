@@ -2,9 +2,13 @@ import hashlib
 import html
 import json
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
 import pandas as pd
@@ -727,9 +731,10 @@ st.markdown(
         .kpi-row-gap { height: 8px; }
 
         .st-key-route_control_panel,
+        .st-key-route_stops_panel,
         .st-key-route_details_panel,
         .st-key-route_map_panel,
-        .st-key-route_history_panel {
+        .st-key-route_results_panel {
             margin-bottom: 12px;
             padding: 15px 16px 16px;
             background: rgba(255,255,255,.82);
@@ -743,22 +748,22 @@ st.markdown(
             padding-top: 12px;
             padding-bottom: 12px;
         }
-        [class*="st-key-route_origin_panel_"],
-        [class*="st-key-route_destination_panel_"],
-        [class*="st-key-route_location_panel_"] {
+        [class*="st-key-route_stop_card_"] {
             height: 100%;
             padding: 13px 13px 9px;
             background: rgba(249,249,249,.78);
             border: 1px solid var(--win-border);
             border-radius: 10px;
         }
-        [class*="st-key-route_origin_panel_"] .section-title,
-        [class*="st-key-route_destination_panel_"] .section-title,
-        [class*="st-key-route_location_panel_"] .section-title {
-            margin-bottom: 9px;
-            font-size: 13px;
+        [class*="st-key-route_stop_card_"] label {
+            margin-bottom: 5px;
+            font-size: 12px;
+            font-weight: 600;
         }
-        .st-key-route_action_row { margin-top: 2px; }
+        [class*="st-key-route_stop_card_"] { margin-top: 8px; }
+        .route-map-empty { min-height: 360px; display: grid; place-content: center; text-align: center; background: rgba(249,249,249,.78); border: 1px dashed var(--win-border-strong); border-radius: 11px; }
+        .route-map-empty-title { color: var(--win-text); font-size: 16px; font-weight: 650; }
+        .route-map-empty-copy { margin-top: 5px; color: var(--win-text-secondary); font-size: 12px; }
         .st-key-route_map_panel iframe {
             display: block;
             width: 100%;
@@ -3922,97 +3927,167 @@ def reset_transaction_filters(search_key, mode_key, date_key, range_key):
     )
 
 
-def safe_coordinate(value, minimum, maximum):
+def google_routes_api_key():
     try:
-        number = float(value)
-    except (TypeError, ValueError):
+        return clean_text(st.secrets.get("GOOGLE_MAPS_API_KEY", ""))
+    except Exception:
+        return ""
+
+
+def decode_google_polyline(encoded):
+    coordinates = []
+    index = 0
+    latitude = 0
+    longitude = 0
+    while index < len(encoded):
+        result = 0
+        shift = 0
+        while True:
+            value = ord(encoded[index]) - 63
+            index += 1
+            result |= (value & 0x1F) << shift
+            shift += 5
+            if value < 0x20:
+                break
+        latitude += ~(result >> 1) if result & 1 else result >> 1
+        result = 0
+        shift = 0
+        while True:
+            value = ord(encoded[index]) - 63
+            index += 1
+            result |= (value & 0x1F) << shift
+            shift += 5
+            if value < 0x20:
+                break
+        longitude += ~(result >> 1) if result & 1 else result >> 1
+        coordinates.append([latitude / 100000.0, longitude / 100000.0])
+    return coordinates
+
+
+def google_duration_seconds(value):
+    text = clean_text(value)
+    if not text.endswith("s"):
+        return 0.0
+    try:
+        return float(text[:-1])
+    except ValueError:
+        return 0.0
+
+
+def format_route_duration(seconds):
+    total_minutes = max(0, int(round(float(seconds) / 60)))
+    hours, minutes = divmod(total_minutes, 60)
+    if hours and minutes:
+        return f"{hours} hr {minutes} min"
+    if hours:
+        return f"{hours} hr"
+    return f"{minutes} min"
+
+
+def format_route_datetime(value):
+    return value.strftime("%a, %b %d, %Y · %I:%M %p %Z").replace(" 0", " ")
+
+
+def waypoint_location(location):
+    lat_lng = (location or {}).get("latLng", {})
+    try:
+        return [float(lat_lng["latitude"]), float(lat_lng["longitude"])]
+    except (KeyError, TypeError, ValueError):
         return None
-    if not np.isfinite(number) or number < minimum or number > maximum:
-        return None
-    return number
 
 
-def haversine_miles(lat1, lon1, lat2, lon2):
-    values = [lat1, lon1, lat2, lon2]
-    if any(value is None for value in values):
-        return None
-    earth_radius_miles = 3958.7613
-    lat1_rad, lon1_rad, lat2_rad, lon2_rad = map(np.radians, values)
-    delta_lat = lat2_rad - lat1_rad
-    delta_lon = lon2_rad - lon1_rad
-    a = np.sin(delta_lat / 2) ** 2 + np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(delta_lon / 2) ** 2
-    return float(2 * earth_radius_miles * np.arctan2(np.sqrt(a), np.sqrt(max(0.0, 1 - a))))
-
-
-def route_record_defaults():
-    return {
-        "do_number": "",
-        "driver": "",
-        "vehicle": "",
-        "status": "Scheduled",
-        "origin_name": "Warehouse",
-        "origin_lat": None,
-        "origin_lon": None,
-        "destination_name": "Destination",
-        "destination_lat": None,
-        "destination_lon": None,
-        "current_lat": None,
-        "current_lon": None,
-        "eta": "",
-        "notes": "",
-        "history": [],
-        "updated_at": "",
+def compute_google_route(api_key, stops, departure, traffic_model, avoid_tolls, avoid_highways, avoid_ferries):
+    request_body = {
+        "origin": {"address": stops[0]},
+        "destination": {"address": stops[-1]},
+        "intermediates": [{"address": stop} for stop in stops[1:-1]],
+        "travelMode": "DRIVE",
+        "routingPreference": "TRAFFIC_AWARE_OPTIMAL",
+        "departureTime": departure.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "trafficModel": traffic_model,
+        "computeAlternativeRoutes": False,
+        "languageCode": "en-US",
+        "units": "IMPERIAL",
+        "routeModifiers": {
+            "avoidTolls": bool(avoid_tolls),
+            "avoidHighways": bool(avoid_highways),
+            "avoidFerries": bool(avoid_ferries),
+        },
     }
+    field_mask = ",".join(
+        [
+            "routes.distanceMeters",
+            "routes.duration",
+            "routes.staticDuration",
+            "routes.polyline.encodedPolyline",
+            "routes.legs.distanceMeters",
+            "routes.legs.duration",
+            "routes.legs.staticDuration",
+            "routes.legs.startLocation",
+            "routes.legs.endLocation",
+        ]
+    )
+    request = Request(
+        "https://routes.googleapis.com/directions/v2:computeRoutes",
+        data=json.dumps(request_body).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": api_key,
+            "X-Goog-FieldMask": field_mask,
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=35) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        try:
+            message = json.loads(error_text).get("error", {}).get("message", error_text)
+        except json.JSONDecodeError:
+            message = error_text
+        raise RuntimeError(message or f"Google Routes API returned HTTP {exc.code}.") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Unable to connect to Google Routes API: {exc.reason}") from exc
+    routes = payload.get("routes", [])
+    if not routes:
+        raise RuntimeError("No driving route was returned for these stops.")
+    return routes[0]
 
 
-def route_tracking_store():
-    if not isinstance(st.session_state.get("route_tracking_records"), dict):
-        st.session_state["route_tracking_records"] = {}
-    return st.session_state["route_tracking_records"]
-
-
-def route_status_class(status):
-    normalized = clean_text(status).lower().replace(" ", "-")
-    if normalized in {"delivered", "delayed", "cancelled"}:
-        return f"route-status-{normalized}"
-    return ""
-
-
-def render_route_map(point_rows, path_coordinates):
-    safe_points = [
-        {
-            "name": html.escape(clean_text(point.get("name"))),
-            "type": html.escape(clean_text(point.get("type"))),
-            "lat": float(point.get("lat")),
-            "lon": float(point.get("lon")),
-        }
-        for point in point_rows
-    ]
+def render_google_route_map(stop_points, path_coordinates):
+    points = []
+    for index, point in enumerate(stop_points):
+        points.append(
+            {
+                "label": chr(65 + index),
+                "name": html.escape(clean_text(point.get("name"))),
+                "lat": float(point.get("lat")),
+                "lon": float(point.get("lon")),
+            }
+        )
     payload = {
-        "points": safe_points,
-        "path": [[float(item[1]), float(item[0])] for item in path_coordinates],
+        "points": points,
+        "path": [[float(item[0]), float(item[1])] for item in path_coordinates],
     }
     map_data = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
     components.html(
         f"""
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3ynhMZpG3PGZPpQXkYkZp2sQw6pVg=" crossorigin="">
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
         <style>
             html, body {{ margin: 0; padding: 0; background: #f3f3f3; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }}
-            #route-map {{ width: 100%; height: 488px; display: grid; place-items: center; color: #737373; font-size: 12px; background: #eef1f4; }}
+            #route-map {{ width: 100%; height: 520px; display: grid; place-items: center; color: #737373; font-size: 12px; background: #eef1f4; }}
             .leaflet-container {{ font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }}
             .leaflet-bar {{ overflow: hidden; border: 1px solid rgba(0,0,0,.14) !important; border-radius: 8px !important; box-shadow: 0 2px 8px rgba(0,0,0,.10) !important; }}
-            .leaflet-bar a {{ color: #1f1f1f !important; background: rgba(255,255,255,.94) !important; border-bottom-color: rgba(0,0,0,.08) !important; }}
-            .leaflet-bar a:hover {{ background: #ffffff !important; }}
-            .leaflet-control-attribution {{ color: #737373; font-size: 9px; background: rgba(255,255,255,.82) !important; }}
-            .route-pin {{ width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: #0067c0; border: 3px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,.28); }}
-            .route-pin::after {{ content: ""; width: 6px; height: 6px; border-radius: 50%; background: #ffffff; }}
-            .route-pin-origin {{ background: #5d5d5d; }}
-            .route-pin-destination {{ background: #107c10; }}
-            .route-pin-current {{ background: #0067c0; box-shadow: 0 0 0 6px rgba(0,103,192,.16), 0 2px 8px rgba(0,0,0,.28); }}
-            .leaflet-tooltip {{ color: #1f1f1f; font-size: 11px; background: rgba(255,255,255,.96); border: 1px solid rgba(0,0,0,.10); border-radius: 7px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }}
+            .leaflet-bar a {{ color: #1f1f1f !important; background: rgba(255,255,255,.95) !important; border-bottom-color: rgba(0,0,0,.08) !important; }}
+            .leaflet-control-attribution {{ color: #737373; font-size: 9px; background: rgba(255,255,255,.84) !important; }}
+            .route-stop-pin {{ width: 28px; height: 28px; display: grid; place-items: center; color: #ffffff; font-size: 12px; font-weight: 700; border-radius: 50%; background: #0067c0; border: 3px solid #ffffff; box-shadow: 0 2px 9px rgba(0,0,0,.28); }}
+            .route-stop-pin-start {{ background: #5d5d5d; }}
+            .route-stop-pin-end {{ background: #107c10; }}
+            .leaflet-tooltip {{ color: #1f1f1f; font-size: 11px; background: rgba(255,255,255,.97); border: 1px solid rgba(0,0,0,.10); border-radius: 7px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }}
         </style>
         <div id="route-map">Loading route map...</div>
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
         <script>
             const routeData = {map_data};
             const map = L.map("route-map", {{ zoomControl: true, attributionControl: true }});
@@ -4021,33 +4096,30 @@ def render_route_map(point_rows, path_coordinates):
                 attribution: "&copy; OpenStreetMap contributors"
             }}).addTo(map);
             const bounds = [];
-            const pinClass = {{ Origin: "origin", Current: "current", Destination: "destination" }};
-            routeData.points.forEach((point) => {{
+            routeData.points.forEach((point, index) => {{
                 const latLng = [point.lat, point.lon];
                 bounds.push(latLng);
-                const kind = pinClass[point.type] || "current";
+                const kind = index === 0 ? "start" : index === routeData.points.length - 1 ? "end" : "middle";
                 const icon = L.divIcon({{
                     className: "",
-                    html: `<div class="route-pin route-pin-${{kind}}"></div>`,
-                    iconSize: [26, 26],
-                    iconAnchor: [13, 13]
+                    html: `<div class="route-stop-pin route-stop-pin-${{kind}}">${{point.label}}</div>`,
+                    iconSize: [34, 34],
+                    iconAnchor: [17, 17]
                 }});
-                L.marker(latLng, {{ icon }}).addTo(map).bindTooltip(`<b>${{point.name}}</b><br>${{point.type}}`, {{ direction: "top", offset: [0, -10] }});
+                L.marker(latLng, {{ icon }}).addTo(map).bindTooltip(`<b>${{point.label}} · ${{point.name}}</b>`, {{ direction: "top", offset: [0, -12] }});
             }});
             if (routeData.path.length > 1) {{
-                L.polyline(routeData.path, {{ color: "#0067c0", weight: 5, opacity: .88, lineCap: "round", lineJoin: "round" }}).addTo(map);
+                L.polyline(routeData.path, {{ color: "#0067c0", weight: 6, opacity: .9, lineCap: "round", lineJoin: "round" }}).addTo(map);
                 routeData.path.forEach((latLng) => bounds.push(latLng));
             }}
             if (bounds.length > 1) {{
-                map.fitBounds(bounds, {{ padding: [38, 38], maxZoom: 13 }});
-            }} else if (bounds.length === 1) {{
-                map.setView(bounds[0], 11);
+                map.fitBounds(bounds, {{ padding: [42, 42], maxZoom: 14 }});
             }} else {{
                 map.setView([39.5, -98.35], 4);
             }}
         </script>
         """,
-        height=490,
+        height=522,
         scrolling=False,
     )
 
@@ -4055,315 +4127,218 @@ def render_route_map(point_rows, path_coordinates):
 def render_route_tracking_page():
     tab_page_header(
         "Route Tracking",
-        "Manage delivery routes, driver updates, ETA, progress, and location history in a separate workspace.",
+        "Plan a driving route across two or more stops, calculate road miles, and estimate arrival times from a selected departure date and time.",
     )
 
-    records = route_tracking_store()
-    route_ids = sorted(records.keys())
-    active_count = sum(record.get("status") not in {"Delivered", "Cancelled"} for record in records.values())
-    transit_count = sum(record.get("status") in {"En Route to Pickup", "At Pickup", "In Transit", "At Delivery"} for record in records.values())
-    delivered_count = sum(record.get("status") == "Delivered" for record in records.values())
-    delayed_count = sum(record.get("status") == "Delayed" for record in records.values())
+    if "route_planner_stop_count" not in st.session_state:
+        st.session_state["route_planner_stop_count"] = 2
 
-    summary_cols = st.columns(4)
-    with summary_cols[0]:
-        metric_card("Active Routes", f"{active_count:,}", "Scheduled or moving")
-    with summary_cols[1]:
-        metric_card("In Transit", f"{transit_count:,}", "Pickup through delivery")
-    with summary_cols[2]:
-        metric_card("Delivered", f"{delivered_count:,}", "Completed routes")
-    with summary_cols[3]:
-        metric_card("Delayed", f"{delayed_count:,}", "Requires attention", tone="danger" if delayed_count else "neutral")
+    secret_api_key = google_routes_api_key()
+    now_local = datetime.now(ZoneInfo("America/Los_Angeles"))
+    default_departure = now_local + timedelta(minutes=30)
 
-    selector_options = ["Create new route", *route_ids]
     with st.container(key="route_control_panel"):
-        control_col, export_col = st.columns([4.8, 1.2])
-        with control_col:
-            active_selector = st.selectbox(
-                "Delivery route",
-                options=selector_options,
-                key="route_tracking_selector",
-                help="Select a saved delivery or create a new route.",
+        control_col_1, control_col_2, control_col_3 = st.columns([1.1, 1.45, 2.45])
+        with control_col_1:
+            stop_count = st.number_input(
+                "Number of stops",
+                min_value=2,
+                max_value=10,
+                value=int(st.session_state.get("route_planner_stop_count", 2)),
+                step=1,
+                key="route_planner_stop_count_input",
             )
-        with export_col:
-            if records:
-                route_export_rows = []
-                for route_id, record in records.items():
-                    route_export_rows.append(
-                        {
-                            "DO / Axia #": route_id,
-                            "Driver": record.get("driver", ""),
-                            "Vehicle": record.get("vehicle", ""),
-                            "Status": record.get("status", ""),
-                            "Origin": record.get("origin_name", ""),
-                            "Destination": record.get("destination_name", ""),
-                            "ETA": record.get("eta", ""),
-                            "Updated": record.get("updated_at", ""),
-                        }
-                    )
-                st.download_button(
-                    "Export Routes",
-                    data=pd.DataFrame(route_export_rows).to_csv(index=False).encode("utf-8-sig"),
-                    file_name="route_tracking_summary.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                    key="download_route_summary",
-                )
+            st.session_state["route_planner_stop_count"] = int(stop_count)
+        with control_col_2:
+            timezone_name = st.selectbox(
+                "Route timezone",
+                options=[
+                    "America/Los_Angeles",
+                    "America/Denver",
+                    "America/Chicago",
+                    "America/New_York",
+                    "UTC",
+                ],
+                key="route_planner_timezone",
+            )
+        with control_col_3:
+            if secret_api_key:
+                st.text_input("Google Maps API key", value="Connected through Streamlit secrets", disabled=True, key="route_api_connected")
+                api_key = secret_api_key
+            else:
+                api_key = st.text_input("Google Maps API key", type="password", key="route_google_api_key")
 
-    editing_new = active_selector == "Create new route"
-    active_record = route_record_defaults() if editing_new else records.get(active_selector, route_record_defaults()).copy()
-    active_status = active_record.get("status", "Scheduled")
-    selector_key = re.sub(r"[^A-Za-z0-9_-]+", "_", active_selector)
+    with st.container(key="route_stops_panel"):
+        st.markdown('<div class="route-overview-title">Stops</div>', unsafe_allow_html=True)
+        st.markdown('<div class="route-overview-copy">Enter stops in the exact order the driver will visit them.</div>', unsafe_allow_html=True)
+        stops = []
+        for index in range(int(stop_count)):
+            if index == 0:
+                label = "A · Starting point"
+            elif index == int(stop_count) - 1:
+                label = f"{chr(65 + index)} · Final destination"
+            else:
+                label = f"{chr(65 + index)} · Stop {index}"
+            with st.container(key=f"route_stop_card_{index}"):
+                address = st.text_input(
+                    label,
+                    key=f"route_stop_address_{index}",
+                    placeholder="Street address, city, state, ZIP",
+                )
+                stops.append(clean_text(address))
 
     with st.container(key="route_details_panel"):
-        st.markdown(
-            f"""
-            <div class="route-overview-strip">
-                <div>
-                    <div class="route-overview-title">Delivery details</div>
-                    <div class="route-overview-copy">Enter coordinates manually now and connect a carrier API later.</div>
-                </div>
-                <span class="route-status-chip {route_status_class(active_status)}">{html.escape(active_status)}</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        detail_col_1, detail_col_2, detail_col_3, detail_col_4 = st.columns([1.25, 1.1, 1.1, 1.2])
-        with detail_col_1:
-            do_number = st.text_input("DO / Axia #", value=active_record.get("do_number", ""), key=f"route_do_{selector_key}")
-        with detail_col_2:
-            driver = st.text_input("Driver", value=active_record.get("driver", ""), key=f"route_driver_{selector_key}")
-        with detail_col_3:
-            vehicle = st.text_input("Vehicle", value=active_record.get("vehicle", ""), key=f"route_vehicle_{selector_key}")
-        with detail_col_4:
-            status_options = ["Scheduled", "Driver Assigned", "En Route to Pickup", "At Pickup", "In Transit", "At Delivery", "Delivered", "Delayed", "Cancelled"]
-            current_status = active_status if active_status in status_options else "Scheduled"
-            status = st.selectbox("Status", options=status_options, index=status_options.index(current_status), key=f"route_status_{selector_key}")
-
-        origin_col, destination_col, location_col = st.columns(3)
-        with origin_col:
-            with st.container(key=f"route_origin_panel_{selector_key}"):
-                st.markdown('<div class="section-title">Origin</div>', unsafe_allow_html=True)
-                origin_name = st.text_input("Origin name", value=active_record.get("origin_name", "Warehouse"), key=f"route_origin_name_{selector_key}")
-                origin_lat = st.number_input(
-                    "Origin latitude",
-                    min_value=-90.0,
-                    max_value=90.0,
-                    value=float(active_record["origin_lat"]) if active_record.get("origin_lat") is not None else 0.0,
-                    format="%.6f",
-                    key=f"route_origin_lat_{selector_key}",
-                )
-                origin_lon = st.number_input(
-                    "Origin longitude",
-                    min_value=-180.0,
-                    max_value=180.0,
-                    value=float(active_record["origin_lon"]) if active_record.get("origin_lon") is not None else 0.0,
-                    format="%.6f",
-                    key=f"route_origin_lon_{selector_key}",
-                )
-        with destination_col:
-            with st.container(key=f"route_destination_panel_{selector_key}"):
-                st.markdown('<div class="section-title">Destination</div>', unsafe_allow_html=True)
-                destination_name = st.text_input("Destination name", value=active_record.get("destination_name", "Destination"), key=f"route_destination_name_{selector_key}")
-                destination_lat = st.number_input(
-                    "Destination latitude",
-                    min_value=-90.0,
-                    max_value=90.0,
-                    value=float(active_record["destination_lat"]) if active_record.get("destination_lat") is not None else 0.0,
-                    format="%.6f",
-                    key=f"route_destination_lat_{selector_key}",
-                )
-                destination_lon = st.number_input(
-                    "Destination longitude",
-                    min_value=-180.0,
-                    max_value=180.0,
-                    value=float(active_record["destination_lon"]) if active_record.get("destination_lon") is not None else 0.0,
-                    format="%.6f",
-                    key=f"route_destination_lon_{selector_key}",
-                )
-        with location_col:
-            with st.container(key=f"route_location_panel_{selector_key}"):
-                st.markdown('<div class="section-title">Current driver location</div>', unsafe_allow_html=True)
-                current_lat = st.number_input(
-                    "Current latitude",
-                    min_value=-90.0,
-                    max_value=90.0,
-                    value=float(active_record["current_lat"]) if active_record.get("current_lat") is not None else 0.0,
-                    format="%.6f",
-                    key=f"route_current_lat_{selector_key}",
-                )
-                current_lon = st.number_input(
-                    "Current longitude",
-                    min_value=-180.0,
-                    max_value=180.0,
-                    value=float(active_record["current_lon"]) if active_record.get("current_lon") is not None else 0.0,
-                    format="%.6f",
-                    key=f"route_current_lon_{selector_key}",
-                )
-                eta = st.text_input("ETA", value=active_record.get("eta", ""), placeholder="Example: 3:45 PM", key=f"route_eta_{selector_key}")
-
-        notes = st.text_area("Tracking notes", value=active_record.get("notes", ""), key=f"route_notes_{selector_key}")
-
-        with st.container(key="route_action_row"):
-            save_col, delete_col, spacer_col = st.columns([1.35, 1.05, 4.6])
-            with save_col:
-                save_route = st.button("Save / Update Route", type="primary", use_container_width=True, key=f"save_route_{selector_key}")
-            with delete_col:
-                delete_route = st.button("Delete Route", use_container_width=True, disabled=editing_new, key=f"delete_route_{selector_key}")
-
-    normalized_do = clean_text(do_number)
-    origin_lat_value = safe_coordinate(origin_lat, -90, 90)
-    origin_lon_value = safe_coordinate(origin_lon, -180, 180)
-    destination_lat_value = safe_coordinate(destination_lat, -90, 90)
-    destination_lon_value = safe_coordinate(destination_lon, -180, 180)
-    current_lat_value = safe_coordinate(current_lat, -90, 90)
-    current_lon_value = safe_coordinate(current_lon, -180, 180)
-
-    if save_route:
-        if not normalized_do:
-            st.error("Enter a DO or Axia number before saving the route.")
-        elif (origin_lat_value, origin_lon_value) == (0.0, 0.0) or (destination_lat_value, destination_lon_value) == (0.0, 0.0):
-            st.error("Enter valid origin and destination coordinates. Coordinates cannot both be 0.000000.")
-        else:
-            now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            route_key = normalized_do
-            previous = records.get(route_key, route_record_defaults())
-            history = list(previous.get("history", []))
-            location_changed = (
-                previous.get("current_lat") != current_lat_value
-                or previous.get("current_lon") != current_lon_value
-                or previous.get("status") != status
+        st.markdown('<div class="route-overview-title">Departure and traffic</div>', unsafe_allow_html=True)
+        date_col, time_col, service_col, model_col = st.columns([1.15, 1.05, 1.2, 1.45])
+        with date_col:
+            departure_date = st.date_input("Departure date", value=default_departure.date(), key="route_departure_date")
+        with time_col:
+            departure_time = st.time_input("Departure time", value=default_departure.time().replace(second=0, microsecond=0), key="route_departure_time")
+        with service_col:
+            stop_minutes = st.number_input("Minutes at each middle stop", min_value=0, max_value=240, value=0, step=5, key="route_stop_minutes")
+        with model_col:
+            traffic_label = st.selectbox(
+                "Traffic estimate",
+                options=["Best guess", "Pessimistic", "Optimistic"],
+                key="route_traffic_model",
             )
-            if current_lat_value is not None and current_lon_value is not None and (current_lat_value, current_lon_value) != (0.0, 0.0) and location_changed:
-                history.append(
-                    {
-                        "Timestamp": now_text,
-                        "Status": status,
-                        "Latitude": current_lat_value,
-                        "Longitude": current_lon_value,
-                        "ETA": clean_text(eta),
-                        "Note": clean_text(notes),
-                    }
-                )
-            if not editing_new and active_selector != route_key:
-                records.pop(active_selector, None)
-            records[route_key] = {
-                "do_number": route_key,
-                "driver": clean_text(driver),
-                "vehicle": clean_text(vehicle),
-                "status": status,
-                "origin_name": clean_text(origin_name) or "Warehouse",
-                "origin_lat": origin_lat_value,
-                "origin_lon": origin_lon_value,
-                "destination_name": clean_text(destination_name) or "Destination",
-                "destination_lat": destination_lat_value,
-                "destination_lon": destination_lon_value,
-                "current_lat": current_lat_value,
-                "current_lon": current_lon_value,
-                "eta": clean_text(eta),
-                "notes": clean_text(notes),
-                "history": history,
-                "updated_at": now_text,
-            }
-            st.session_state["route_tracking_records"] = records
-            update_persistent_app_state(values={"route_tracking_records": records})
-            st.session_state["route_tracking_selector"] = route_key
-            st.toast(f"Route {route_key} saved.")
-            st.rerun()
+        option_col_1, option_col_2, option_col_3, action_col = st.columns([1.05, 1.05, 1.05, 1.85])
+        with option_col_1:
+            avoid_tolls = st.checkbox("Avoid tolls", key="route_avoid_tolls")
+        with option_col_2:
+            avoid_highways = st.checkbox("Avoid highways", key="route_avoid_highways")
+        with option_col_3:
+            avoid_ferries = st.checkbox("Avoid ferries", key="route_avoid_ferries")
+        with action_col:
+            calculate_route = st.button("Calculate Route", type="primary", use_container_width=True, key="calculate_google_route")
 
-    if delete_route and not editing_new:
-        records.pop(active_selector, None)
-        st.session_state["route_tracking_records"] = records
-        update_persistent_app_state(values={"route_tracking_records": records})
-        st.session_state["route_tracking_selector"] = "Create new route"
-        st.toast(f"Route {active_selector} deleted.")
-        st.rerun()
+    if calculate_route:
+        missing_stops = [index + 1 for index, stop in enumerate(stops) if not stop]
+        try:
+            selected_zone = ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError:
+            selected_zone = timezone.utc
+        departure = datetime.combine(departure_date, departure_time).replace(tzinfo=selected_zone)
+        if not api_key:
+            st.error("Enter a Google Maps API key or add GOOGLE_MAPS_API_KEY to Streamlit secrets.")
+        elif missing_stops:
+            st.error("Enter an address for every stop.")
+        elif departure <= datetime.now(selected_zone):
+            st.error("Choose a departure date and time in the future so traffic-aware ETA can be calculated.")
+        else:
+            traffic_model = {
+                "Best guess": "BEST_GUESS",
+                "Pessimistic": "PESSIMISTIC",
+                "Optimistic": "OPTIMISTIC",
+            }[traffic_label]
+            try:
+                with st.spinner("Calculating driving route, mileage, and ETA..."):
+                    route = compute_google_route(
+                        api_key,
+                        stops,
+                        departure,
+                        traffic_model,
+                        avoid_tolls,
+                        avoid_highways,
+                        avoid_ferries,
+                    )
+                legs = route.get("legs", [])
+                encoded_polyline = route.get("polyline", {}).get("encodedPolyline", "")
+                path_coordinates = decode_google_polyline(encoded_polyline) if encoded_polyline else []
+                stop_points = []
+                if legs:
+                    first_location = waypoint_location(legs[0].get("startLocation"))
+                    if first_location:
+                        stop_points.append({"name": stops[0], "lat": first_location[0], "lon": first_location[1]})
+                    for index, leg in enumerate(legs):
+                        end_location = waypoint_location(leg.get("endLocation"))
+                        if end_location:
+                            stop_points.append({"name": stops[index + 1], "lat": end_location[0], "lon": end_location[1]})
+                leg_rows = []
+                current_departure = departure
+                for index, leg in enumerate(legs):
+                    leg_seconds = google_duration_seconds(leg.get("duration"))
+                    leg_arrival = current_departure + timedelta(seconds=leg_seconds)
+                    leg_rows.append(
+                        {
+                            "Leg": f"{chr(65 + index)} → {chr(66 + index)}",
+                            "From": stops[index],
+                            "To": stops[index + 1],
+                            "Miles": round(float(leg.get("distanceMeters", 0)) / 1609.344, 1),
+                            "Drive Time": format_route_duration(leg_seconds),
+                            "ETA": format_route_datetime(leg_arrival),
+                        }
+                    )
+                    current_departure = leg_arrival
+                    if index < len(legs) - 1:
+                        current_departure += timedelta(minutes=int(stop_minutes))
+                route_seconds = google_duration_seconds(route.get("duration"))
+                total_miles = float(route.get("distanceMeters", 0)) / 1609.344
+                final_arrival = current_departure
+                st.session_state["route_plan_result"] = {
+                    "stops": stops,
+                    "departure": departure,
+                    "final_arrival": final_arrival,
+                    "total_miles": total_miles,
+                    "route_seconds": route_seconds,
+                    "stop_minutes": int(stop_minutes),
+                    "legs": leg_rows,
+                    "stop_points": stop_points,
+                    "path_coordinates": path_coordinates,
+                }
+            except RuntimeError as exc:
+                st.error(str(exc))
 
-    if editing_new:
-        st.info("Save the delivery to open the route map and tracking history.")
+    result = st.session_state.get("route_plan_result")
+    if not result:
+        with st.container(key="route_map_panel"):
+            st.markdown('<div class="route-map-empty"><div class="route-map-empty-title">Route map</div><div class="route-map-empty-copy">Enter at least two stops and select Calculate Route.</div></div>', unsafe_allow_html=True)
         return
 
-    saved = records.get(active_selector, active_record)
-    origin_lat_value = safe_coordinate(saved.get("origin_lat"), -90, 90)
-    origin_lon_value = safe_coordinate(saved.get("origin_lon"), -180, 180)
-    destination_lat_value = safe_coordinate(saved.get("destination_lat"), -90, 90)
-    destination_lon_value = safe_coordinate(saved.get("destination_lon"), -180, 180)
-    current_lat_value = safe_coordinate(saved.get("current_lat"), -90, 90)
-    current_lon_value = safe_coordinate(saved.get("current_lon"), -180, 180)
-
-    direct_distance = haversine_miles(origin_lat_value, origin_lon_value, destination_lat_value, destination_lon_value)
-    remaining_distance = haversine_miles(current_lat_value, current_lon_value, destination_lat_value, destination_lon_value)
-    travelled_distance = haversine_miles(origin_lat_value, origin_lon_value, current_lat_value, current_lon_value)
-    progress_percent = None
-    if direct_distance and direct_distance > 0 and travelled_distance is not None:
-        progress_percent = max(0.0, min(100.0, (travelled_distance / direct_distance) * 100))
-
-    map_metric_cols = st.columns(4)
-    with map_metric_cols[0]:
-        metric_card("Status", saved.get("status", "Scheduled"), saved.get("updated_at", "Not updated"))
-    with map_metric_cols[1]:
-        metric_card("Direct Distance", f"{direct_distance:.1f} mi" if direct_distance is not None else "—", "Straight-line estimate")
-    with map_metric_cols[2]:
-        metric_card("Remaining", f"{remaining_distance:.1f} mi" if remaining_distance is not None else "—", "Straight-line estimate")
-    with map_metric_cols[3]:
-        metric_card("Route Progress", f"{progress_percent:.0f}%" if progress_percent is not None else "—", f"ETA {saved.get('eta') or 'not entered'}")
-
-    point_rows = []
-    path_coordinates = []
-    if origin_lat_value is not None and origin_lon_value is not None and (origin_lat_value, origin_lon_value) != (0.0, 0.0):
-        point_rows.append({"name": saved.get("origin_name", "Warehouse"), "type": "Origin", "lat": origin_lat_value, "lon": origin_lon_value})
-        path_coordinates.append([origin_lon_value, origin_lat_value])
-    history = saved.get("history", [])
-    for item in history:
-        item_lat = safe_coordinate(item.get("Latitude"), -90, 90)
-        item_lon = safe_coordinate(item.get("Longitude"), -180, 180)
-        if item_lat is not None and item_lon is not None:
-            path_coordinates.append([item_lon, item_lat])
-    if current_lat_value is not None and current_lon_value is not None and (current_lat_value, current_lon_value) != (0.0, 0.0):
-        point_rows.append({"name": saved.get("driver") or "Driver", "type": "Current", "lat": current_lat_value, "lon": current_lon_value})
-        current_pair = [current_lon_value, current_lat_value]
-        if not path_coordinates or path_coordinates[-1] != current_pair:
-            path_coordinates.append(current_pair)
-    if destination_lat_value is not None and destination_lon_value is not None and (destination_lat_value, destination_lon_value) != (0.0, 0.0):
-        point_rows.append({"name": saved.get("destination_name", "Destination"), "type": "Destination", "lat": destination_lat_value, "lon": destination_lon_value})
-        path_coordinates.append([destination_lon_value, destination_lat_value])
+    metric_cols = st.columns(4)
+    with metric_cols[0]:
+        metric_card("Total Miles", f"{result['total_miles']:.1f} mi", f"{len(result['stops'])} stops")
+    with metric_cols[1]:
+        metric_card("Driving Time", format_route_duration(result["route_seconds"]), "Traffic-aware estimate")
+    with metric_cols[2]:
+        metric_card("Departure", result["departure"].strftime("%b %d · %I:%M %p").replace(" 0", " "), result["departure"].strftime("%Z"))
+    with metric_cols[3]:
+        metric_card("Final ETA", result["final_arrival"].strftime("%b %d · %I:%M %p").replace(" 0", " "), result["final_arrival"].strftime("%Z"), tone="success")
 
     with st.container(key="route_map_panel"):
-        st.markdown('<div class="section-title">Live route view</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-subtitle">Origin, recorded driver updates, current location, and destination.</div>', unsafe_allow_html=True)
-        if point_rows:
-            render_route_map(point_rows, path_coordinates)
-            if origin_lat_value is not None and origin_lon_value is not None and destination_lat_value is not None and destination_lon_value is not None:
-                google_maps_url = (
-                    "https://www.google.com/maps/dir/?api=1"
-                    f"&origin={origin_lat_value},{origin_lon_value}"
-                    f"&destination={destination_lat_value},{destination_lon_value}"
-                    "&travelmode=driving"
-                )
-                link_col, note_col = st.columns([1.35, 4.65])
-                with link_col:
-                    st.link_button("Open Driving Route", google_maps_url, use_container_width=True)
-                with note_col:
-                    st.markdown('<div class="route-map-note">The in-app line connects saved GPS points. Google Maps opens the road-following route.</div>', unsafe_allow_html=True)
-        else:
-            st.warning("Add valid coordinates to display the map.")
+        st.markdown('<div class="section-title">Driving route</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">The line follows the Google-calculated road route through every stop.</div>', unsafe_allow_html=True)
+        if result["stop_points"] and result["path_coordinates"]:
+            render_google_route_map(result["stop_points"], result["path_coordinates"])
+        params = {
+            "api": "1",
+            "origin": result["stops"][0],
+            "destination": result["stops"][-1],
+            "travelmode": "driving",
+        }
+        if len(result["stops"]) > 2:
+            params["waypoints"] = "|".join(result["stops"][1:-1])
+        google_maps_url = "https://www.google.com/maps/dir/?" + urlencode(params)
+        link_col, detail_col = st.columns([1.45, 4.55])
+        with link_col:
+            st.link_button("Open in Google Maps", google_maps_url, use_container_width=True)
+        with detail_col:
+            middle_stop_count = max(0, len(result["stops"]) - 2)
+            service_text = f" · {result['stop_minutes']} min at each middle stop" if middle_stop_count else ""
+            st.markdown(f'<div class="route-map-note">Departure: {html.escape(format_route_datetime(result["departure"]))}{html.escape(service_text)}</div>', unsafe_allow_html=True)
 
-    with st.container(key="route_history_panel"):
-        st.markdown('<div class="section-title">Location history</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-subtitle">Each changed location or status is recorded when the route is saved.</div>', unsafe_allow_html=True)
-        if history:
-            history_df = pd.DataFrame(history)
-            show_limited_dataframe(history_df.iloc[::-1].reset_index(drop=True), height=260, limit=1000)
-            st.download_button(
-                "Download Tracking History",
-                data=history_df.to_csv(index=False).encode("utf-8-sig"),
-                file_name=f"{active_selector}_tracking_history.csv",
-                mime="text/csv",
-                key=f"download_route_history_{selector_key}",
-            )
-        else:
-            st.caption("No driver-location updates have been recorded yet.")
+    with st.container(key="route_results_panel"):
+        st.markdown('<div class="section-title">Miles and ETA by stop</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Each ETA includes traffic-aware driving time and the selected time spent at earlier middle stops.</div>', unsafe_allow_html=True)
+        leg_df = pd.DataFrame(result["legs"])
+        show_limited_dataframe(leg_df, height=min(420, 95 + len(leg_df) * 38), limit=100)
+        st.download_button(
+            "Download Route Details",
+            data=leg_df.to_csv(index=False).encode("utf-8-sig"),
+            file_name="route_plan.csv",
+            mime="text/csv",
+            key="download_route_plan",
+        )
 
 
 restore_persistent_app_state()
