@@ -4828,56 +4828,27 @@ elif selected_page == "DO Lookup":
             ]
 
             st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-title'>Items Belonging to Each DO #</div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-subtitle'>Each section below is separated by the exact DO # you searched.</div>", unsafe_allow_html=True)
-
-            for term in do_found_terms:
-                term_detail_df = do_detail_df[do_detail_df["Searched DO #"] == term].copy()
-                for matched_do, matched_detail_df in term_detail_df.groupby("Matched DO #", dropna=False, sort=True):
-                    match_type = "Exact" if (matched_detail_df["Match Type"] == "Exact").any() else "Not Exact"
-                    term_summary = (
-                        matched_detail_df.groupby(["Matched DO #", "Match Type", "SKU", "Description"], dropna=False)
-                        .agg(
-                            **{
-                                "First Activity Date": ("Activity Date", "min"),
-                                "Latest Activity Date": ("Activity Date", "max"),
-                                "Total Qty In": ("Qty In", "sum"),
-                                "Total Qty Out": ("Qty Out", "sum"),
-                            }
-                        )
-                        .reset_index()
-                    )
-                    term_summary = term_summary.sort_values(["SKU"], ascending=[True]).reset_index(drop=True)
-                    term_summary = term_summary.rename(columns={"Matched DO #": "DO #"})
-                    term_qty_out = pd.to_numeric(matched_detail_df["Qty Out"], errors="coerce").fillna(0).sum()
-                    term_qty_in = pd.to_numeric(matched_detail_df["Qty In"], errors="coerce").fillna(0).sum()
-                    term_sku_count = term_summary["SKU"].astype(str).replace("", np.nan).dropna().nunique()
-                    term_table_height = min(360, max(142, 76 + (len(term_summary) * 31)))
-
-                    with st.expander(f"{matched_do} | {match_type} | {term_sku_count:,} SKU(s) | Qty In {fmt_num(term_qty_in)} | Qty Out {fmt_num(term_qty_out)}", expanded=len(do_found_terms) <= 5):
-                        show_limited_dataframe(term_summary, height=term_table_height, limit=500, show_count=False)
-
+            st.markdown("<div class='section-title'>Detailed Matching Transactions</div>", unsafe_allow_html=True)
             do_detail_df = do_detail_df.sort_values(["Searched DO #", "Matched DO #", "Activity Date", "Excel Row", "SKU"], ascending=[True, True, False, False, True])
-            with st.expander("Detailed Matching Transactions", expanded=False):
-                detailed_transactions_df = do_detail_df[do_detail_cols].copy()
-                show_transaction_dataframe(detailed_transactions_df, height=380, limit=500)
+            detailed_transactions_df = do_detail_df[do_detail_cols].copy()
+            show_transaction_dataframe(detailed_transactions_df, height=380, limit=500)
 
-                export_detail_df = detailed_transactions_df.copy()
-                export_detail_df["Activity Date"] = pd.to_datetime(export_detail_df["Activity Date"], errors="coerce").dt.date
-                export_buffer = BytesIO()
-                with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
-                    export_detail_df.to_excel(writer, sheet_name="Detailed Transactions", index=False)
+            export_detail_df = detailed_transactions_df.copy()
+            export_detail_df["Activity Date"] = pd.to_datetime(export_detail_df["Activity Date"], errors="coerce").dt.date
+            export_buffer = BytesIO()
+            with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
+                export_detail_df.to_excel(writer, sheet_name="Detailed Transactions", index=False)
 
-                clean_do_name = "_".join(re.sub(r"[^A-Za-z0-9_-]+", "_", term).strip("_") for term in do_lookup_terms)
-                clean_do_name = clean_do_name[:120] or "DO_Lookup"
-                st.download_button(
-                    "Download Detailed Matching Transactions",
-                    data=export_buffer.getvalue(),
-                    file_name=f"Detailed_Matching_Transactions_{clean_do_name}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    key=f"download_do_detailed_transactions_{site_key}",
-                )
+            clean_do_name = "_".join(re.sub(r"[^A-Za-z0-9_-]+", "_", term).strip("_") for term in do_lookup_terms)
+            clean_do_name = clean_do_name[:120] or "DO_Lookup"
+            st.download_button(
+                "Download Detailed Matching Transactions",
+                data=export_buffer.getvalue(),
+                file_name=f"Detailed_Matching_Transactions_{clean_do_name}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"download_do_detailed_transactions_{site_key}",
+            )
 
 
 
