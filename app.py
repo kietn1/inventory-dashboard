@@ -2023,15 +2023,7 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
         ending_balance = float(section["ending_balance"])
         total_in = sum(movement["qty_in"] for movement in section["movements"])
         total_out = sum(movement["qty_out"] for movement in section["movements"])
-        beginning_balance = ending_balance - total_in + total_out
 
-        # Orlando's source report does not reliably provide a balance on every
-        # official movement row. Reconstruct Balance After Transaction from the
-        # official ending balance and all selected Qty In / Qty Out movements.
-        # Calculate chronologically so each movement receives the balance that
-        # existed immediately after that transaction, while preserving source
-        # row order in the canonical output below.
-        running_balance = beginning_balance
         chronological_movements = sorted(
             section["movements"],
             key=lambda movement: (
@@ -2039,17 +2031,18 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
                 int(movement["excel_row"]),
             ),
         )
-        for movement in chronological_movements:
-            running_balance += float(movement["qty_in"]) - float(movement["qty_out"])
-            movement["calculated_balance"] = running_balance
 
-        # Guard against unexpected movement-selection or sign issues.
-        if abs(running_balance - ending_balance) > 0.01:
-            raise ValueError(
-                "Orlando running-balance reconciliation failed for "
-                f"{section['sku']}: calculated {running_balance:g}, "
-                f"expected ending balance {ending_balance:g}."
+        running_balance = ending_balance
+
+        for movement in reversed(chronological_movements):
+            movement["calculated_balance"] = running_balance
+            running_balance = (
+                running_balance
+                - float(movement["qty_in"])
+                + float(movement["qty_out"])
             )
+
+        beginning_balance = running_balance
 
         sku_row = [None] * 21
         sku_row[0] = section["sku"]
