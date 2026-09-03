@@ -14,7 +14,7 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
 CUSTOMER_EXPORT_VERSION = "Customer export v12"
-APP_CACHE_VERSION = "inventory-logic-v30-orlando-newark-format"
+APP_CACHE_VERSION = "inventory-logic-v31-orlando-running-balance"
 WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
@@ -2025,6 +2025,32 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
         total_out = sum(movement["qty_out"] for movement in section["movements"])
         beginning_balance = ending_balance - total_in + total_out
 
+        # Orlando's source report does not reliably provide a balance on every
+        # official movement row. Reconstruct Balance After Transaction from the
+        # official ending balance and all selected Qty In / Qty Out movements.
+        # Calculate chronologically so each movement receives the balance that
+        # existed immediately after that transaction, while preserving source
+        # row order in the canonical output below.
+        running_balance = beginning_balance
+        chronological_movements = sorted(
+            section["movements"],
+            key=lambda movement: (
+                pd.Timestamp(movement["activity_date"]),
+                int(movement["excel_row"]),
+            ),
+        )
+        for movement in chronological_movements:
+            running_balance += float(movement["qty_in"]) - float(movement["qty_out"])
+            movement["calculated_balance"] = running_balance
+
+        # Guard against unexpected movement-selection or sign issues.
+        if abs(running_balance - ending_balance) > 0.01:
+            raise ValueError(
+                "Orlando running-balance reconciliation failed for "
+                f"{section['sku']}: calculated {running_balance:g}, "
+                f"expected ending balance {ending_balance:g}."
+            )
+
         sku_row = [None] * 21
         sku_row[0] = section["sku"]
         sku_row[2] = section["description"]
@@ -2042,7 +2068,7 @@ def normalize_orlando_report(raw: pd.DataFrame) -> pd.DataFrame:
             movement_row[10] = movement["reference"]
             movement_row[12] = movement["qty_in"]
             movement_row[14] = movement["qty_out"]
-            movement_row[19] = movement["balance"]
+            movement_row[19] = movement["calculated_balance"]
             canonical_rows.append(movement_row)
 
         total_row = [None] * 21
