@@ -44,7 +44,7 @@ The usage calculation uses up to 30 report activity dates rather than a fixed 30
 
 Stock Check deducts demand in the order entered, so multiple orders for the same SKU share a temporary remaining balance.
 
-> **Add Screenshot 3 — Stock Check:** Show example orders with both “Enough” and “Shortage” results, including requested quantities and remaining stock.
+<img width="2190" height="1328" alt="image" src="https://github.com/user-attachments/assets/674bd2c7-54a7-49ad-9b5e-126b6ebd89f9" />
 
 ## Operational Impact
 
