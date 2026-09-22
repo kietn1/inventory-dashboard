@@ -4,7 +4,7 @@
 
 A dashboard that turns warehouse Excel reports into inventory risk alerts, stock coverage estimates, and order-level availability checks.
 
-> **Add Screenshot 1 — Overview:** Show the warehouse selector, inventory risk KPIs, and a few Critical/Warning SKUs.
+<img width="2880" height="1448" alt="image" src="https://github.com/user-attachments/assets/36052fe4-a94f-46f3-b23d-163d1713c64d" />
 
 ## Project Background
 
