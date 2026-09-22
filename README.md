@@ -35,6 +35,7 @@ Used daily since late May 2026, the application supports three warehouse formats
 The usage calculation uses up to 30 report activity dates rather than a fixed 30-calendar-day period. Stockout dates are estimates based on recent usage.
 
 ## How to Use the Sample Files
+Open the dashboard: https://inventory-dashboard-dmrm33szio7yfzptxxogde.streamlit.app/
 
 1. Select the warehouse matching the simulated Excel file.
 2. Upload the file without changing its headers or layout.
