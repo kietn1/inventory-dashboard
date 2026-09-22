@@ -1,4 +1,4 @@
-# Inventory Forecasting & Operations Dashboard
+# Inventory Operations Dashboard | SAMSUNG SDS AMERICA
 
 **Python · Streamlit · pandas · NumPy**
 
