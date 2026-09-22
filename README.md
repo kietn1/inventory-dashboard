@@ -22,7 +22,8 @@ Used daily since late May 2026, the application supports three warehouse formats
 * **Transaction Lookup and Audits:** Helps investigate inventory movements and reconcile report balances.
 * **Excel Exports:** Provides reports for follow-up and team communication.
 
-> **Add Screenshot 2 — SKU Detail:** Show one at-risk SKU with its ending balance, days remaining, forecast stockout date, and transaction history.
+<img width="2202" height="744" alt="image" src="https://github.com/user-attachments/assets/290b0f35-7754-4fe8-8673-359f39322cea" />
+
 
 ## How It Works
 
