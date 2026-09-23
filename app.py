@@ -14,7 +14,7 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
 CUSTOMER_EXPORT_VERSION = "Customer export v12"
-APP_CACHE_VERSION = "inventory-logic-v31-orlando-running-balance"
+APP_CACHE_VERSION = "inventory-logic-v32-orlando-stock-snapshot"
 WAREHOUSE_BUSINESS_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 
@@ -1344,10 +1344,10 @@ FORMAT_CONFIGS = {
     "Orlando": {
         "title": "Inventory Shortage",
         "sidebar_title": "Inventory Dashboard",
-        "caption": "Upload the Orlando Stock Movements Report Excel file to generate the shortage dashboard.",
-        "upload_label": "Drop Orlando Stock Movements Report here",
+        "caption": "Upload an Orlando Stock Movements or WMS Item Inventory Search (Total) report.",
+        "upload_label": "Drop Orlando movement or inventory report here",
         "placeholder": "Search SKU...",
-        "help": "Select Orlando and upload the PGL Stock Movements Report.",
+        "help": "Upload a PGL Stock Movements Report or WMS Item Inventory Search (Total) Excel file.",
         "parser": "orlando_stock_movements",
         "cols": {
             "sku": 0,
@@ -1362,7 +1362,7 @@ FORMAT_CONFIGS = {
         },
         "total_rule": "ref_total",
         "total_source": "Orlando summarized movement rows",
-        "wrong_format_warning": "Wrong file format for Orlando. Upload a PGL Stock Movements Report containing Product, Reference, Type, Date, and Quantity columns.",
+        "wrong_format_warning": "Wrong file format for Orlando. Upload a PGL Stock Movements Report or WMS Item Inventory Search (Total) report.",
     },
     "Carson": {
         "title": "Inventory Shortage",
@@ -2160,6 +2160,112 @@ def load_excel_to_raw(file_bytes: bytes, cache_version: str = APP_CACHE_VERSION)
     return pd.read_excel(BytesIO(file_bytes), sheet_name=0, header=None, dtype=object)
 
 
+def find_inventory_snapshot_layout(raw: pd.DataFrame):
+    """Recognize the Cello Item Inventory Search (Total) header, including blank leading columns."""
+    required = {"item code", "item nm", "tot qty", "available qty"}
+    for row_index in range(min(len(raw), 50)):
+        columns = {
+            normalize_orlando_label(value): col_index
+            for col_index, value in enumerate(raw.iloc[row_index])
+            if normalize_orlando_label(value)
+        }
+        if required.issubset(columns):
+            return row_index, columns
+    return None
+
+
+def snapshot_report_date(file_name: str) -> tuple[date, str]:
+    # Cello exports append their export time as a 13-digit Unix timestamp.
+    match = re.search(r"(?:_|-)(1\d{12})(?=\.[^.]+$)", file_name)
+    if match:
+        try:
+            timestamp = datetime.fromtimestamp(int(match.group(1)) / 1000).date()
+            if date(2020, 1, 1) <= timestamp <= date.today():
+                return timestamp, "Export timestamp in filename"
+        except (OverflowError, OSError, ValueError):
+            pass
+    return date.today(), "Date loaded (source file has no report date)"
+
+
+def normalize_inventory_snapshot(raw: pd.DataFrame, layout, file_name: str) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+    header_index, cols = layout
+    report_date, date_source = snapshot_report_date(file_name)
+    inventory_rows = []
+    seen_skus = set()
+    for row_index in range(header_index + 1, len(raw)):
+        row = raw.iloc[row_index]
+        sku = clean_text(get_cell(row, cols["item code"]))
+        if not sku or normalize_orlando_label(sku) in {"total", "totals", "grand total"}:
+            continue
+        if sku.casefold() in seen_skus:
+            raise ValueError(f"Duplicate SKU in inventory snapshot: {sku}. Check the warehouse/area before combining quantities.")
+        seen_skus.add(sku.casefold())
+        total = first_qty_number(get_cell(row, cols["tot qty"]), np.nan)
+        available = first_qty_number(get_cell(row, cols["available qty"]), np.nan)
+        if pd.isna(total) or pd.isna(available):
+            raise ValueError(f"Missing Total Qty or Available Qty for {sku} on Excel row {row_index + 1}.")
+        inventory_rows.append({
+            "SKU": sku,
+            "Description": clean_text(get_cell(row, cols["item nm"])),
+            "Total Qty": float(total),
+            "Available Qty": float(available),
+            "Not Available Qty": float(total) - float(available),
+            "W/H Area Code": clean_text(get_cell(row, cols.get("w h area code"))),
+        })
+    if not inventory_rows:
+        raise WrongFileFormatError("The WMS inventory report has no valid SKU rows.")
+
+    inventory_df = pd.DataFrame(inventory_rows)
+    canonical_rows = [[f"Item Activity from: {report_date:%m/%d/%Y} to {report_date:%m/%d/%Y}"]]
+    header = [None] * 21
+    for col, label in ((0, "SKU"), (2, "Description"), (7, "Activity Date"),
+                       (9, "Trans. #"), (10, "Ref #"), (12, "Qty In / Ctn"),
+                       (14, "Qty Out / Ctn"), (19, "Balance"), (20, "Ctn Balance")):
+        header[col] = label
+    canonical_rows.append(header)
+    for item in inventory_rows:
+        sku_row = [None] * 21
+        sku_row[0], sku_row[2] = item["SKU"], item["Description"]
+        canonical_rows.append(sku_row)
+        total_row = [None] * 21
+        total_row[10], total_row[12], total_row[14], total_row[19] = "Total", 0, 0, item["Available Qty"]
+        canonical_rows.append(total_row)
+        ending_row = [None] * 21
+        ending_row[7], ending_row[19] = "Ending Balance", item["Available Qty"]
+        canonical_rows.append(ending_row)
+    return pd.DataFrame(canonical_rows, dtype=object), inventory_df, date_source
+
+
+def build_inventory_snapshot_model(raw: pd.DataFrame, layout, config: dict, file_name: str) -> dict:
+    canonical, inventory_df, date_source = normalize_inventory_snapshot(raw, layout, file_name)
+    model = build_inventory_model(canonical, config, "Orlando")
+    sku_df = model["sku_df"].merge(inventory_df, on="SKU", how="left", validate="one_to_one", suffixes=("", "_snapshot"))
+    sku_df["Ending Balance"] = sku_df["Available Qty"]
+    sku_df["Stock Status"] = np.select(
+        [sku_df["Available Qty"] <= 0, sku_df["Not Available Qty"] < 0],
+        ["Unavailable", "Review Qty"],
+        default="Available",
+    )
+    sku_df["Demand Status"] = "No activity data"
+    sku_df["Risk Level"] = "No activity data"
+    sku_df["Recommended Action"] = "Check available quantity against the order"
+    for name in ("Official Total Inbound", "Official Total Outbound", "Avg Daily Usage 30D", "Days Remaining",
+                 "Calculated Ending Balance", "Balance Difference", "Inbound Difference", "Outbound Difference"):
+        sku_df[name] = np.nan
+    sku_df["Forecast Stockout Date"] = pd.NaT
+    sku_df["Audit Status"] = "Not Available"
+    model.update(
+        sku_df=sku_df,
+        snapshot_mode=True,
+        inventory_df=inventory_df,
+        report_date_source=date_source,
+        audit_df=pd.DataFrame(),
+        official_total_df=pd.DataFrame(),
+        official_ending_df=pd.DataFrame(),
+    )
+    return model
+
+
 @st.cache_data(show_spinner=False)
 def load_orlando_excel_to_raw(file_bytes: bytes, cache_version: str = APP_CACHE_VERSION) -> pd.DataFrame:
     excel_file = pd.ExcelFile(BytesIO(file_bytes))
@@ -2182,9 +2288,18 @@ def load_orlando_excel_to_raw(file_bytes: bytes, cache_version: str = APP_CACHE_
 
 
 @st.cache_data(show_spinner=False)
-def process_excel_file(file_bytes: bytes, format_name: str, cache_version: str = APP_CACHE_VERSION) -> dict:
+def process_excel_file(file_bytes: bytes, format_name: str, cache_version: str = APP_CACHE_VERSION, file_name: str = "") -> dict:
     config = FORMAT_CONFIGS[format_name]
     if config.get("parser") == "orlando_stock_movements":
+        try:
+            excel_file = pd.ExcelFile(BytesIO(file_bytes))
+        except ImportError as exc:
+            raise WrongFileFormatError("Reading legacy .xls files requires xlrd. Install it with: pip install xlrd") from exc
+        for sheet_name in excel_file.sheet_names:
+            candidate = pd.read_excel(excel_file, sheet_name=sheet_name, header=None, dtype=object)
+            snapshot_layout = find_inventory_snapshot_layout(candidate)
+            if snapshot_layout is not None:
+                return build_inventory_snapshot_model(candidate, snapshot_layout, config, file_name)
         raw_df = load_orlando_excel_to_raw(file_bytes, cache_version)
         normalized_df = normalize_orlando_report(raw_df)
         validate_selected_format(normalized_df, config)
@@ -4059,7 +4174,7 @@ try:
     if st.session_state.get(model_source_key) == model_source_value and isinstance(st.session_state.get(model_cache_key), dict):
         model = st.session_state[model_cache_key]
     else:
-        model = process_excel_file(file_bytes, format_name, model_cache_version)
+        model = process_excel_file(file_bytes, format_name, model_cache_version, active_file_name)
         st.session_state[model_cache_key] = model
         st.session_state[model_source_key] = model_source_value
 
@@ -4100,11 +4215,15 @@ except Exception:
     st.stop()
 
 sku_df = model["sku_df"]
+snapshot_mode = bool(model.get("snapshot_mode"))
+if snapshot_mode:
+    st.sidebar.caption("Risk and 30-day outbound filters do not apply to an inventory snapshot.")
 
 sku_option_source = sku_df
-if show_risks:
+if show_risks and not snapshot_mode:
     sku_option_source = sku_option_source[sku_option_source["Risk Level"].isin(show_risks)]
-sku_option_source = sku_option_source[sku_option_source["Outbound Last 30 Days"] >= min_usage]
+if not snapshot_mode:
+    sku_option_source = sku_option_source[sku_option_source["Outbound Last 30 Days"] >= min_usage]
 sku_options = [""] + sku_option_source["SKU"].astype(str).dropna().tolist()
 
 with sku_sidebar_slot.container():
@@ -4149,7 +4268,7 @@ st.markdown(
                     <div class="app-title">Inventory Shortage</div>
                 </div>
             </div>
-            <div class="app-subtitle">Inventory risk, SKU activity, DO lookup, and outbound stock validation.</div>
+            <div class="app-subtitle">{html.escape('Inventory snapshot and outbound stock validation' if snapshot_mode else 'Inventory risk, SKU activity, DO lookup, and outbound stock validation')}.</div>
         </div>
         <div class="app-meta">
             <span class="meta-chip meta-chip-date meta-chip-accent">{fmt_date(report_start)} – {fmt_date(report_end)}</span>
@@ -4161,9 +4280,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-navigation_options = ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Help"]
+navigation_options = (["Stock Check", "Overview", "SKU Detail", "Help"] if snapshot_mode
+                      else ["Overview", "SKU Detail", "DO Lookup", "Stock Check", "Audit", "Help"])
+if snapshot_mode and show_upload_effect:
+    st.session_state["main_page_navigation"] = "Stock Check"
 if st.session_state.get("main_page_navigation") not in navigation_options:
-    st.session_state["main_page_navigation"] = "Overview"
+    st.session_state["main_page_navigation"] = navigation_options[0]
 with st.container(key="main_navigation"):
     if hasattr(st, "segmented_control"):
         selected_page = st.segmented_control(
@@ -4181,10 +4303,41 @@ with st.container(key="main_navigation"):
             horizontal=True,
             label_visibility="collapsed",
         )
-selected_page = selected_page or "Overview"
+selected_page = selected_page or navigation_options[0]
 update_persistent_app_state(values={"main_page_navigation": selected_page})
 
-if selected_page == "Overview":
+if selected_page == "Overview" and snapshot_mode:
+    tab_page_header("Inventory Snapshot", "Current WMS quantities by SKU. Stock Check uses Available Qty.")
+    st.info(
+        "This file has no transaction dates, inbound/outbound history, or DO numbers. "
+        "Demand, shortage forecasts, and DO searches require a Stock Movements report. "
+        f"Displayed date source: {model['report_date_source']}. "
+        "Confirm the W/H Area Code belongs to Orlando before using its quantities."
+    )
+    snapshot_df = sku_df[["SKU", "Description", "Total Qty", "Available Qty", "Not Available Qty", "Stock Status", "W/H Area Code"]].copy()
+    snapshot_bytes = BytesIO()
+    snapshot_df.to_excel(snapshot_bytes, index=False, engine="openpyxl")
+    st.download_button(
+        "Download inventory snapshot",
+        data=snapshot_bytes.getvalue(),
+        file_name=f"Orlando_Inventory_Snapshot_{report_end:%m%d%Y}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        metric_card("SKUs", fmt_num(len(sku_df)), "Items in this report")
+    with c2:
+        metric_card("Unavailable SKUs", fmt_num((sku_df["Available Qty"] <= 0).sum()), "Available Qty at or below zero")
+    with c3:
+        metric_card("Total Qty", fmt_num(sku_df["Total Qty"].sum()), "WMS total")
+    with c4:
+        metric_card("Available Qty", fmt_num(sku_df["Available Qty"].sum()), "Use for new order checks")
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Inventory by SKU</div>', unsafe_allow_html=True)
+    visible_snapshot = snapshot_df if not selected_sku else snapshot_df[snapshot_df["SKU"] == selected_sku]
+    show_limited_dataframe(visible_snapshot, height=620, limit=500)
+
+elif selected_page == "Overview":
     data_issue_count = int((sku_df["Risk Level"] == "Data Issue").sum())
     critical_count = int((sku_df["Risk Level"] == "Critical").sum())
     warning_count = int((sku_df["Risk Level"] == "Warning").sum())
@@ -4259,6 +4412,22 @@ if selected_page == "Overview":
     priority_height = min(620, max(300, 88 + (min(len(priority_display), 16) * 31)))
     show_limited_dataframe(priority_display, height=priority_height, limit=250, show_count=False)
 
+
+elif selected_page == "SKU Detail" and snapshot_mode:
+    tab_page_header("SKU Detail", "Check total and available quantities in the inventory snapshot.")
+    if not selected_sku:
+        st.info("Select a SKU from the sidebar to view its stock.")
+    else:
+        item = sku_df[sku_df["SKU"] == selected_sku].iloc[0]
+        st.subheader(f"{item['SKU']} — {item['Description']}")
+        d1, d2, d3 = st.columns(3)
+        with d1:
+            metric_card("Total Qty", fmt_num(item["Total Qty"]), "WMS total")
+        with d2:
+            metric_card("Available Qty", fmt_num(item["Available Qty"]), "Used by Stock Check")
+        with d3:
+            metric_card("Not Available Qty", fmt_num(item["Not Available Qty"]), "Total minus available; reason not provided")
+        st.caption(f"Stock status: {item['Stock Status']} · W/H area: {item['W/H Area Code'] or 'not supplied'}")
 
 elif selected_page == "SKU Detail":
     tab_page_header("SKU Detail", "Review one SKU, its risk position, source metrics, and complete transaction history.")
@@ -4854,7 +5023,14 @@ elif selected_page == "DO Lookup":
 
 
 elif selected_page == "Stock Check":
-    tab_page_header("Stock Check", "Enter DO demand to calculate temporary remaining stock. Existing report DOs are recognized to prevent double-counting.")
+    tab_page_header(
+        "Stock Check",
+        "Enter DO demand to check Available Qty in the inventory snapshot."
+        if snapshot_mode else
+        "Enter DO demand to calculate temporary remaining stock. Existing report DOs are recognized to prevent double-counting.",
+    )
+    if snapshot_mode:
+        st.info("Current Stock = Available Qty from the uploaded WMS file. Requests entered together are checked in order; this file cannot identify existing DOs.")
 
     stock_table_version_key = f"stock_check_table_version_{site_key}"
     stock_result_signature_key = f"stock_check_result_signature_{site_key}"
@@ -5344,14 +5520,21 @@ elif selected_page == "Audit":
 
 elif selected_page == "Help":
     tab_page_header("Help", "The shortest path through the dashboard for daily inventory work.")
-    st.markdown(
+    if snapshot_mode:
+        st.markdown(
+            "1. Review **Available Qty** in Overview or SKU Detail. **Total Qty** includes units that may not be available.\n"
+            "2. Use **Stock Check** to compare an outbound list with Available Qty.\n"
+            "3. Upload an Orlando Stock Movements report for order history, outbound usage, and demand analysis."
+        )
+    else:
+        st.markdown(
         """
         1. Select the **Warehouse** and upload the matching Item Activity Report.
         2. Start in **Overview** and review Critical, Warning, and Watch items.
         3. Use **SKU Detail** for item-level activity and **DO Lookup** for order searches.
         4. Use **Stock Check** before creating outbound orders, then use **Audit** only when source reconciliation is needed.
         """
-    )
+        )
 if show_upload_effect:
     sku_count = len(model["sku_df"])
     report_end_text = fmt_date(model.get("report_end"))
