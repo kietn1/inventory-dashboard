@@ -2175,7 +2175,6 @@ def find_inventory_snapshot_layout(raw: pd.DataFrame):
 
 
 def snapshot_report_date(file_name: str) -> tuple[date, str]:
-    # Cello exports append their export time as a 13-digit Unix timestamp.
     match = re.search(r"(?:_|-)(1\d{12})(?=\.[^.]+$)", file_name)
     if match:
         try:
