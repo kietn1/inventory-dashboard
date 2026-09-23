@@ -3985,6 +3985,8 @@ st.sidebar.markdown('<div class="sidebar-section-title">Workspace</div>', unsafe
 format_name = st.sidebar.selectbox("Warehouse", options=warehouse_options, index=0, key="report_format")
 update_persistent_app_state(values={"report_format": format_name})
 config = FORMAT_CONFIGS[format_name]
+if format_name == "Orlando":
+    st.sidebar.caption("Orlando stock reader v32")
 site_key = safe_format_slug(format_name).lower()
 risk_filter_key = f"{site_key}_filter_risk_levels"
 min_usage_filter_key = f"{site_key}_filter_min_usage"
@@ -4188,7 +4190,7 @@ except WrongFileFormatError as exc:
                 <div class="stage-copy">
                     <div class="stage-title">Report format not recognized</div>
                     <div class="stage-subtitle">{html.escape(str(exc))}</div>
-                    <div class="stage-meta">Confirm the warehouse format and upload the matching Item Activity Report.</div>
+                    <div class="stage-meta">{html.escape(config["help"])}</div>
                 </div>
             </div>
         </div>
